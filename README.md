@@ -51,7 +51,7 @@ The help menu (`/start` → 👨‍🚒 Help) is the **only** place commands are
 | 👤 PM | _(plain text)_ | Search — **PM search is 💎 premium only**, group search is free |
 | 👤 PM | `/plan` · `/myplan` · `/invoice` | Premium plans, your plan/expiry/renew, latest invoice |
 | 👤 PM 💎 | `/upload` · `/cancel_upload` | Reply to a file (**max 200 MB**) → 🟢 GoFile or 🔵 TmpFiles, with per-site limits and an automatic fallback if the chosen host fails (`plugins/tools.py`) |
-| 🛡️ PM | `/admin` (or `/dashboard`) | Live stats, 💎 Premium panel, 🗑 Delete Files, 🔄 Restart |
+| 🛡️ PM | `/admin` (or `/dashboard`) | Text-only panel: live stats + the admin command list (**no buttons**) |
 | 🛡️ PM | `/addpremium <user_id> <days>` · `/extendpremium <user_id> <days>` · `/removepremium <user_id>` | Grant / extend / revoke premium (invoices are kept) |
 | 🛡️ PM | `/delete <keyword>` · `/deleteall` | Delete matching files · delete everything (asks `CONFIRM DELETE ALL`) |
 | 🛡️ PM | `/warmup_thumbs` | Sequential scan → real posters + duration / quality / size metadata |
@@ -67,19 +67,11 @@ The help menu (`/start` → 👨‍🚒 Help) is the **only** place commands are
 
 ---
 
-## 🎛 `/admin` panel layout
+## 🎛 `/admin` panel — button-free
 
-The panel was restructured so that **no button exists just to print usage text** — commands are shown as text inside the panel body, and every destructive action asks for a confirmation first. `tests/test_admin_panel.py` guards the structure.
+`/admin` (or `/dashboard`) is now **pure text**: live stats (users, groups, indexed files, premium users, index speed, DB size, uptime) followed by the command list. Every button the panel used to carry only opened a screen that repeated a command, so they are all gone — 💎 Premium, 🗑 Files, 🔄 Refresh, ♻️ Restart, ❌ Close and, inside them, ➕ Add · ➖ Remove · ⏳ Extend · 🔍 Check User · 📊 Expiry Chart · ⏰ 3d/7d/30d · 📹 By Quality · 🗑 Delete ALL. Admins simply type `/addpremium`, `/extendpremium`, `/removepremium`, `/delete <keyword>`, `/deleteall` or `/warmup_thumbs`; indexing starts by forwarding a channel post or sending a `t.me` link in PM (explained in the dashboard text too).
 
-| Screen | Buttons |
-|---|---|
-| 📊 Dashboard (`/admin`) | `💎 Premium` · `🗑 Files` · `🔄 Refresh` · `♻️ Restart` · `❌ Close` |
-| 💎 Premium | `🔍 Check User` · `📊 Expiry Chart` · `⏰ 3d` `⏰ 7d` `⏰ 30d` · `🔙 Back` — the body lists `/addpremium` · `/extendpremium` · `/removepremium` |
-| 🗑 Files | `📹 By Quality` · `🗑 Delete ALL` · `🔙 Back` — the body lists `/delete <keyword>` |
-| 📹 Quality | `360p` `480p` `720p` / `1080p` `1440p` `2160p` · `🔙 Back` |
-| ⚠️ Confirm | `✅ Yes, …` · `❌ Cancel` — shown before **every** bulk delete (quality delete also reports how many files will go) |
-
-`🔍 Check User` asks for a user ID and listens for it (60 s), then reports the plan, expiry and time left. A quality delete now goes `delq_720p` → *confirmation with the file count* → `delq_go_720p`, so a mis-tap can no longer wipe a whole quality.
+That also retires the button-only extras: **♻️ Restart** (restart from the host instead), **📹 delete-by-quality**, **🔍 check a user's premium** and the **⏰/📊 expiry reports**. `tests/test_admin_panel.py` guards that no panel builder or `admin_` / `del_` / `delq_` / `prm_` callback ever comes back — the only callback left in `plugins/admin_tools.py` is the ❌ Cancel button of `/deleteall`.
 
 ---
 

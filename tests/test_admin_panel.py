@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""🎛 /admin panel — the dashboard and its sub-panels must stay lean.
+"""🎛 /admin panel — it must stay a button-free, text-only dashboard.
 
 Stdlib-only; runs without MongoDB / Telegram / hydrogram:
 
     python3 -m unittest discover -s tests -v
 
-The panel used to be a wall of buttons: 💎 Premium alone showed ➕ Add,
-➖ Remove and ⏳ Extend, which only printed the usage of the very commands
-that exist for them, and 🗑 Files had a 🔍 Delete by Keyword button that did
-nothing but echo `/delete keyword`. Those are gone — the panels now show the
-commands as text and keep only real actions, and every destructive action
-asks for a confirmation first.
+The dashboard used to be a wall of buttons: 💎 Premium, 🗑 Files, 🔄 Refresh,
+♻️ Restart, and inside them ➕ Add, ➖ Remove, ⏳ Extend, 🔍 Check User,
+📊 Expiry Chart, ⏰ 3d/7d/30d, 📹 By Quality, 🗑 Delete ALL … every one of
+them only opened a screen that repeated a command that already exists.
+
+`/admin` is now **pure text**: live stats + the command list. Every action is
+a command (`/addpremium`, `/extendpremium`, `/removepremium`, `/delete`,
+`/deleteall`, `/warmup_thumbs`), so a button would be dead weight.
 
 The source of `plugins/admin_tools.py` is parsed with `ast` (never imported),
 so this suite needs neither hydrogram nor a database.
@@ -25,110 +27,107 @@ ROOT = Path(__file__).resolve().parents[1]
 ADMIN_TOOLS = (ROOT / "plugins" / "admin_tools.py").read_text(encoding="utf-8")
 TREE = ast.parse(ADMIN_TOOLS)
 
-# Buttons that only printed usage text — they must never come back
-INSTRUCTION_ONLY = {"prm_add", "prm_remove", "prm_extend", "del_keyword"}
+# Panel builders that no longer exist
+DEAD_BUILDERS = (
+    "admin_panel_buttons",
+    "premium_panel_buttons",
+    "delete_panel_buttons",
+    "delete_quality_buttons",
+    "confirm_buttons",
+)
 
-# Maximum number of buttons a panel may show (keyboard clutter guard)
-MAX_BUTTONS = {
-    "admin_panel_buttons": 5,     # 💎 · 🗑 · 🔄 · ♻️ · ❌
-    "premium_panel_buttons": 6,   # 🔍 · 📊 · ⏰×3 · 🔙
-    "delete_panel_buttons": 3,    # 📹 · 🗑 · 🔙
-    "delete_quality_buttons": 7,  # 6 qualities · 🔙
-}
+# Callback handlers that only drove those panels
+DEAD_CALLBACKS = ("admin_", "del_", "delq_", "prm_")
 
-
-def panel_source(name):
-    """Source of a `def name(): …` panel builder in plugins/admin_tools.py"""
-    for node in TREE.body:
-        if isinstance(node, ast.FunctionDef) and node.name == name:
-            return ast.get_source_segment(ADMIN_TOOLS, node)
-    raise AssertionError(f"{name}() not found in plugins/admin_tools.py")
-
-
-def callback_data(name):
-    """Every callback_data used by a panel"""
-    return re.findall(r'callback_data="([^"]+)"', panel_source(name))
+# Commands the dashboard must keep documenting (they are the panel now)
+DOCUMENTED_COMMANDS = (
+    "/addpremium",
+    "/extendpremium",
+    "/removepremium",
+    "/delete",
+    "/deleteall",
+    "/warmup_thumbs",
+)
 
 
-def button_count(name):
-    return panel_source(name).count("InlineKeyboardButton(")
+def function_names():
+    return {
+        node.name
+        for node in TREE.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+
+
+def callback_regexes():
+    """Every callback prefix handled in plugins/admin_tools.py"""
+    return re.findall(r'filters\.regex\("\^?([a-z_]+)', ADMIN_TOOLS)
 
 
 # ----------------------------------------------------------------------
 # ✅ TESTS
 # ----------------------------------------------------------------------
 
-class TestPanelLayout(unittest.TestCase):
-    """Panels stay small: only real actions, no instruction-only buttons."""
+class TestButtonFreePanel(unittest.TestCase):
+    """No panel buttons, no panel callbacks — commands only."""
 
-    def test_panels_stay_compact(self):
-        for name, limit in MAX_BUTTONS.items():
-            with self.subTest(panel=name):
-                self.assertLessEqual(
-                    button_count(name), limit,
-                    f"{name} has too many buttons — keep the panel lean",
-                )
+    def test_panel_builders_are_gone(self):
+        names = function_names()
+        for name in DEAD_BUILDERS:
+            with self.subTest(builder=name):
+                self.assertNotIn(name, names, f"{name}() must stay deleted")
 
-    def test_no_instruction_only_buttons(self):
-        """➕ Add / ➖ Remove / ⏳ Extend / 🔍 Keyword only echoed usage text."""
-        used = set()
-        for name in MAX_BUTTONS:
-            used |= set(callback_data(name))
-        for cb in sorted(INSTRUCTION_ONLY):
-            with self.subTest(callback=cb):
+    def test_panel_callbacks_are_gone(self):
+        for prefix in DEAD_CALLBACKS:
+            with self.subTest(prefix=prefix):
                 self.assertNotIn(
-                    cb, used,
-                    f"{cb} is an instruction-only button — show the command as text",
+                    prefix, callback_regexes(),
+                    f"'{prefix}' callbacks only drove the old panel buttons",
                 )
 
-    def test_commands_are_shown_as_text(self):
-        """The premium / files panels document the commands in their body."""
-        for cmd in ("/addpremium", "/extendpremium", "/removepremium", "/delete"):
-            with self.subTest(command=cmd):
-                self.assertIn(
-                    cmd, ADMIN_TOOLS,
-                    f"{cmd} must stay documented in the panel text",
-                )
-
-    def test_every_sub_panel_can_go_back(self):
-        for name, back in (
-            ("premium_panel_buttons", "admin_back"),
-            ("delete_panel_buttons", "admin_back"),
-            ("delete_quality_buttons", "admin_delete"),
-        ):
-            with self.subTest(panel=name):
-                self.assertIn(back, callback_data(name), f"{name} has no way back")
-
-
-class TestDestructiveActions(unittest.TestCase):
-    """Bulk deletes must never run on a single tap."""
-
-    def test_confirm_helper_exists(self):
-        self.assertIn("def confirm_buttons(", ADMIN_TOOLS)
-
-    def test_confirm_helper_is_used(self):
-        self.assertGreaterEqual(
-            ADMIN_TOOLS.count("confirm_buttons("), 3,
-            "delete-ALL and delete-by-quality must both confirm first",
+    def test_no_callback_data_is_emitted(self):
+        """Nothing in this file may build a panel keyboard."""
+        panel_markers = re.findall(r'callback_data="([^"]+)"', ADMIN_TOOLS)
+        self.assertEqual(
+            sorted(panel_markers), ["close_data"],
+            "only the /deleteall cancel button may carry a callback",
         )
 
-    def test_quality_delete_asks_first(self):
-        """delq_720p only shows a confirmation; delq_go_720p does the delete."""
-        self.assertIn('quality.startswith("go_")', ADMIN_TOOLS)
-        self.assertIn('f"delq_go_{quality}"', ADMIN_TOOLS)
-        self.assertIn("count_by_quality", ADMIN_TOOLS)
+    def test_admin_command_still_exists(self):
+        self.assertIn(
+            'filters.command(["admin", "dashboard"])', ADMIN_TOOLS,
+            "/admin must still open the dashboard",
+        )
 
-    def test_quality_delete_shows_the_file_count(self):
-        """The confirmation tells how many files will be deleted."""
-        self.assertIn("files will be permanently deleted", ADMIN_TOOLS)
+    def test_dashboard_is_sent_without_buttons(self):
+        src = ADMIN_TOOLS
+        open_idx = src.index('async def open_admin_panel')
+        open_body = src[open_idx:src.index("async def delete_cmd")]
+        self.assertNotIn("reply_markup", open_body, "the dashboard takes no keyboard")
 
-    def test_delete_all_asks_first(self):
-        self.assertIn("del_all_confirm", ADMIN_TOOLS)
-        self.assertIn("del_all_execute", ADMIN_TOOLS)
 
-    def test_count_by_quality_exists_in_the_db_layer(self):
-        src = (ROOT / "database" / "ia_filterdb.py").read_text(encoding="utf-8")
-        self.assertIn("async def count_by_quality(", src)
+class TestDashboardContent(unittest.TestCase):
+    """The text replaces the buttons, so it must list what an admin can do."""
+
+    def setUp(self):
+        self.dashboard = ADMIN_TOOLS[ADMIN_TOOLS.index("async def build_dashboard"):]
+
+    def test_stats_are_still_shown(self):
+        for stat in ("Users", "Groups", "Indexed Files", "Premium Users",
+                     "DB Size", "Uptime"):
+            with self.subTest(stat=stat):
+                self.assertIn(stat, self.dashboard)
+
+    def test_every_command_is_documented(self):
+        for cmd in DOCUMENTED_COMMANDS:
+            with self.subTest(command=cmd):
+                self.assertIn(
+                    cmd, self.dashboard,
+                    f"{cmd} must stay listed in the dashboard text",
+                )
+
+    def test_indexing_is_explained(self):
+        """There is no /index command — the dashboard says how indexing starts."""
+        self.assertIn("t.me", self.dashboard)
 
 
 if __name__ == "__main__":

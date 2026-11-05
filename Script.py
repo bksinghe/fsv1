@@ -70,8 +70,8 @@ class script(object):
         "<b>🛡️ ADMIN COMMANDS</b>\n\n"
 
         "🎛 <b>Panel</b>\n"
-        "• /admin (or /dashboard) – stats,\n"
-        "  premium, delete files, restart\n\n"
+        "• /admin (or /dashboard) – live stats +\n"
+        "  this command list (no buttons)\n\n"
 
         "📁 <b>Indexing</b> <i>(PM · no command)</i>\n"
         "• Forward a channel post or a t.me link\n\n"
