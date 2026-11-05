@@ -1059,30 +1059,30 @@ font-weight:700;margin-bottom:4px;transition:background .15s,color .15s}
 .sb-logout{display:block;padding:12px;border-radius:8px;text-align:center;color:var(--txt);
 font-weight:800;font-size:13px;border:1px solid var(--line);background:var(--bg3)}
 .sb-logout:hover{border-color:var(--red);color:var(--red)}
-/* ── Database Stats (v5-style cards) ── */
-@keyframes ffFade{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
-.anim-card{animation:ffFade .45s ease both}
-.stat-hero{background:linear-gradient(135deg,var(--card),var(--bg3));border:1px solid var(--line);
-border-radius:16px;padding:26px 30px;margin-bottom:20px;position:relative;overflow:hidden}
-.stat-hero::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;
-background:linear-gradient(90deg,#3399ff,#9933ff,var(--red))}
-.stat-hero-label{font-size:11px;font-weight:800;color:var(--mut);text-transform:uppercase;
-letter-spacing:1.4px;margin-bottom:8px}
-.stat-hero-num{font-size:50px;font-weight:900;letter-spacing:-2px;line-height:1;color:var(--red)}
-.stat-hero-sub{font-size:12px;color:var(--mut);margin-top:10px;line-height:1.6}
-.stat-title{font-size:24px;font-weight:900;margin-bottom:6px}
-.stat-lead{font-size:13px;color:var(--mut);margin-bottom:24px;line-height:1.6}
-.stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px}
-.st-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px;
-position:relative;overflow:hidden;transition:transform .2s,border-color .2s}
-.st-card:hover{transform:translateY(-2px);border-color:rgba(229,9,20,.55)}
-.st-bar{position:absolute;top:0;left:0;right:0;height:3px}
-.st-label{font-size:10px;font-weight:900;color:var(--mut);text-transform:uppercase;
-letter-spacing:.8px;margin:6px 0 10px}
-.st-val{font-size:32px;font-weight:900;letter-spacing:-1px;line-height:1;margin-bottom:10px}
-.st-sub{font-size:12px;color:var(--mut);line-height:1.5}
+/* ── Database Stats: compact, restrained motion, responsive ── */
+@keyframes ffFade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.anim-card{animation:ffFade .22s ease both}
+.stat-hero{background:var(--card);border:1px solid var(--line);border-radius:12px;
+padding:18px 20px;margin-bottom:14px;position:relative;overflow:hidden}
+.stat-hero::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--red)}
+.stat-hero-label{font-size:10px;font-weight:800;color:var(--mut);text-transform:uppercase;
+letter-spacing:1px;margin-bottom:7px}
+.stat-hero-num{font-size:40px;font-weight:850;letter-spacing:-1.5px;line-height:1;color:var(--red)}
+.stat-hero-sub{font-size:11px;color:var(--mut);margin-top:7px;line-height:1.5}
+.stat-title{font-size:21px;font-weight:850;margin-bottom:4px}
+.stat-lead{font-size:12px;color:var(--mut);margin-bottom:15px;line-height:1.5}
+.stat-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:16px}
+.st-card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;
+position:relative;overflow:hidden;transition:border-color .15s}
+.st-card:hover{border-color:rgba(229,9,20,.45)}
+.st-bar{position:absolute;top:0;left:0;right:0;height:2px}
+.st-label{font-size:9px;font-weight:850;color:var(--mut);text-transform:uppercase;
+letter-spacing:.55px;margin:4px 0 9px}
+.st-val{font-size:27px;font-weight:850;letter-spacing:-.8px;line-height:1;margin-bottom:7px}
+.st-sub{font-size:11px;color:var(--mut);line-height:1.45}
 .st-link{display:inline-block;margin-top:12px;font-size:12px;font-weight:800;color:var(--red)}
-@media(max-width:800px){.stat-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:950px){.stat-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:680px){.stat-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.st-card{padding:12px}}
 /* ── Profile Settings (v5-style) ── */
 .scard{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:28px}
 .scard-label{font-size:11px;font-weight:900;color:var(--mut);text-transform:uppercase;
@@ -1346,7 +1346,7 @@ __GROUP_ADMIN_HTML__
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let curQ='',offset=0,loading=false,hasMore=false,seenGroups={};
-let debounce=null;
+let debounce=null,searchController=null,searchSeq=0;
 /* 🖼️📄 Poster/Text comes entirely from `web/mode_assets.py` (SITE_JS → window.ViewMode) —
    there is no mode logic here, just one init call. The group filter is a separate feature. */
 let groupMode=localStorage.getItem('ff_group_mode')||'all';
@@ -1413,15 +1413,24 @@ function thumbFail(img){
 }
 
 async function load(reset){
-  if(loading)return;
-  if(reset){offset=0;hasMore=false;seenGroups={};$('#grid').innerHTML=skeletons();}
+  // A new search supersedes the old request immediately; stale responses must
+  // never overwrite newer results. Pagination remains single-flight.
+  if(reset){
+    if(searchController)searchController.abort();
+    searchController=new AbortController();searchSeq++;loading=false;
+    offset=0;hasMore=false;seenGroups={};$('#grid').innerHTML=skeletons();
+  }else if(loading||!hasMore)return;
+  const seq=searchSeq,controller=searchController||new AbortController();
+  const requestedOffset=offset,query=curQ,mode=groupMode;
   loading=true;$('#srow').classList.add('loading');
   try{
-    const r=await fetch(`/api/search?q=${encodeURIComponent(curQ)}&offset=${offset}&group=${groupMode}`,{credentials:'same-origin'});
+    const r=await fetch(`/api/search?q=${encodeURIComponent(query)}&offset=${requestedOffset}&group=${mode}`,{
+      credentials:'same-origin',signal:controller.signal
+    });
+    if(seq!==searchSeq)return;
     if(r.status===401){location.href='/login?err='+encodeURIComponent('Session expired. Please sign in again.');return}
-    const d=await r.json();
-    // 🗂️ All members of a saved group appear on every page — remember the key so
-    //    the same group card is not shown twice (raw-file offset is preserved).
+    if(!r.ok)throw new Error(`HTTP ${r.status}`);
+    const d=await r.json();if(seq!==searchSeq)return;
     const list=(d.results||[]).filter(f=>{
       if(!f.group)return true;
       const k=String(f.key||f.gid||'');
@@ -1429,22 +1438,20 @@ async function load(reset){
       seenGroups[k]=1;return true;
     });
     const html=list.map(card).join('');
-    if(reset) $('#grid').innerHTML=html;
+    if(reset)$('#grid').innerHTML=html;
     else $('#grid').insertAdjacentHTML('beforeend',html);
-    RevealCards.reveal($('#grid'));   /* one shared staggered spring on every batch */
-    hasMore=!!d.next_offset;
-    offset=hasMore?Number(d.next_offset):0;
+    RevealCards.reveal($('#grid'));
+    hasMore=!!d.next_offset;offset=hasMore?Number(d.next_offset):0;
     $('#more').classList.toggle('show',hasMore);
-    // ℹ️ The "Recently Added / Database Stats" meta line was removed —
-    //    the count is shown only on the sidebar's "Database Stats" page.
-    if(!$('#grid').children.length){
+    if(!$('#grid').children.length)
       $('#grid').innerHTML=`<div class="state">🔍 No files found.<br>Try another name or keyword.</div>`;
-    }
   }catch(e){
+    if(e.name==='AbortError'||seq!==searchSeq)return;
     $('#grid').innerHTML=`<div class="state">⚠️ Search could not be loaded.<br>${esc(e.message||e)}</div>`;
-  }finally{loading=false;$('#srow').classList.remove('loading')}
+  }finally{
+    if(seq===searchSeq){loading=false;$('#srow').classList.remove('loading')}
+  }
 }
-
 $('#grid').addEventListener('click',e=>{
   const el=e.target.closest('.vcard[data-fid]');if(!el)return;
   play(decodeURIComponent(el.dataset.fid),el.dataset.name);
