@@ -176,6 +176,8 @@ class Bot(Client):
             host="0.0.0.0",
             port=PORT
         ).start()
+        temp.WEB_START = time.time()   # so /stats can report the web server
+        logger.info(f"✅ Web server started on port {PORT}")
 
         # ==========================
         # 🔁 BACKGROUND TASKS
@@ -187,8 +189,8 @@ class Bot(Client):
         # 🔔 PREMIUM EXPIRY REMINDER
         asyncio.create_task(premium_expiry_reminder(self))
 
-        # ❌ REMOVED: Auto unban worker (now in group_mgmt.py)
-        # asyncio.create_task(auto_unban_worker(self))
+        # ❌ REMOVED: auto_unban_worker — the moderation commands it served
+        #    (/ban, /mute, …) are gone, so the worker is not needed anymore.
 
         # ⭐ PREMIUM AUTO-REMOVE (NEW)
         asyncio.create_task(check_and_remove_expired_premium(self))

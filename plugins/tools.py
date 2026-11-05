@@ -5,36 +5,80 @@ import time
 from hydrogram import Client, filters
 from hydrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
 from info import ADMINS
-from utils import is_premium
+from utils import is_premium, get_size
 
 # Config
-MAX_FILE_SIZE = 100 * 1024 * 1024
+MB = 1024 * 1024
+MAX_FILE_SIZE = 200 * MB   # hard cap for /upload
+UPLOAD_TIMEOUT = aiohttp.ClientTimeout(total=1200, connect=30, sock_read=300)
+UPLOAD_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+    )
+}
 UPLOAD_STATE = {}
 
-# Upload Sites Info
+# Upload Sites Info — only the hosts that actually answer.
+#   The two hosts that used to sit here (🟠 permanent-storage host and the
+#   🟡 one-download host) were removed: every upload to them ended in
+#   "❌ Upload to … failed", so they are no longer offered at all.
+#   "max" is the biggest file a host accepts; a file bigger than that is never
+#   offered for that host (per-site limits), so no attempt is wasted.
 SITES_INFO = {
-    "gofile": {"name": "GoFile", "icon": "🟢", "desc": "Fast Stream"},
-    "catbox": {"name": "Catbox", "icon": "🟠", "desc": "Permanent"},
-    "tmpfiles": {"name": "TmpFiles", "icon": "🔵", "desc": "1 Hour"},
-    "fileio": {"name": "File.io", "icon": "🟡", "desc": "One Download"}
+    "gofile": {
+        "name": "GoFile", "icon": "🟢", "desc": "Fast stream · long lived",
+        "max": 200 * MB,
+    },
+    "tmpfiles": {
+        "name": "TmpFiles", "icon": "🔵", "desc": "1 hour link",
+        "max": 100 * MB,
+    },
 }
+
+
+def sites_for(size: int):
+    """Site keys able to take a file of `size` bytes (GoFile first)."""
+    return [key for key, info in SITES_INFO.items() if size <= info["max"]]
+
+
+def site_label(key: str) -> str:
+    info = SITES_INFO[key]
+    return f"{info['icon']} {info['name']}"
+
 
 # UI Buttons
 def site_buttons(uid):
     state = UPLOAD_STATE.get(uid, {})
-    selected = state.get("site", "gofile")
-    
+    size = state.get("size", 0)
+
+    available = sites_for(size) or list(SITES_INFO)
+    selected = state.get("site")
+    if selected not in available:          # the old pick cannot take the file
+        selected = available[0]
+        state["site"] = selected
+
     buttons = []
-    for key, info in SITES_INFO.items():
+    for key in available:
+        info = SITES_INFO[key]
         check = "✅" if key == selected else ""
+        limit = get_size(info["max"])
         buttons.append([InlineKeyboardButton(
-            f"{info['icon']} {info['name']} {check}",
+            f"{info['icon']} {info['name']} · ≤{limit} {check}",
             callback_data=f"site#{key}"
         )])
-    
+
+    # A file too big for a host is simply not offered — no failed attempt.
+    skipped = [site_label(k) for k in SITES_INFO if k not in available]
+    if skipped:
+        buttons.append([InlineKeyboardButton(
+            f"🚫 Too big for {', '.join(skipped)}",
+            callback_data="noop"
+        )])
+
     buttons.append([InlineKeyboardButton("🚀 Upload", callback_data="do_upload")])
     buttons.append([InlineKeyboardButton("❌ Cancel", callback_data="cancel")])
-    
+
     return InlineKeyboardMarkup(buttons)
 
 # Progress Tracker
@@ -73,20 +117,28 @@ class Progress:
 
 # Upload to GoFile
 async def upload_gofile(file_path):
-    async with aiohttp.ClientSession() as session:
-        # Get server
+    async with aiohttp.ClientSession(
+        timeout=UPLOAD_TIMEOUT, headers=UPLOAD_HEADERS
+    ) as session:
+        # Get an upload server
         async with session.get("https://api.gofile.io/servers") as r:
             if r.status != 200:
                 return None
             data = await r.json()
-            server = data["data"]["servers"][0]["name"]
-        
+            if data.get("status") != "ok":
+                return None
+
+            servers = data["data"]["servers"]
+            # The API returns either [{"name": …}, …] or a plain list of names
+            first = servers[0]
+            server = first["name"] if isinstance(first, dict) else first
+
         # Upload
         url = f"https://{server}.gofile.io/uploadFile"
         with open(file_path, "rb") as f:
             data = aiohttp.FormData()
             data.add_field("file", f, filename=os.path.basename(file_path))
-            
+
             async with session.post(url, data=data) as r:
                 if r.status != 200:
                     return None
@@ -95,66 +147,41 @@ async def upload_gofile(file_path):
                     return result["data"]["downloadPage"]
     return None
 
-# Upload to Catbox
-async def upload_catbox(file_path):
-    async with aiohttp.ClientSession() as session:
-        with open(file_path, "rb") as f:
-            data = aiohttp.FormData()
-            data.add_field("reqtype", "fileupload")
-            data.add_field("fileToUpload", f, filename=os.path.basename(file_path))
-            
-            async with session.post("https://catbox.moe/user/api.php", data=data) as r:
-                if r.status == 200:
-                    link = await r.text()
-                    return link.strip() if link else None
-    return None
-
 # Upload to TmpFiles
 async def upload_tmpfiles(file_path):
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession(
+        timeout=UPLOAD_TIMEOUT, headers=UPLOAD_HEADERS
+    ) as session:
         with open(file_path, "rb") as f:
             data = aiohttp.FormData()
             data.add_field("file", f, filename=os.path.basename(file_path))
-            
-            async with session.post("https://tmpfiles.org/api/v1/upload", data=data) as r:
-                if r.status == 200:
-                    result = await r.json()
-                    if result.get("status") == "success":
-                        url = result["data"]["url"]
-                        return url.replace("tmpfiles.org/", "tmpfiles.org/dl/")
-    return None
 
-# Upload to File.io
-async def upload_fileio(file_path):
-    async with aiohttp.ClientSession() as session:
-        with open(file_path, "rb") as f:
-            data = aiohttp.FormData()
-            data.add_field("file", f, filename=os.path.basename(file_path))
-            
-            async with session.post("https://file.io", data=data) as r:
-                if r.status == 200:
-                    result = await r.json()
-                    if result.get("success"):
-                        return result["link"]
+            async with session.post("https://tmpfiles.org/api/v1/upload", data=data) as r:
+                if r.status != 200:
+                    return None
+                result = await r.json()
+                if result.get("status") == "success":
+                    url = result["data"]["url"]
+                    return url.replace("tmpfiles.org/", "tmpfiles.org/dl/")
     return None
 
 # Upload Handler
+UPLOADERS = {
+    "gofile": upload_gofile,
+    "tmpfiles": upload_tmpfiles,
+}
+
+
 async def do_upload(file_path, site, msg):
-    uploaders = {
-        "gofile": upload_gofile,
-        "catbox": upload_catbox,
-        "tmpfiles": upload_tmpfiles,
-        "fileio": upload_fileio
-    }
-    
-    uploader = uploaders.get(site)
+    uploader = UPLOADERS.get(site)
     if not uploader:
         return None
-    
+
     try:
         link = await uploader(file_path)
         return link
-    except Exception:
+    except Exception as e:
+        print(f"[UPLOAD] {site} error: {e}")
         return None
 
 # /upload Command
@@ -173,26 +200,45 @@ async def upload_cmd(bot, message):
     size = getattr(file, "file_size", 0)
     
     if size > MAX_FILE_SIZE:
-        return await message.reply(f"❌ File too large (Max: {MAX_FILE_SIZE/1024/1024:.0f}MB)")
-    
+        return await message.reply(
+            f"❌ File too large — the limit is {get_size(MAX_FILE_SIZE)}."
+        )
+
+    # Only the hosts that can take this file are offered
+    available = sites_for(size)
+    if not available:
+        biggest = max(info["max"] for info in SITES_INFO.values())
+        return await message.reply(
+            f"❌ No host accepts a file of {get_size(size)} "
+            f"(max {get_size(biggest)})."
+        )
+
     if uid in UPLOAD_STATE and UPLOAD_STATE[uid].get("uploading"):
         return await message.reply("⚠️ Already uploading")
-    
+
     UPLOAD_STATE[uid] = {
         "media": media,
-        "site": "gofile",
+        "site": available[0],
+        "size": size,
         "uploading": False
     }
-    
+
+    skipped = [site_label(k) for k in SITES_INFO if k not in available]
+    note = (
+        f"\n🚫 Skipped (file too big): {', '.join(skipped)}"
+        if skipped else ""
+    )
+
     await message.reply(
         f"📤 **Select Upload Site**\n\n"
-        f"📁 Size: {size/1024/1024:.1f} MB\n"
-        f"📝 Name: `{getattr(file, 'file_name', 'file')}`",
+        f"📁 Size: {get_size(size)}\n"
+        f"📝 Name: `{getattr(file, 'file_name', 'file')}`"
+        f"{note}",
         reply_markup=site_buttons(uid)
     )
 
 # Callback Handler
-@Client.on_callback_query(filters.regex("^(site#|do_upload|cancel)"))
+@Client.on_callback_query(filters.regex("^(site#|do_upload|cancel|noop)"))
 async def callback_handler(bot, query: CallbackQuery):
     uid = query.from_user.id
     state = UPLOAD_STATE.get(uid)
@@ -201,10 +247,17 @@ async def callback_handler(bot, query: CallbackQuery):
         return await query.answer("❌ Session expired", True)
     
     data = query.data
+
+    # Disabled "too big for …" row
+    if data == "noop":
+        return await query.answer("📏 This file is too big for that host", True)
     
     # Site Selection
     if data.startswith("site#"):
         site = data.split("#")[1]
+        if site not in sites_for(state.get("size", 0)):
+            return await query.answer("📏 This file is too big for that host", True)
+
         state["site"] = site
         info = SITES_INFO[site]
         
@@ -245,22 +298,41 @@ async def start_upload(bot, msg, uid):
         file_path = await media.download()
         if not file_path or not os.path.exists(file_path):
             return await msg.edit("❌ Download failed")
-        
-        # Upload
-        await msg.edit(f"⚡ Uploading to {site_info['name']}...")
-        link = await do_upload(file_path, site, msg)
-        
+
+        real_size = os.path.getsize(file_path)
+
+        # Upload — if the chosen host fails, fall back to the others that can
+        # take this file instead of showing "❌ Upload to X failed".
+        tried = []
+        link = None
+        for key in [site] + [k for k in sites_for(real_size) if k != site]:
+            tried.append(key)
+            info = SITES_INFO[key]
+            await msg.edit(f"⚡ Uploading to {info['icon']} {info['name']}...")
+            link = await do_upload(file_path, key, msg)
+            if link:
+                site = key
+                site_info = info
+                break
+
         if not link:
-            return await msg.edit(f"❌ Upload to {site_info['name']} failed")
-        
+            names = ", ".join(site_label(k) for k in tried)
+            return await msg.edit(
+                "❌ **Upload failed**\n\n"
+                f"Tried: {names}\n"
+                "Please try again in a few minutes."
+            )
+
         # Success with button
         btn = InlineKeyboardMarkup([[
             InlineKeyboardButton("🔗 Open Link", url=link)
         ]])
-        
+
+        switched = "" if len(tried) == 1 else f"\n↪️ Fell back from {site_label(tried[0])}"
+
         await msg.edit(
             f"✅ **Upload Complete**\n\n"
-            f"📤 Site: {site_info['icon']} {site_info['name']}\n"
+            f"📤 Site: {site_info['icon']} {site_info['name']}{switched}\n"
             f"🔗 Link: `{link}`",
             reply_markup=btn,
             disable_web_page_preview=True

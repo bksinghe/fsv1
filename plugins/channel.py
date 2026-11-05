@@ -2,9 +2,7 @@ import asyncio
 from hydrogram import Client, filters
 from hydrogram.errors import (
     FloodWait,
-    MessageNotModified,
-    ReactionInvalid,
-    ChatWriteForbidden
+    ReactionInvalid
 )
 
 from info import INDEX_CHANNELS, LOG_CHANNEL
@@ -13,12 +11,15 @@ from database.ia_filterdb import (
     update_file_caption,
     detect_quality
 )
+from utils import get_size
 
-# 🔥 Import manual index cancel flag
+# 🔥 Channels the manual indexer is working on right now (plugins/index.py
+#    owns that set). Live posts of such a channel are skipped, so the manual
+#    loop and this handler never write the same file at the same time.
 try:
-    from plugins.index import CANCEL_INDEX
-except:
-    CANCEL_INDEX = {}
+    from plugins.index import ACTIVE_INDEXES
+except ImportError:
+    ACTIVE_INDEXES = set()
 
 # ─────────────────────────────────────────────
 # MEDIA FILTER
@@ -59,7 +60,7 @@ async def safe_log(client, text: str):
             return True
         except:
             return False
-    except (ChatWriteForbidden, Exception):
+    except Exception:
         return False
 
 
@@ -72,25 +73,14 @@ def get_media_info(message):
     except:
         return None
 
-
-def format_file_size(size_bytes: int) -> str:
-    try:
-        for unit in ["B", "KB", "MB", "GB"]:
-            if size_bytes < 1024:
-                return f"{size_bytes:.2f} {unit}"
-            size_bytes /= 1024
-        return "Unknown"
-    except:
-        return "Unknown"
-
 # ─────────────────────────────────────────────
 # 📥 AUTO INDEX (LIVE POSTS ONLY)
 # ─────────────────────────────────────────────
 
 @Client.on_message(filters.chat(INDEX_CHANNELS) & media_filter, group=10)
 async def index_new_file(bot, message):
-    # 🛑 Skip if manual indexing running for this channel
-    if CANCEL_INDEX.get(message.chat.id) is False:
+    # 🛑 Skip while the manual indexer is running for this channel
+    if message.chat.id in ACTIVE_INDEXES:
         return
 
     media = get_media_info(message)
@@ -98,11 +88,12 @@ async def index_new_file(bot, message):
         return
 
     try:
-        caption = message.caption or ""
-        quality = detect_quality(media.file_name, caption)
-        file_size = getattr(media, "file_size", 0)
-
-        status = await save_file(media, quality=quality)
+        # NOTE: save_file() reads the caption straight off the media object
+        #       (see database/ia_filterdb.py) — `caption` is part of the
+        #       search text index, so a live post must carry it too. A manual
+        #       run (plugins/index.py) does exactly the same.
+        media.caption = message.caption or ""
+        status = await save_file(media)
 
         emoji_map = {
             "suc": "✅",
@@ -117,8 +108,8 @@ async def index_new_file(bot, message):
             bot,
             f"📥 **Auto Index**\n\n"
             f"📄 `{media.file_name}`\n"
-            f"📊 `{format_file_size(file_size)}`\n"
-            f"🎞 `{quality}`\n"
+            f"📊 `{get_size(getattr(media, 'file_size', 0))}`\n"
+            f"🎞 `{detect_quality(getattr(media, 'file_name', None))}`\n"
             f"✅ `{status}`\n"
             f"💬 `{message.chat.title}`"
         )
@@ -134,24 +125,21 @@ async def index_new_file(bot, message):
 
 @Client.on_edited_message(filters.chat(INDEX_CHANNELS) & media_filter, group=11)
 async def update_caption(bot, message):
+    if message.chat.id in ACTIVE_INDEXES:
+        return
+
     media = get_media_info(message)
     if not media:
         return
 
     try:
-        new_caption = message.caption or ""
-        quality = detect_quality(media.file_name, new_caption)
-
         updated = await update_file_caption(
             media.file_id,
-            new_caption,
-            quality
+            message.caption or ""
         )
 
         await safe_react(message, "✏️" if updated else "⚠️")
 
-    except MessageNotModified:
-        pass
     except FloodWait as e:
         await asyncio.sleep(e.value)
     except Exception:

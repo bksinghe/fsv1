@@ -85,9 +85,6 @@ class Database:
     async def total_users_count(self):
         return await asyncio.to_thread(self.users.count_documents, {})
 
-    async def get_all_users(self):
-        return await asyncio.to_thread(lambda: list(self.users.find({})))
-
     # =========================
     # GROUPS
     # =========================

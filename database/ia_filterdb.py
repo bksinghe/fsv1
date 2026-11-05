@@ -413,33 +413,6 @@ async def delete_all_files() -> int:
         return 0
 
 # =====================================================
-# 🗑 DELETE BY QUALITY
-# =====================================================
-async def delete_by_quality(quality: str) -> int:
-    """
-    Delete all files of specific quality
-    Example: delete_by_quality("480p")
-    Returns: Number of files deleted
-    """
-    if not quality:
-        return 0
-    
-    try:
-        res = collection.delete_many({"quality": quality})
-        
-        # Clear cache after deletion
-        cache_clear()
-        
-        deleted_count = res.deleted_count
-        logger.info(f"✅ Deleted {deleted_count} files with quality: {quality}")
-        
-        return deleted_count
-    
-    except Exception as e:
-        logger.error(f"❌ Delete by quality error: {e}")
-        return 0
-
-# =====================================================
 # 📄 GET FILE DETAILS
 # =====================================================
 async def get_file_details(file_id: str) -> Optional[Dict]:

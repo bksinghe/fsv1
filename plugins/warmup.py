@@ -1,8 +1,9 @@
 """🖼️ `/warmup_thumbs` — sequential engine for thumbnails + **real metadata**.
 
 Learned from `plugins/warmup.py` in JoneySin/v5: `send_cached_media` one file at a
-time, a random 1.2–3.0s anti-flood gap between files, `e.value + 10` sleep on
-FloodWait, strict thumbnail validation and a `NO_THUMB` mark for files without one.
+time, a random 3.0–5.0s anti-flood gap between files (wider after a FloodWait),
+`e.value + 10` sleep on FloodWait, strict thumbnail validation and a `NO_THUMB`
+mark for files without one.
 
 In fsv1 all of that lives in `web/thumb_engine.py::probe_file()` + `_probe_lock` (web
 requests go through the same single lock/queue). This command additionally:
@@ -96,8 +97,9 @@ async def warmup_thumbs_cmd(client, message):
             skipped += 1
             continue
         try:
-            # ⚠️ This is the serial point: global _probe_lock + 1.2–3.0s gap + FloodWait retry
-            #    The same probe writes true metadata and the verified thumbnail to the DB.
+            # ⚠️ This is the serial point: global _probe_lock + 3.0–5.0s anti-flood gap
+            #    (wider after a FloodWait) + FloodWait retry. The same probe writes true
+            #    metadata and the verified thumbnail to the DB.
             await probe_file(fid)
         except Exception as e:
             logger.warning(f"[warmup] {fid[:16]} skipped: {e}")

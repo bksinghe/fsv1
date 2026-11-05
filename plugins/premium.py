@@ -4,60 +4,77 @@ import asyncio
 from io import BytesIO
 from datetime import datetime, timedelta
 
-from hydrogram import Client, filters
+from hydrogram import Client, filters, enums
 from hydrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 
 from info import ADMINS, IS_PREMIUM, PRE_DAY_AMOUNT, UPI_ID, UPI_NAME, RECEIPT_SEND_USERNAME
 from database.users_chats_db import db
-from utils import is_premium
+from utils import is_premium, fmt, get_expiry_datetime
 
 
 # ======================================================
 # ⚙️ CONFIG
 # ======================================================
 
-LISTEN_SHORT = 180
-LISTEN_LONG = 300
-active_sessions = {}  
+LISTEN_SHORT = 180     # seconds to type the plan number
+LISTEN_LONG = 300      # seconds to send the payment screenshot
+MAX_PLAN_DAYS = 3650   # sanity cap for /addpremium · /extendpremium
+
+active_sessions = {}   # uid -> current buy-flow step
 
 
 # ======================================================
-# 🧠 HELPERS
+# 🧠 PLAN MATH (ONE TABLE, ONE PRICING RULE)
+#    unit -> (display label, duration of one unit, billed days per unit)
+#    Hours are billed as whole days, so billed days is None for them.
 # ======================================================
 
-def fmt(dt):
-    """Format datetime to readable string"""
-    if isinstance(dt, (int, float)):
-        dt = datetime.utcfromtimestamp(dt)
-    return dt.strftime("%d %b %Y, %I:%M %p")
+PLAN_UNITS = {
+    "hour":  ("Hours",  timedelta(hours=1),  None),
+    "day":   ("Days",   timedelta(days=1),   1),
+    "month": ("Months", timedelta(days=30),  30),
+    "year":  ("Years",  timedelta(days=365), 365),
+}
 
 
-def parse_duration(text: str):
-    """Parse duration from text like '1 day', '7 days', '1 month'"""
+def plan_quote(unit, num):
+    """(plan text, amount, billed days) for one unit + number selection"""
+    label, _duration, days_per_unit = PLAN_UNITS[unit]
+
+    if days_per_unit is None:                 # hours → whole days
+        days = max(1, (num // 24) or 1)
+    else:
+        days = days_per_unit * num
+
+    return f"{num} {label}", days * PRE_DAY_AMOUNT, days
+
+
+def parse_duration(text):
+    """'7 days' · '2 months' · '12 hours' → timedelta (None when unparsable)"""
     if not text:
         return None
+
     text = text.lower().strip()
-    
-    # Extract number
     num_str = "".join(filter(str.isdigit, text))
     if not num_str:
         return None
-    
+
     num = int(num_str)
     if num <= 0:
         return None
-    
-    # Convert to days
-    if "day" in text:
-        return timedelta(days=num)
-    if "month" in text:
-        return timedelta(days=30 * num)
-    if "year" in text:
-        return timedelta(days=365 * num)
-    if "hour" in text:
-        return timedelta(hours=num)
-    
-    return timedelta(days=num) # Default to days if only number
+
+    for unit, (_label, duration, _days) in PLAN_UNITS.items():
+        if unit in text:
+            return duration * num
+
+    return timedelta(days=num)     # a bare number means days
+
+
+def normalise_duration(duration):
+    """Plans are stored in days — an hourly purchase becomes 1 day"""
+    if duration.days == 0 and duration.seconds > 0:
+        return timedelta(days=max(1, (duration.seconds // 3600) // 24 + 1))
+    return duration
 
 
 def gen_invoice_id():
@@ -65,31 +82,28 @@ def gen_invoice_id():
     return "PRM-" + secrets.token_hex(3).upper()
 
 
-def get_expiry_datetime(expire):
-    """Convert expire timestamp/datetime to datetime object"""
-    if isinstance(expire, (int, float)):
-        return datetime.utcfromtimestamp(expire)
-    return expire
-
+# ======================================================
+# 💾 PLAN CORE — the single place that writes a plan
+# ======================================================
 
 async def get_plan_data(uid):
-    """Get user plan with calculated remaining time"""
+    """(plan data, status) with the remaining time already calculated"""
     if uid in ADMINS:
         return None, "admin"
-    
+
     plan = await db.get_plan(uid)
     if not plan or not plan.get("premium"):
         return None, "none"
-    
+
     expire = plan.get("expire")
     exp_dt = get_expiry_datetime(expire)
     now = datetime.utcnow()
     remaining = exp_dt - now
-    
+
     if remaining.total_seconds() <= 0:
-        await db.update_plan(uid, {"premium": False, "plan": None, "expire": None})
+        await revoke_premium(uid)      # keep the invoice history
         return None, "expired"
-    
+
     return {
         "plan": plan,
         "exp_dt": exp_dt,
@@ -97,6 +111,84 @@ async def get_plan_data(uid):
         "days": max(0, remaining.days),
         "hours": remaining.seconds // 3600
     }, "active"
+
+
+async def apply_premium(uid, plan_text, amount, duration=None, days=None,
+                        extend=True, by="admin"):
+    """Grant or extend premium and append the invoice.
+
+    Every path (💎 admin command · ✅ payment approval) funnels through here,
+    so the expiry rule and the invoice format can never drift apart.
+
+    extend = True  → add `duration` on top of a plan that is still running
+    extend = False → start `duration` from now
+    Returns (expire_dt, invoice) or None.
+    """
+    if duration is None:
+        if not days:
+            return None
+        duration = timedelta(days=days)
+
+    now = datetime.utcnow()
+    old = await db.get_plan(uid) or {}
+
+    old_expire = old.get("expire")
+    old_expire_dt = get_expiry_datetime(old_expire) if old_expire else None
+
+    if extend and old_expire_dt and old_expire_dt > now:
+        expire_dt = old_expire_dt + duration
+    else:
+        expire_dt = now + duration
+
+    invoice = {
+        "id": gen_invoice_id(),
+        "plan": plan_text,
+        "amount": amount,
+        "activated": fmt(now),
+        "expire": fmt(expire_dt),
+        "created_at": now.timestamp(),
+        "by": by,
+    }
+
+    # NOTE: get_plan() returns a shallow copy of the default plan for a user
+    #       without a document — copy the list so the default stays empty.
+    invoices = list(old.get("invoices") or [])
+    invoices.append(invoice)
+
+    await db.update_plan(uid, {
+        "premium": True,
+        "plan": plan_text,
+        "expire": expire_dt.timestamp(),
+        "activated_at": now.timestamp(),
+        "invoices": invoices,
+    })
+
+    return expire_dt, invoice
+
+
+async def revoke_premium(uid):
+    """Drop premium but keep the invoice history. None when there was no plan."""
+    old = await db.get_plan(uid) or {}
+    if not old.get("premium"):
+        return None
+
+    await db.update_plan(uid, {
+        "premium": False,
+        "plan": None,
+        "expire": None,
+        "activated_at": None,
+        "invoices": list(old.get("invoices") or []),
+    })
+    return old
+
+
+async def notify_user(client, uid, text):
+    """Best-effort DM — the user may never have started the bot"""
+    try:
+        await client.send_message(uid, text, parse_mode=enums.ParseMode.HTML)
+        return True
+    except Exception:
+        return False
 
 
 # ======================================================
@@ -116,20 +208,17 @@ def cancel_btn():
 
 
 def duration_buttons(num):
-    """Generate duration selection buttons based on number"""
-    hours_price = max(1, (num // 24) or 1) * PRE_DAY_AMOUNT
-    days_price = num * PRE_DAY_AMOUNT
-    months_price = num * 30 * PRE_DAY_AMOUNT
-    years_price = num * 365 * PRE_DAY_AMOUNT
-    
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton(f"⏰ {num} Hours (₹{hours_price})", callback_data=f"dur#{num}#hour")],
-        [InlineKeyboardButton(f"📅 {num} Days (₹{days_price})", callback_data=f"dur#{num}#day")],
-        [InlineKeyboardButton(f"📆 {num} Months (₹{months_price})", callback_data=f"dur#{num}#month")],
-        [InlineKeyboardButton(f"🗓️ {num} Years (₹{years_price})", callback_data=f"dur#{num}#year")],
-        [InlineKeyboardButton("🔄 Re-enter Number", callback_data="buy_premium")],
-        [InlineKeyboardButton("❌ Cancel", callback_data="cancel_payment")]
-    ])
+    """One row per unit — prices come from plan_quote(), never from magic numbers"""
+    rows = []
+    for unit in ("hour", "day", "month", "year"):
+        plan_text, amount, _days = plan_quote(unit, num)
+        rows.append([InlineKeyboardButton(
+            f"{plan_text} (₹{amount})", callback_data=f"dur#{num}#{unit}"
+        )])
+
+    rows.append([InlineKeyboardButton("🔄 Re-enter Number", callback_data="buy_premium")])
+    rows.append([InlineKeyboardButton("❌ Cancel", callback_data="cancel_payment")])
+    return InlineKeyboardMarkup(rows)
 
 
 def myplan_buttons():
@@ -155,6 +244,27 @@ def myplan_text(data):
 """
 
 
+async def _fail(client, message, uid, text):
+    """End a buy-flow step with an error and show the buy button again.
+
+    The step message may already be deleted (the QR replaces it), so fall
+    back to a fresh PM when editing fails.
+    """
+    active_sessions.pop(uid, None)
+    try:
+        await message.edit(text, reply_markup=buy_btn())
+    except Exception:
+        try:
+            await client.send_message(uid, text, reply_markup=buy_btn())
+        except Exception:
+            pass
+
+
+def stamp_receipt(caption, verdict, username):
+    """Mark the receipt photo in the admin channel as APPROVED / REJECTED"""
+    return f"{caption}\n\n{verdict} by @{username}\n⏰ {fmt(datetime.utcnow())}"
+
+
 # ======================================================
 # 👤 USER COMMANDS
 # ======================================================
@@ -169,7 +279,7 @@ async def plan_cmd(client, message):
         return await message.reply("👑 You are Admin = Lifetime Premium Access")
 
     premium = await is_premium(uid, client)
-    
+
     text = f"""
 💎 **Premium Benefits**
 
@@ -189,29 +299,36 @@ async def plan_cmd(client, message):
 """
     if premium:
         text += "\n✅ **You already have Premium!**\nYou can renew or extend your current plan."
-    
+
     await message.reply(text, reply_markup=buy_btn())
 
 
 @Client.on_message(filters.command("myplan") & filters.private)
 async def myplan_cmd(client, message):
+    if not IS_PREMIUM:
+        return await message.reply("⚠️ Premium system disabled")
+
     data, status = await get_plan_data(message.from_user.id)
     if status == "admin":
         return await message.reply("👑 You are Admin = Lifetime Premium Access")
-    if status in ["none", "expired"]:
-        msg = "❌ Your premium plan has expired!" if status == "expired" else "❌ You don't have any active premium plan"
+    if status in ("none", "expired"):
+        msg = ("❌ Your premium plan has expired!" if status == "expired"
+               else "❌ You don't have any active premium plan")
         return await message.reply(msg, reply_markup=buy_btn())
-    
+
     await message.reply(myplan_text(data), reply_markup=myplan_buttons())
 
 
 @Client.on_message(filters.command("invoice") & filters.private)
 async def invoice_cmd(client, message):
+    if not IS_PREMIUM:
+        return await message.reply("⚠️ Premium system disabled")
+
     plan = await db.get_plan(message.from_user.id)
     invoices = plan.get("invoices", []) if plan else []
     if not invoices:
         return await message.reply("❌ No invoices found")
-    
+
     inv = invoices[-1]
     await message.reply(
         f"""
@@ -235,12 +352,12 @@ async def show_invoice_cb(client, query: CallbackQuery):
     invoices = plan.get("invoices", []) if plan else []
     if not invoices:
         return await query.answer("❌ No invoices found", show_alert=True)
-    
+
     text = "🧾 **Invoice History**\n\n"
     for inv in invoices[-10:][::-1]:
         text += f"• `{inv.get('id')}` | ₹{inv.get('amount')} | {inv.get('plan')}\n"
         text += f"  📅 {inv.get('activated')} → {inv.get('expire')}\n\n"
-    
+
     await query.message.edit(text, reply_markup=back_btn())
 
 
@@ -249,26 +366,141 @@ async def back_to_myplan_cb(client, query: CallbackQuery):
     data, status = await get_plan_data(query.from_user.id)
     if status == "admin":
         return await query.message.edit("👑 You are Admin = Lifetime Premium Access")
-    if status in ["none", "expired"]:
-        msg = "❌ Your premium plan has expired!" if status == "expired" else "❌ You don't have any active premium plan"
+    if status in ("none", "expired"):
+        msg = ("❌ Your premium plan has expired!" if status == "expired"
+               else "❌ You don't have any active premium plan")
         return await query.message.edit(msg, reply_markup=buy_btn())
     await query.message.edit(myplan_text(data), reply_markup=myplan_buttons())
 
 
 # ======================================================
-# 💰 BUY FLOW (HYDROGRAM COMPATIBLE - FIXED)
+# 🛠 ADMIN PREMIUM COMMANDS (PM)
+#    /stats lists these commands, so keep the two in sync.
+# ======================================================
+
+def _usage(cmd, args, example):
+    return (
+        f"❌ <b>Usage:</b> <code>/{cmd} {args}</code>\n\n"
+        f"Example: <code>/{cmd} {example}</code>"
+    )
+
+
+def _read_args(message, count):
+    """(values, error) — parse `<user_id> [days]` out of an admin command"""
+    values = []
+    for raw in message.command[1:1 + count]:
+        try:
+            values.append(int(raw))
+        except ValueError:
+            return None, "❌ <code>user_id</code> and <code>days</code> must be numbers."
+    return values, None
+
+
+@Client.on_message(
+    filters.command(["addpremium", "extendpremium"]) & filters.private & filters.user(ADMINS)
+)
+async def admin_add_premium(client, message):
+    """💎 /addpremium <user_id> <days> · /extendpremium <user_id> <days>"""
+    cmd = message.command[0].lower()
+
+    if len(message.command) < 3:
+        return await message.reply(
+            _usage(cmd, "user_id days", "123456789 30"), parse_mode=enums.ParseMode.HTML
+        )
+
+    values, error = _read_args(message, 2)
+    if error:
+        return await message.reply(error, parse_mode=enums.ParseMode.HTML)
+
+    uid, days = values
+    if days <= 0 or days > MAX_PLAN_DAYS:
+        return await message.reply(
+            f"❌ Days must be between <code>1</code> and <code>{MAX_PLAN_DAYS}</code>.",
+            parse_mode=enums.ParseMode.HTML,
+        )
+
+    plan_text = f"{days} Days (Admin)"
+
+    # extend adds on top of a running plan, add restarts the clock from now
+    result = await apply_premium(
+        uid, plan_text, amount=0, days=days,
+        extend=(cmd == "extendpremium"), by="admin",
+    )
+    if not result:
+        return await message.reply("❌ Could not update that plan.")
+
+    expire_dt, _invoice = result
+    action = "Extended" if cmd == "extendpremium" else "Granted"
+
+    notified = await notify_user(
+        client, uid,
+        f"🎉 <b>Premium {action}!</b>\n\n"
+        f"💎 Plan: <b>{plan_text}</b>\n"
+        f"⏰ Expires: <code>{fmt(expire_dt)}</code>\n\n"
+        "Use /myplan to check your subscription.",
+    )
+
+    await message.reply(
+        f"✅ <b>Premium {action}</b>\n\n"
+        f"👤 User: <code>{uid}</code>\n"
+        f"💎 Plan: <b>{plan_text}</b>\n"
+        f"⏰ Expires: <code>{fmt(expire_dt)}</code>\n\n"
+        f"{'📩 User notified' if notified else '⚠️ Granted, but the user could not be notified'}",
+        parse_mode=enums.ParseMode.HTML,
+    )
+
+
+@Client.on_message(filters.command("removepremium") & filters.private & filters.user(ADMINS))
+async def admin_remove_premium(client, message):
+    """🗑 /removepremium <user_id> — drop premium, keep the invoice history"""
+    if len(message.command) < 2:
+        return await message.reply(
+            _usage("removepremium", "user_id", "123456789"),
+            parse_mode=enums.ParseMode.HTML,
+        )
+
+    values, error = _read_args(message, 1)
+    if error:
+        return await message.reply(
+            "❌ <code>user_id</code> must be a number.", parse_mode=enums.ParseMode.HTML
+        )
+
+    uid = values[0]
+    if not await revoke_premium(uid):
+        return await message.reply(
+            f"ℹ️ <code>{uid}</code> has no active premium plan.",
+            parse_mode=enums.ParseMode.HTML,
+        )
+
+    notified = await notify_user(
+        client, uid,
+        "⚠️ <b>Premium Removed</b>\n\n"
+        "Your premium subscription has been removed by an admin.\n"
+        "Use /plan to buy a new plan.",
+    )
+
+    await message.reply(
+        f"✅ <b>Premium removed</b>\n\n"
+        f"👤 User: <code>{uid}</code>\n\n"
+        f"{'📩 User notified' if notified else '⚠️ Removed, but the user could not be notified'}",
+        parse_mode=enums.ParseMode.HTML,
+    )
+
+
+# ======================================================
+# 💰 BUY FLOW
 # ======================================================
 
 @Client.on_callback_query(filters.regex("^buy_premium$"))
 async def buy_premium(client, query: CallbackQuery):
-    """Start premium purchase flow"""
+    """Step 1 — ask for a number, then let the user pick a unit"""
     uid = query.from_user.id
-    
+
     if uid in active_sessions:
         return await query.answer("⚠️ You already have an active payment session", show_alert=True)
-    
+
     active_sessions[uid] = {"step": "waiting_number"}
-    
+
     await query.message.edit(
         """
 🔢 **Enter a Number**
@@ -285,48 +517,34 @@ Then you can choose:
 """,
         reply_markup=cancel_btn()
     )
-    
+
     try:
-        # ✅ FIXED: Hydrogram compatible listen() syntax
         msg = await client.listen(query.message.chat.id, timeout=LISTEN_SHORT)
-        
-        # ✅ FIXED: Manual user verification
+
         if msg.from_user.id != uid:
-            active_sessions.pop(uid, None)
-            await query.message.edit(
-                "❌ Invalid response. Please try again.",
-                reply_markup=buy_btn()
-            )
-            return
-        
+            return await _fail(client, query.message, uid, "❌ Invalid response. Please try again.")
+
         if not msg.text:
-            active_sessions.pop(uid, None)
-            await query.message.edit(
-                "❌ Please send a number\n\n💡 Example: `7` or `30`",
-                reply_markup=buy_btn()
+            return await _fail(
+                client, query.message, uid, "❌ Please send a number\n\n💡 Example: `7` or `30`"
             )
-            return
-        
+
         num_str = "".join(filter(str.isdigit, msg.text))
         if not num_str:
-            active_sessions.pop(uid, None)
-            await query.message.edit(
-                "❌ Invalid number\n\nPlease send only numbers like: `7` or `30`",
-                reply_markup=buy_btn()
+            return await _fail(
+                client, query.message, uid,
+                "❌ Invalid number\n\nPlease send only numbers like: `7` or `30`"
             )
-            return
-        
+
         num = int(num_str)
         if num <= 0 or num > 9999:
-            active_sessions.pop(uid, None)
-            await query.message.edit(
-                "❌ Invalid number (1-9999)\n\nPlease send a number between 1 and 9999",
-                reply_markup=buy_btn()
+            return await _fail(
+                client, query.message, uid,
+                "❌ Invalid number (1-9999)\n\nPlease send a number between 1 and 9999"
             )
-            return
-        
+
         active_sessions[uid] = {"step": "waiting_duration", "number": num}
-        
+
         await query.message.edit(
             f"""
 ✅ Number: **{num}**
@@ -335,63 +553,36 @@ Now select your duration:
 """,
             reply_markup=duration_buttons(num)
         )
-    
+
     except asyncio.TimeoutError:
-        active_sessions.pop(uid, None)
-        return await query.message.edit("⏱️ Timeout! Payment cancelled.", reply_markup=buy_btn())
+        return await _fail(client, query.message, uid, "⏱️ Timeout! Payment cancelled.")
     except Exception as e:
-        active_sessions.pop(uid, None)
-        return await query.message.edit(
-            f"❌ Error: {str(e)}\n\nPlease try again",
-            reply_markup=buy_btn()
-        )
+        return await _fail(client, query.message, uid, f"❌ Error: {str(e)}\n\nPlease try again")
 
 
 @Client.on_callback_query(filters.regex("^dur#"))
 async def duration_selected(client, query: CallbackQuery):
-    """Handle duration selection"""
+    """Step 2 — show the UPI QR, then wait for the payment screenshot"""
     uid = query.from_user.id
-    
+
     if uid not in active_sessions:
         return await query.answer("⚠️ Session expired. Please start again.", show_alert=True)
-    
+
     try:
         _, num_str, unit = query.data.split("#")
         num = int(num_str)
-    except:
+        plan_text, amount, days = plan_quote(unit, num)
+    except Exception:
         return await query.answer("❌ Invalid data", show_alert=True)
-    
-    unit_map = {
-        "hour": "Hours",
-        "day": "Days",
-        "month": "Months",
-        "year": "Years"
-    }
-    
-    unit_display = unit_map.get(unit, unit)
-    plan_text = f"{num} {unit_display}"
-    
-    # Calculate the duration in days (price and plan both come from here)
-    if unit == "hour":
-        days = max(1, (num // 24) or 1)
-    elif unit == "day":
-        days = num
-    elif unit == "month":
-        days = 30 * num
-    elif unit == "year":
-        days = 365 * num
-    else:
-        return await query.answer("❌ Invalid unit", show_alert=True)
-    
-    amount = days * PRE_DAY_AMOUNT
-    
+
     active_sessions[uid] = {
         "step": "waiting_screenshot",
         "plan_text": plan_text,
         "amount": amount,
         "days": days
     }
-    
+
+    # ---- UPI QR ----
     try:
         upi_url = f"upi://pay?pa={UPI_ID}&pn={UPI_NAME}&am={amount}&cu=INR"
         qr = qrcode.make(upi_url)
@@ -399,7 +590,7 @@ async def duration_selected(client, query: CallbackQuery):
         qr.save(bio, "PNG")
         bio.seek(0)
         bio.name = "qr_code.png"
-        
+
         await query.message.reply_photo(
             bio,
             caption=f"""
@@ -415,59 +606,42 @@ async def duration_selected(client, query: CallbackQuery):
 """,
             reply_markup=cancel_btn()
         )
-        
+
         try:
             await query.message.delete()
         except:
             pass
-        
+
     except Exception as e:
-        active_sessions.pop(uid, None)
-        return await query.answer(f"❌ Error: {str(e)}", show_alert=True)
-    
-    # ✅ FIXED: Hydrogram compatible listen() for screenshot
+        return await _fail(client, query.message, uid, f"❌ Error: {str(e)}")
+
+    # ---- Screenshot ----
     try:
-        # ✅ FIXED: Correct syntax without filters parameter
-        receipt = await client.listen(
-            query.message.chat.id, 
-            timeout=LISTEN_LONG
-        )
-        
-        # ✅ FIXED: Manual verification for user and photo
+        receipt = await client.listen(query.message.chat.id, timeout=LISTEN_LONG)
+
         if receipt.from_user.id != uid:
-            active_sessions.pop(uid, None)
-            await query.message.reply(
-                "❌ Invalid response. Please try again.",
-                reply_markup=buy_btn()
+            return await _fail(
+                client, query.message, uid, "❌ Invalid response. Please try again."
             )
-            return
-        
+
         if not receipt.photo:
-            active_sessions.pop(uid, None)
-            await query.message.reply(
-                "❌ Screenshot not received. Please send a photo.",
-                reply_markup=buy_btn()
+            return await _fail(
+                client, query.message, uid, "❌ Screenshot not received. Please send a photo."
             )
-            return
-    
+
     except asyncio.TimeoutError:
-        active_sessions.pop(uid, None)
-        return await query.message.reply(
-            "⏱️ Timeout! Screenshot not received. Payment cancelled.",
-            reply_markup=buy_btn()
+        return await _fail(
+            client, query.message, uid,
+            "⏱️ Timeout! Screenshot not received. Payment cancelled."
         )
     except Exception as e:
-        active_sessions.pop(uid, None)
-        return await query.message.reply(
-            f"❌ Error: {str(e)}",
-            reply_markup=buy_btn()
-        )
-    
+        return await _fail(client, query.message, uid, f"❌ Error: {str(e)}")
+
     buttons = InlineKeyboardMarkup([[
         InlineKeyboardButton("✅ Approve", callback_data=f"pay_ok#{uid}#{plan_text}#{amount}"),
         InlineKeyboardButton("❌ Reject", callback_data=f"pay_no#{uid}")
     ]])
-    
+
     try:
         await client.send_photo(
             RECEIPT_SEND_USERNAME,
@@ -488,13 +662,13 @@ async def duration_selected(client, query: CallbackQuery):
             reply_markup=buttons
         )
     except Exception as e:
-        active_sessions.pop(uid, None)
-        return await receipt.reply(
-            f"❌ Error sending to admin: {str(e)}",
-            reply_markup=buy_btn()
-        )
-    
-    await receipt.reply("✅ **Screenshot received!**\n\n⏳ Your payment is being reviewed by admin.\nYou'll be notified once approved.")
+        return await _fail(client, query.message, uid, f"❌ Error sending to admin: {str(e)}")
+
+    await receipt.reply(
+        "✅ **Screenshot received!**\n\n"
+        "⏳ Your payment is being reviewed by admin.\n"
+        "You'll be notified once approved."
+    )
     active_sessions.pop(uid, None)
 
 
@@ -510,71 +684,41 @@ async def cancel_payment(_, query: CallbackQuery):
 # ======================================================
 
 async def update_user_premium(uid, plan_txt, amount):
+    """Approve a purchase: the plan text (e.g. "7 Days") carries the duration"""
     duration = parse_duration(plan_txt)
     if not duration:
         return False
-    
-    now = datetime.utcnow()
-    old = await db.get_plan(uid) or {}
-    
-    if duration.days == 0 and duration.seconds > 0:
-        days = max(1, (duration.seconds // 3600) // 24 + 1)
-        duration = timedelta(days=days)
-    
-    expire = old.get("expire")
-    if expire:
-        expire_dt = get_expiry_datetime(expire)
-        expire_dt = expire_dt + duration if expire_dt > now else now + duration
-    else:
-        expire_dt = now + duration
-    
-    invoice = {
-        "id": gen_invoice_id(),
-        "plan": plan_txt,
-        "amount": amount,
-        "activated": fmt(now),
-        "expire": fmt(expire_dt),
-        "created_at": now.timestamp()
-    }
-    
-    invoices = old.get("invoices", [])
-    invoices.append(invoice)
-    
-    await db.update_plan(uid, {
-        "premium": True,
-        "plan": plan_txt,
-        "expire": expire_dt.timestamp(),
-        "activated_at": now.timestamp(),
-        "invoices": invoices
-    })
-    
-    return expire_dt, invoice
+
+    return await apply_premium(
+        uid, plan_txt, amount,
+        duration=normalise_duration(duration),
+        extend=True, by="purchase",
+    )
 
 
 @Client.on_callback_query(filters.regex("^pay_ok#"))
 async def approve_payment(client, query: CallbackQuery):
     if query.from_user.id not in ADMINS:
         return await query.answer("⛔ Not authorized", show_alert=True)
-    
+
     try:
         _, uid, plan_txt, amount = query.data.split("#", 3)
         uid = int(uid)
         amount = int(amount)
     except Exception as e:
         return await query.answer(f"❌ Invalid data: {e}", show_alert=True)
-    
+
     result = await update_user_premium(uid, plan_txt, amount)
     if not result:
         return await query.message.edit_caption(
             query.message.caption + "\n\n❌ **FAILED** - Invalid plan duration"
         )
-    
+
     expire_dt, invoice = result
-    
-    try:
-        await client.send_message(
-            uid,
-            f"""
+
+    await notify_user(
+        client, uid,
+        f"""
 🎉 **Premium Activated Successfully!**
 
 💎 **Plan:** {plan_txt}
@@ -584,12 +728,10 @@ async def approve_payment(client, query: CallbackQuery):
 Thank you for your purchase! 🙏
 Enjoy your premium benefits! ✨
 """
-        )
-    except:
-        pass
-    
+    )
+
     await query.message.edit_caption(
-        query.message.caption + f"\n\n✅ **APPROVED** by @{query.from_user.username}\n⏰ {fmt(datetime.utcnow())}"
+        stamp_receipt(query.message.caption, "✅ **APPROVED**", query.from_user.username)
     )
     await query.answer("✅ Payment Approved Successfully!", show_alert=True)
 
@@ -598,26 +740,23 @@ Enjoy your premium benefits! ✨
 async def reject_payment(client, query: CallbackQuery):
     if query.from_user.id not in ADMINS:
         return await query.answer("⛔ Not authorized", show_alert=True)
-    
+
     try:
         uid = int(query.data.split("#")[1])
     except:
         return await query.answer("❌ Invalid data", show_alert=True)
-    
-    try:
-        await client.send_message(
-            uid,
-            """
+
+    await notify_user(
+        client, uid,
+        """
 ❌ **Payment Rejected**
 
 Your payment screenshot was rejected by admin.
 Please contact support or try again with correct details.
 """
-        )
-    except:
-        pass
-    
+    )
+
     await query.message.edit_caption(
-        query.message.caption + f"\n\n❌ **REJECTED** by @{query.from_user.username}\n⏰ {fmt(datetime.utcnow())}"
+        stamp_receipt(query.message.caption, "❌ **REJECTED**", query.from_user.username)
     )
     await query.answer("❌ Payment Rejected", show_alert=True)

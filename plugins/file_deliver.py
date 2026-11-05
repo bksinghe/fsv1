@@ -1,21 +1,18 @@
 import asyncio
 import time
 import logging
-from datetime import datetime, timedelta
 
-from hydrogram import Client, filters
+from hydrogram import Client, filters, enums
 from hydrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 
-from info import IS_STREAM, PM_FILE_DELETE_TIME, PROTECT_CONTENT, ADMINS
+from info import IS_STREAM, PM_FILE_DELETE_TIME, PROTECT_CONTENT
 from database.ia_filterdb import get_file_details
-from database.users_chats_db import db
-from utils import temp
+from utils import temp, is_premium, premium_required_text, premium_buy_markup
 
 
 # ======================================================
 # CONFIG
 # ======================================================
-GRACE_PERIOD = timedelta(minutes=30)
 RESEND_EXPIRE_TIME = 60  # seconds
 
 # Track active deletion tasks
@@ -26,19 +23,16 @@ active_tasks = {}
 # PREMIUM CHECK WITH GRACE PERIOD
 # ======================================================
 async def has_premium_or_grace(user_id: int) -> bool:
-    """Check if user is admin or has premium with grace period"""
-    if user_id in ADMINS:
-        return True
+    """Admin, or premium inside the grace period.
 
-    plan = await db.get_plan(user_id)
-    if not plan or not plan.get("premium"):
+    utils.is_premium() owns that rule (and its 10-minute cache) — this is
+    only a thin wrapper so a DB hiccup can never block file delivery.
+    """
+    try:
+        return await is_premium(user_id)
+    except Exception as e:
+        print(f"Premium check error for {user_id}: {e}")
         return False
-
-    expire = plan.get("expire")
-    if isinstance(expire, (int, float)):
-        expire = datetime.utcfromtimestamp(expire)
-
-    return bool(expire and datetime.utcnow() <= expire + GRACE_PERIOD)
 
 
 # ======================================================
@@ -73,35 +67,17 @@ async def file_button_handler(client: Client, query: CallbackQuery):
     # ========================================
     # NON-PREMIUM: Show Premium Required Message
     # ========================================
-    text = (
-        "🔒 <b>Premium Required</b>\n\n"
-        "PM search is only available for premium users.\n\n"
-        "💎 Get unlimited search access\n"
-        "⚡ Faster responses\n"
-        "🎯 Priority support\n\n"
-        "Upgrade now to unlock this feature!"
+    text = premium_required_text(
+        "PM search is only available for premium users."
     )
-    
-    btn = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(
-                "💰 Buy / Renew Premium",
-                callback_data="buy_premium"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "❌ Close",
-                callback_data="close_data"
-            )
-        ]
-    ])
+    btn = premium_buy_markup(close=True)
     
     # Send premium required message
     await query.message.reply_text(
         text,
         reply_markup=btn,
-        quote=True
+        quote=True,
+        parse_mode=enums.ParseMode.HTML
     )
     
     await query.answer(
@@ -137,31 +113,16 @@ async def start_file_delivery(client: Client, message):
     
     if not is_user_premium:
         # Non-premium user tried to access file directly
-        text = (
-            "🔒 <b>Premium Required</b>\n\n"
-            "Direct file access is only available for premium users.\n\n"
-            "💎 Get unlimited search access\n"
-            "⚡ Faster responses\n"
-            "🎯 Priority support\n\n"
-            "Upgrade now to unlock this feature!"
+        text = premium_required_text(
+            "Direct file access is only available for premium users."
         )
+        btn = premium_buy_markup(close=True)
         
-        btn = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton(
-                    "💰 Buy / Renew Premium",
-                    callback_data="buy_premium"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "❌ Close",
-                    callback_data="close_data"
-                )
-            ]
-        ])
-        
-        await message.reply_text(text, reply_markup=btn)
+        await message.reply_text(
+            text,
+            reply_markup=btn,
+            parse_mode=enums.ParseMode.HTML
+        )
         
         # Delete /start command
         try:
@@ -268,25 +229,17 @@ async def deliver_file(client, uid, grp_id, file_id):
 
         # Verify premium status again (security check)
         if not await has_premium_or_grace(uid):
-            text = (
-                "🔒 <b>Premium Required</b>\n\n"
-                "This file is only accessible to premium users.\n\n"
-                "💎 Get unlimited search access\n"
-                "⚡ Faster responses\n"
-                "🎯 Priority support\n\n"
-                "Upgrade now to unlock this feature!"
+            text = premium_required_text(
+                "This file is only accessible to premium users."
             )
+            btn = premium_buy_markup(close=False)
             
-            btn = InlineKeyboardMarkup([
-                [
-                    InlineKeyboardButton(
-                        "💰 Buy / Renew Premium",
-                        callback_data="buy_premium"
-                    )
-                ]
-            ])
-            
-            await client.send_message(uid, text, reply_markup=btn)
+            await client.send_message(
+                uid,
+                text,
+                reply_markup=btn,
+                parse_mode=enums.ParseMode.HTML
+            )
             return
 
 

@@ -14,7 +14,7 @@ Learned from v5 (`JoneySin/v5`), implemented the fsv1 way:
 
   * **First-time extraction runs one file at a time to avoid rate limits** —
     `_probe_lock` guarantees only **one** `send_cached_media()` call process-wide,
-    with a random 1.2–3.0s anti-flood gap between probes (`plugins/warmup.py`).
+    with a random 3.0–5.0s anti-flood gap between probes (`plugins/warmup.py`).
 
   * `/api/thumb` does not open 21 parallel probes: a single-worker **queue** plus
     browser `retry=true` (v5's `reloadThumb` pattern).
@@ -67,6 +67,15 @@ _MIN_THUMB_STDDEV = float(getattr(_info, "THUMB_MIN_STDDEV", 6.0))
 _download_sem = asyncio.Semaphore(THUMB_FETCH_CONCURRENCY)
 # ⚠️ FIRST-TIME PROBE: only ONE file at a time (v5 warmup "single-bot safe")
 _probe_lock = asyncio.Lock()
+
+# ⏱️ Anti-flood pacing — the random gap above plus a penalty that grows after
+#    every FloodWait and clears once the run is healthy again. Only the probe
+#    coroutine touches it (it holds _probe_lock), so it needs no extra guard.
+_GAP_PENALTY = 0.0
+_GAP_PENALTY_STEP = 1.5      # seconds added per FloodWait
+_GAP_PENALTY_MAX = 6.0       # never slower than gap + 6s
+_CLEAN_PROBES = 0
+_CLEAN_PROBES_TO_RESET = 10  # 10 flood-free probes ⇒ back to the normal gap
 _probe_queue: asyncio.Queue = asyncio.Queue()
 _queued = set()                 # file ids — prevents duplicate enqueues
 _MAX_QUEUE = 2000
@@ -197,6 +206,22 @@ def flood_wait_seconds(err) -> int:
 async def _backoff(err, default: float = 2.0):
     wait = flood_wait_seconds(err)
     await asyncio.sleep((wait + THUMB_FLOOD_EXTRA) if wait else default)
+
+
+def _add_flood_penalty():
+    """Telegram asked us to slow down — widen every following gap a bit."""
+    global _GAP_PENALTY, _CLEAN_PROBES
+    _CLEAN_PROBES = 0
+    _GAP_PENALTY = min(_GAP_PENALTY_MAX, _GAP_PENALTY + _GAP_PENALTY_STEP)
+
+
+def _clear_flood_penalty():
+    """A long enough clean streak ⇒ back to the configured gap."""
+    global _GAP_PENALTY, _CLEAN_PROBES
+    _CLEAN_PROBES += 1
+    if _CLEAN_PROBES >= _CLEAN_PROBES_TO_RESET:
+        _CLEAN_PROBES = 0
+        _GAP_PENALTY = 0.0
 
 
 async def _delete_later(message_id: int, delay: int = 5):
@@ -351,6 +376,7 @@ async def probe_file(fid: str, force: bool = False):
 
     async with _probe_lock:
         probed = False
+        flooded = False
         try:
             doc = await _read_doc(fid) or {}
             raw = str(doc.get("thumb_url") or "")
@@ -386,6 +412,9 @@ async def probe_file(fid: str, force: bool = False):
                         f"{str(e)[:90]}" + (f" → sleeping {wait + THUMB_FLOOD_EXTRA}s" if wait else "")
                     )
                     await _backoff(e)
+                    if wait:
+                        flooded = True
+                        _add_flood_penalty()
                     continue
 
                 media, thumb_ids = _extract_media(msg)
@@ -452,9 +481,14 @@ async def probe_file(fid: str, force: bool = False):
             return None
         finally:
             _STATS["done"] += 1
-            # ⏱️ v5-warmup-style 1.2–3.0s random anti-flood gap (after a probe only)
+            # ⏱️ v5-warmup-style 3.0–5.0s random anti-flood gap (after a probe only)
+            #    + the penalty accumulated by any FloodWait of this run
             if probed:
-                await asyncio.sleep(random.uniform(THUMB_PROBE_GAP_MIN, THUMB_PROBE_GAP_MAX))
+                if not flooded:
+                    _clear_flood_penalty()
+                await asyncio.sleep(
+                    random.uniform(THUMB_PROBE_GAP_MIN, THUMB_PROBE_GAP_MAX) + _GAP_PENALTY
+                )
 
 
 # ─────────────────────────────────────────────────────────────

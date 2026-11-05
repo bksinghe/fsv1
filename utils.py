@@ -1,8 +1,10 @@
 import asyncio
+import traceback
 import time
 from datetime import datetime, timedelta
 
 from hydrogram.errors import FloodWait
+from hydrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from info import ADMINS, IS_PREMIUM
 from database.users_chats_db import db
@@ -96,13 +98,12 @@ async def is_premium(user_id, bot=None) -> bool:
         temp.PREMIUM[user_id] = {"expire": None, "checked_at": now_ts}
         return False
 
-    # Get expiry date
+    # Get expiry date (older plans hold a raw timestamp, newer ones a datetime)
     expire = plan.get("expire")
-    if isinstance(expire, (int, float)):
-        expire = datetime.utcfromtimestamp(expire)
-    elif not isinstance(expire, datetime):
+    if not isinstance(expire, (int, float, datetime)):
         temp.PREMIUM[user_id] = {"expire": None, "checked_at": now_ts}
         return False
+    expire = get_expiry_datetime(expire)
 
     # Check if expired (with grace period)
     now_utc = datetime.utcnow()
@@ -185,14 +186,9 @@ async def premium_expiry_reminder(bot):
                     expire = plan.get("expire")
                     last = plan.get("last_reminder")
 
-                    if not expire:
+                    if not expire or not isinstance(expire, (int, float, datetime)):
                         continue
-
-                    # Convert to datetime
-                    if isinstance(expire, (int, float)):
-                        expire = datetime.utcfromtimestamp(expire)
-                    elif not isinstance(expire, datetime):
-                        continue
+                    expire = get_expiry_datetime(expire)
 
                     # Check each reminder step
                     for tag, delta in REMINDER_STEPS:
@@ -341,60 +337,45 @@ async def cleanup_files_memory():
 
 
 # ======================================================
-# 📢 BROADCAST HELPERS (Koyeb Optimized)
-# ======================================================
-
-async def broadcast_messages(user_id, message, pin=False):
-    """Broadcast message to user with flood protection"""
-    try:
-        msg = await message.copy(chat_id=user_id)
-        if pin:
-            try:
-                await msg.pin(both_sides=True)
-            except:
-                pass
-        return "Success"
-    except FloodWait as e:
-        if e.value > 300:
-            return "Error"
-        await asyncio.sleep(e.value)
-        return await broadcast_messages(user_id, message, pin)
-    except Exception as e:
-        print(f"[ERROR] Broadcast error for user {user_id}: {e}")
-        try:
-            await db.delete_user(int(user_id))
-        except:
-            pass
-        return "Error"
-
-
-async def groups_broadcast_messages(chat_id, message, pin=False):
-    """Broadcast message to group with flood protection"""
-    try:
-        msg = await message.copy(chat_id=chat_id)
-        if pin:
-            try:
-                await msg.pin()
-            except:
-                pass
-        return "Success"
-    except FloodWait as e:
-        if e.value > 300:
-            return "Error"
-        await asyncio.sleep(e.value)
-        return await groups_broadcast_messages(chat_id, message, pin)
-    except Exception as e:
-        print(f"[ERROR] Group broadcast error for {chat_id}: {e}")
-        try:
-            await db.delete_chat(chat_id)
-        except:
-            pass
-        return "Error"
-
-
-# ======================================================
 # 🧰 UTILITIES
 # ======================================================
+
+# ======================================================
+# 🔒 PREMIUM PROMPT (ONE SOURCE FOR EVERY FEATURE)
+#    PM search, the group file button and PM file delivery
+#    used to build this message five times over.
+# ======================================================
+
+PREMIUM_BENEFITS = (
+    "💎 Get unlimited search access\n"
+    "⚡ Faster responses\n"
+    "🎯 Priority support\n\n"
+    "Upgrade now to unlock this feature!"
+)
+
+
+def premium_required_text(reason):
+    """The 🔒 Premium Required message — `reason` says which feature blocked it."""
+    return (
+        "🔒 <b>Premium Required</b>\n\n"
+        f"{reason}\n\n"
+        f"{PREMIUM_BENEFITS}"
+    )
+
+
+def premium_buy_markup(close=False):
+    """💰 Buy / Renew Premium (+ an optional ❌ Close row)"""
+    rows = [[InlineKeyboardButton("💰 Buy / Renew Premium", callback_data="buy_premium")]]
+    if close:
+        rows.append([InlineKeyboardButton("❌ Close", callback_data="close_data")])
+    return InlineKeyboardMarkup(rows)
+
+
+def log_error(context, error):
+    """One console error report (message + traceback) for every handler"""
+    print(f"{context} error: {error}")
+    traceback.print_exc()
+
 
 def get_size(size):
     """Convert bytes to human readable format"""
