@@ -56,7 +56,7 @@ class TestGuestSingleSource(unittest.TestCase):
             self.assertNotIn(bad, css, f"guest CSS must not contain {bad}")
         # The shimmer keyframe is reused from VIDEO_CARD_CSS, not duplicated.
         self.assertNotIn("@keyframes sh{", css)
-        self.assertIn("animation:sh 1.6s", css)
+        self.assertNotIn("animation:sh 1.6s", css, "landing preview should not shimmer continuously")
 
     def test_03_js_is_defensive_and_keeps_form_markup(self):
         js = block("WELCOME_JS")
@@ -95,8 +95,12 @@ class TestGuestSingleSource(unittest.TestCase):
         self.assertIn('class="wc-ambient"', ambient)
         for frag in ("<main class=\"wc-hero\">", "class=\"wc-preview\"",
                      "class=\"wc-feature rv-enter\"", "id=\"features\"",
-                     "class=\"wc-foot\"", "https://t.me/", "Sign In to Search"):
+                     "class=\"wc-foot\"", "Sign In to Search"):
             self.assertIn(frag, WELCOME, f"landing_body() is missing {frag}")
+        self.assertNotIn("https://t.me/", WELCOME, "Telegram link should be removed from landing page")
+        mini = re.search(r"\.wc-mini-poster\{([^}]+)\}", WELCOME)
+        self.assertIsNotNone(mini)
+        self.assertNotIn("animation:", mini.group(1), "preview poster shimmer should stay static")
         main = FILES["web_assets.py"]
         for frag in ("<div class='wc-auth'>", "<div class='wc-story'>",
                      "<span class='wc-kicker-card'>", "<div class='auth-wrap'>",
