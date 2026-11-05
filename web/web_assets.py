@@ -946,9 +946,13 @@ letter-spacing:1.6px;line-height:1.1;white-space:nowrap}
 .tbtn{background:transparent;border:1px solid var(--line);color:var(--txt);border-radius:6px;
 padding:7px 13px;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit}
 .tbtn:hover{border-color:var(--red)}
-.search-zone{padding:18px 4% 14px;background:var(--bg);border-bottom:1px solid var(--line)}
-/* 🖥️ desktop: search input + both filter dropdowns on the same line */
-.srow{display:flex;gap:10px;max-width:1100px;align-items:center;flex-wrap:wrap}
+.search-zone{padding:18px 4% 14px;background:var(--bg)}
+/* Main search uses the same single toolbar card as Posts / Actors. */
+.sbox{max-width:1100px;margin:0 auto;background:var(--card);border:1px solid var(--line);
+border-radius:12px;padding:16px;box-shadow:0 4px 15px rgba(0,0,0,.10)}
+/* 🖥️ desktop: search input + both filter dropdowns share one card row */
+.srow{display:flex;gap:10px;width:100%;align-items:center;flex-wrap:wrap}
+@media(min-width:761px){.srow{flex-wrap:nowrap}}
 .qwrap{position:relative;flex:1 1 320px;min-width:0}
 .sinput{display:block;width:100%;min-width:0;box-sizing:border-box;background:var(--bg2);
 border:1.5px solid var(--line);border-radius:10px;padding:13px 16px;color:var(--txt);
@@ -1337,12 +1341,14 @@ PLAYER_JS = r"""<script>
 # 🔍 SEARCH PAGE (after login)
 # ─────────────────────────────────────────────────────────────
 SEARCH_BODY = """<div class="search-zone">
-  <div class="srow" id="srow">
-    <div class="qwrap">
-      <input class="sinput" id="q" type="search" placeholder="Search movies, series or file names..." autocomplete="off">
-      <div class="spin"></div>
+  <div class="sbox" role="search">
+    <div class="srow" id="srow">
+      <div class="qwrap">
+        <input class="sinput" id="q" type="search" placeholder="Search movies, series or file names..." autocomplete="off">
+        <div class="spin"></div>
+      </div>
+      __FILTER_BUTTONS__
     </div>
-    __FILTER_BUTTONS__
   </div>
 </div>
 
