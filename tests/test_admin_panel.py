@@ -11,9 +11,12 @@ The dashboard used to be a wall of buttons: 💎 Premium, 🗑 Files, 🔄 Refre
 📊 Expiry Chart, ⏰ 3d/7d/30d, 📹 By Quality, 🗑 Delete ALL … every one of
 them only opened a screen that repeated a command that already exists.
 
-`/stats` is now **pure text**: live stats + the command list. Every action is
-a command (`/addpremium`, `/extendpremium`, `/removepremium`, `/delete`,
-`/deleteall`, `/warmup_thumbs`), so a button would be dead weight.
+`/stats` is now **pure text**: live bot counters + live web counters. Every
+action is a command (`/addpremium`, `/extendpremium`, `/removepremium`,
+`/delete`, `/deleteall`, `/warmup_thumbs`), so a button would be dead weight —
+and the command list itself was dropped on request: the 👨‍🚒 Help button of
+`/start` already documents every command, and the ⚡ index-speed counter only
+meant something while an indexing run was in flight.
 
 The source of `plugins/admin_tools.py` is parsed with `ast` (never imported),
 so this suite needs neither hydrogram nor a database.
@@ -39,8 +42,9 @@ DEAD_BUILDERS = (
 # Callback handlers that only drove those panels
 DEAD_CALLBACKS = ("admin_", "del_", "delq_", "prm_")
 
-# Commands the dashboard must keep documenting (they are the panel now)
-DOCUMENTED_COMMANDS = (
+# The /stats report is numbers only — these must NOT be listed in it again
+# (the 👨‍🚒 Help button of /start is the one place commands are documented)
+UNDOCUMENTED_ON_PURPOSE = (
     "/addpremium",
     "/extendpremium",
     "/removepremium",
@@ -48,6 +52,21 @@ DOCUMENTED_COMMANDS = (
     "/deleteall",
     "/warmup_thumbs",
 )
+
+# Counters the 🌐 WEB section must keep showing
+EXPECTED_WEB_STATS = (
+    "WEB STATISTICS", "Server", "URL", "Port", "Web Uptime",
+    "Web Accounts", "Live Sessions", "Posts", "Profiles",
+    "Catalog Groups", "Posters", "Thumb Queue",
+)
+
+
+def stats_source():
+    """Source of build_stats() only — not the commands below it in the file."""
+    for node in TREE.body:
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "build_stats":
+            return ast.get_source_segment(ADMIN_TOOLS, node) or ""
+    return ""
 
 
 def function_names():
@@ -113,7 +132,7 @@ class TestDashboardContent(unittest.TestCase):
     """The text replaces the buttons, so it must list what an admin can do."""
 
     def setUp(self):
-        self.dashboard = ADMIN_TOOLS[ADMIN_TOOLS.index("async def build_stats"):]
+        self.dashboard = stats_source()
 
     def test_stats_are_still_shown(self):
         for stat in ("Users", "Groups", "Indexed Files", "Premium Users",
@@ -121,17 +140,29 @@ class TestDashboardContent(unittest.TestCase):
             with self.subTest(stat=stat):
                 self.assertIn(stat, self.dashboard)
 
-    def test_every_command_is_documented(self):
-        for cmd in DOCUMENTED_COMMANDS:
+    def test_web_stats_are_shown(self):
+        """/stats also reports the web app (site state, accounts, catalog)."""
+        for stat in EXPECTED_WEB_STATS:
+            with self.subTest(stat=stat):
+                self.assertIn(stat, self.dashboard)
+
+    def test_no_command_list_in_the_report(self):
+        for cmd in UNDOCUMENTED_ON_PURPOSE:
             with self.subTest(command=cmd):
-                self.assertIn(
+                self.assertNotIn(
                     cmd, self.dashboard,
-                    f"{cmd} must stay listed in the dashboard text",
+                    f"{cmd} is documented by /start → 👨‍🚒 Help, not by /stats",
                 )
 
-    def test_indexing_is_explained(self):
-        """There is no /index command — the dashboard says how indexing starts."""
-        self.assertIn("t.me", self.dashboard)
+    def test_index_speed_is_gone(self):
+        """The ⚡ index-speed counter only meant something mid-indexing."""
+        self.assertNotIn("Index Speed", ADMIN_TOOLS)
+        self.assertNotIn("INDEX_STATS", ADMIN_TOOLS)
+
+    def test_counters_come_from_the_shared_module(self):
+        """The web page and /stats must read the same snapshot()."""
+        self.assertIn("from database.stats_db import snapshot", ADMIN_TOOLS)
+        self.assertIn("await snapshot()", self.dashboard)
 
 
 if __name__ == "__main__":

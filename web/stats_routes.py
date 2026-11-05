@@ -6,22 +6,17 @@
   total — not a new or different count).
 * fsv1's PyMongo (sync) helpers run via `asyncio.to_thread()` so the bot's
   event loop is never blocked.
+* Every number comes from `database.stats_db.snapshot()` — the same call the
+  bot's `/stats` command uses, so this page and that command always agree.
 """
 
-import asyncio
 import logging
-import time
 
 from aiohttp import web
 
 from info import PORT
-from utils import temp
-from database.ia_filterdb import db_count_documents, get_recent_files, collection
-from database.users_chats_db import db as user_db, web_db
-from database.catalog_db import store as catalog_store
-from database.group_db import store as group_store
+from database.stats_db import snapshot, uptime, web_numbers
 from web.web_assets import get_auth, app_page
-from web.thumb_engine import thumb_queue_state
 
 logger = logging.getLogger(__name__)
 stats_routes = web.RouteTableDef()
@@ -45,59 +40,9 @@ _STATS_JS = """<script>
 </script>"""
 
 
-async def _safe(awaitable, default):
-    """A single failing DB counter must not take down the whole page (v5-style fail-safe)."""
-    try:
-        return await awaitable
-    except Exception as e:
-        logger.debug(f"Stats counter skipped: {e}")
-        return default
-
-
-def _count(coll, query=None) -> int:
-    if coll is None:
-        return 0
-    return coll.count_documents(query or {})
-
-
 async def _stats_numbers():
-    """Read independent counters concurrently so the page waits for the slowest query only."""
-    (total_files, recent_result, bot_users, premium_users, web_accounts,
-     thumbnails, catalog, groups, gkinds) = await asyncio.gather(
-        _safe(asyncio.to_thread(db_count_documents), 0),
-        _safe(get_recent_files(0, 1), ([], "", 0)),
-        _safe(user_db.total_users_count(), 0),
-        _safe(user_db.get_premium_users(), []),
-        _safe(asyncio.to_thread(_count, web_db.col), 0),
-        _safe(asyncio.to_thread(_count, collection, {"thumb_url": {"$exists": True}}), 0),
-        _safe(catalog_store.counts(), {"posts": 0, "actors": 0}),
-        _safe(group_store.count(), 0),
-        _safe(group_store.kind_counts(),
-              {"quality_groups": 0, "episode_groups": 0, "episodes_total": 0}),
-    )
-    recent_files = recent_result[2] or total_files
-    queue = thumb_queue_state()
-    return {
-        "total_files": total_files, "recent_files": recent_files,
-        "bot_users": bot_users, "premium_users": len(premium_users),
-        "web_accounts": web_accounts, "thumbnails": thumbnails,
-        "thumb_queue": queue, "posts": catalog.get("posts", 0),
-        "actors": catalog.get("actors", 0), "groups": groups,
-        "quality_groups": gkinds.get("quality_groups", 0),
-        "episode_groups": gkinds.get("episode_groups", 0),
-        "episodes_total": gkinds.get("episodes_total", 0),
-    }
-
-
-def _uptime() -> str:
-    started = getattr(temp, "START_TIME", 0) or 0
-    if not started:
-        return "Starting…"
-    secs = max(0, int(time.time() - started))
-    d, rem = divmod(secs, 86400)
-    h, rem = divmod(rem, 3600)
-    m, _ = divmod(rem, 60)
-    return f"{d}d {h}h {m}m" if d else f"{h}h {m}m"
+    """The page and /api/db_stats read the shared counter snapshot"""
+    return web_numbers(await snapshot())
 
 
 @stats_routes.get("/stats")
@@ -168,7 +113,7 @@ async def stats_page(req):
 
     <div class="st-card anim-card"><div class="st-bar" style="background:#28a745"></div>
       <div class="st-label">🟢 Server Uptime</div>
-      <div class="st-val" style="color:#28a745;font-size:22px">{_uptime()}</div>
+      <div class="st-val" style="color:#28a745;font-size:22px">{uptime(short=True)}</div>
       <div class="st-sub">Port {PORT} · worker operational</div></div>
 
     <div class="st-card anim-card"><div class="st-bar" style="background:var(--red)"></div>

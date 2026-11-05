@@ -51,7 +51,7 @@ The help menu (`/start` → 👨‍🚒 Help) is the **only** place commands are
 | 👤 PM | _(plain text)_ | Search — **PM search is 💎 premium only**, group search is free |
 | 👤 PM | `/plan` · `/myplan` · `/invoice` | Premium plans, your plan/expiry/renew, latest invoice |
 | 👤 PM 💎 | `/upload` · `/cancel_upload` | Reply to a file (**max 200 MB**) → 🟢 GoFile or 🔵 TmpFiles, with per-site limits and an automatic fallback if the chosen host fails (`plugins/tools.py`) |
-| 🛡️ PM | `/stats` | Text-only report: users, groups, indexed files, premium users, index speed, DB size, uptime + the admin command list (**no buttons**) |
+| 🛡️ PM | `/stats` | Text-only report (**no buttons**): 🤖 bot — users, groups, indexed files, premium users, DB size, uptime · 🌐 web — server state, URL, port, web uptime, web accounts, live sessions, posts, profiles, catalog groups, posters, thumb queue |
 | 🛡️ PM | `/addpremium <user_id> <days>` · `/extendpremium <user_id> <days>` · `/removepremium <user_id>` | Grant (`/addpremium` restarts the clock) · **extend** (`/extendpremium` adds on top of the running plan) · revoke (invoices are kept) |
 | 🛡️ PM | `/delete <keyword>` · `/deleteall` | Delete matching files · delete everything (asks `CONFIRM DELETE ALL`) |
 | 🛡️ PM | `/warmup_thumbs` | Sequential scan → real posters + duration / quality / size metadata |
@@ -82,7 +82,26 @@ The help menu (`/start` → 👨‍🚒 Help) is the **only** place commands are
 
 ## 📊 `/stats` — the admin report (button-free)
 
-`/stats` is the replacement of the old `/admin` / `/dashboard` panel: it replies with **pure text** — the live counters (users, groups, indexed files, premium users, index speed, DB size, uptime) followed by the admin command list. Every button the old panel carried (💎 Premium, 🗑 Files, 🔄 Refresh, ♻️ Restart, ❌ Close and, inside them, ➕ Add · ➖ Remove · ⏳ Extend · 🔍 Check User · 📊 Expiry Chart · ⏰ 3d/7d/30d · 📹 By Quality · 🗑 Delete ALL) only opened a screen that repeated a command, so admins now simply type `/addpremium`, `/extendpremium`, `/removepremium`, `/delete <keyword>`, `/deleteall` or `/warmup_thumbs`; indexing starts by forwarding a channel post or sending a `t.me` link in PM (the stats text says so too).
+`/stats` is the replacement of the old `/admin` / `/dashboard` panel: it replies with **pure text** and nothing else — 🤖 bot counters followed by 🌐 web counters. Every button the old panel carried (💎 Premium, 🗑 Files, 🔄 Refresh, ♻️ Restart, ❌ Close and, inside them, ➕ Add · ➖ Remove · ⏳ Extend · 🔍 Check User · 📊 Expiry Chart · ⏰ 3d/7d/30d · 📹 By Quality · 🗑 Delete ALL) only opened a screen that repeated a command, so admins now simply type `/addpremium`, `/extendpremium`, `/removepremium`, `/delete <keyword>`, `/deleteall` or `/warmup_thumbs`.
+
+```
+📊 BOT STATISTICS          🌐 WEB STATISTICS
+👤 Users                   🖥 Server        🟢 Running
+👥 Groups                  🔗 URL           https://…
+📦 Indexed Files           🔌 Port          8080
+💎 Premium Users           ⏱ Web Uptime    1d 2h
+🗃 DB Size                 🧑‍💻 Web Accounts  77
+⏱ Uptime                  🔓 Live Sessions 3
+                           📝 Posts · 🎭 Profiles
+                           🗂 Catalog Groups
+                           🖼 Posters · ⏳ Thumb Queue
+🔄 Updated
+```
+
+* **No command list** — 👨‍🚒 Help (`/start`) is the one place commands are documented, so repeating them here was noise.
+* **No ⚡ index speed** — that counter only meant something while an indexing run was in flight (it read `temp.INDEX_STATS`).
+* **Web stats are live**: 🖥 server state and ⏱ web uptime come from `temp.WEB_START`, which `bot.py` sets the moment the aiohttp site starts; 🔓 Live Sessions counts `temp.USER_SESSIONS`, and the rest are the web app's own collections.
+* `database/stats_db.py` is the **single** counter module: the web *Database Stats* page, `/api/db_stats` and this command all read `snapshot()`, so the three can never disagree.
 
 `/admin` and `/dashboard` no longer exist — `/stats` is the only stats entry point (admin-only). Retired with the panel: **♻️ Restart** (restart from the host instead), **📹 delete-by-quality**, **🔍 check a user's premium** and the **⏰/📊 expiry reports**. `tests/test_admin_panel.py` guards that no panel builder or `admin_` / `del_` / `delq_` / `prm_` callback ever comes back, and `tests/test_commands.py` keeps `/admin` and `/dashboard` in `FORBIDDEN_COMMANDS`; the only callback left in `plugins/admin_tools.py` is the ❌ Cancel button of `/deleteall`.
 
@@ -267,6 +286,8 @@ plugins/callbacks.py             → the bot's Watch/Download links are now sign
 **🤖 Telegram command audit (this pass):** every entry of `Script.py`'s `USER_COMMAND_TXT` / `ADMIN_COMMAND_TXT` was checked against the handlers registered in `plugins/`. Dead entries (`/index`, `/premium`, `/broadcast`, `/restart`, `/go`, `/trans`, `/uptime`, `/health`, `/softban`, `/tempban`) were dropped and the real commands were filled in. The unreachable `stats_callback` branch of `plugins/callbacks.py` was removed, the admin panel's `Use /premium` hint now points at `/admin`, and the 💎 Premium buttons that printed `/addpremium` · `/extendpremium` · `/removepremium` without a handler are now real PM commands (`plugins/premium.py`), with 🔍 Check User listening for the user ID it asks for. The 📢 broadcast, 👮 moderation, 🚫 blacklist and ⏱ dlink features (and the PM `/help` · `/commands` shortcuts) were then **removed on request** — `plugins/broadcast.py`, the broadcast helpers in `utils.py`, the unused `db.get_all_users()` and the moderation/blacklist/dlink handlers in `plugins/group_mgmt.py` are gone. `tests/test_commands.py` keeps the lists honest from now on, including a guard that a removed command can never be registered or advertised again. The leftovers were then merged away: `plugins/misc.py` (only `/id`) went into `plugins/start.py` and `plugins/group_mgmt.py` (only 🤖 anti-bot + group `/help`) went into `plugins/filter.py`. The panel itself then went button-free and its command was replaced by **`/stats`** (`/admin` and `/dashboard` are gone, both now in `FORBIDDEN_COMMANDS`); `plugins/admin_tools.py` shrank to `/stats`, `/delete`, `/deleteall` and the `/deleteall` cancel callback.
 
 **🧹 premium.py / filter.py de-duplication (this pass):** both files were audited for repeated and dead code. There was **no dead code** — every helper is reachable; the size was duplication. Removed: 5 copies of the 🔒 Premium Required message (→ `utils.premium_required_text()` + `utils.premium_buy_markup()`), 2 copies of `fmt()` (`admin_tools.py`, `premium.py` → `utils.fmt()`), 4 hand-built plan writes (→ `premium.apply_premium()` / `revoke_premium()`), the price/duration maths that was written twice and inconsistently (→ `PLAN_UNITS` + `plan_quote()`), the 4th premium lookup in `file_deliver.has_premium_or_grace()` (→ `utils.is_premium()`), and 3 inline `import traceback` blocks (→ `utils.log_error()`). `filter.py` now checks premium once per search instead of twice and builds the result page through `build_results_text()` / `build_nav()`. Behaviour is unchanged — `plan_quote()`, `parse_duration()` and `normalise_duration()` were diffed against the old maths, and the shared prompt is byte-identical to the old `filter.py` message. One real bug fell out of it: `/extendpremium` used to restart the clock from now exactly like `/addpremium`; it now genuinely **extends** the running plan. `tests/test_commands.py` grew a `TestSharedPremiumCode` class that fails if any of that copy-paste comes back (78 tests).
+
+**📊 /stats cleanup:** the report no longer repeats the admin command list (👨‍🚒 Help already documents every command) and the ⚡ index-speed counter is gone; it gained a 🌐 WEB section (server state, URL, port, web uptime, web accounts, live sessions, posts, profiles, catalog groups, posters, thumb queue). All counters now come from the new `database/stats_db.py` — the same `snapshot()` the web *Database Stats* page and `/api/db_stats` use, so the three screens always agree. `bot.py` records `temp.WEB_START` when the aiohttp site starts, which is what the 🖥️ server line reports. 80 tests pass; `tests/test_admin_panel.py` now asserts the command list and index speed stay out and that the web lines stay in.
 
 ---
 

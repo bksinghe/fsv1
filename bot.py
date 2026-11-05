@@ -176,6 +176,8 @@ class Bot(Client):
             host="0.0.0.0",
             port=PORT
         ).start()
+        temp.WEB_START = time.time()   # so /stats can report the web server
+        logger.info(f"✅ Web server started on port {PORT}")
 
         # ==========================
         # 🔁 BACKGROUND TASKS

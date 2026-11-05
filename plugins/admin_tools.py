@@ -6,22 +6,18 @@ from hydrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Callback
 from hydrogram.errors import MessageNotModified, MessageIdInvalid, BadRequest, ListenerTimeout
 
 from info import ADMINS, LOG_CHANNEL
-from database.users_chats_db import db
 from database.ia_filterdb import (
     db_count_documents,
     delete_files,
     delete_all_files,
 )
-from utils import get_size, get_readable_time, fmt, temp
+from database.stats_db import snapshot
+from utils import fmt, temp
 
 
 # ======================================================
 # 🧠 CONFIG & SAFE INIT
 # ======================================================
-
-# Safe init
-if not hasattr(temp, "INDEX_STATS"):
-    temp.INDEX_STATS = {"running": False, "start": 0, "saved": 0}
 
 if not hasattr(temp, "START_TIME"):
     temp.START_TIME = time.time()
@@ -52,94 +48,57 @@ async def safe_answer(query, text="", alert=False):
 
 # ======================================================
 # 📊 STATS TEXT (BUTTON-FREE)
-#    The old admin-panel command used to carry 💎 Premium / 🗑 Files /
-#    🔄 Refresh / ♻️ Restart buttons. Every one of them only opened a
-#    screen that repeated a command, so that command was replaced by
-#    /stats, which is pure text: live stats plus the command list.
+#    Pure numbers — no command list (the 👨‍🚒 Help button of /start
+#    documents the commands) and no index-speed counter (it only meant
+#    something while an indexing run was in flight).
+#
+#    The counters come from database.stats_db.snapshot(), the same call
+#    the web "Database Stats" page uses.
 # ======================================================
 
+def _row(emoji, label, value):
+    return f"{emoji} <b>{label}</b>: <code>{value}</code>\n"
+
+
 async def build_stats():
-    stats = {
-        "users": 0,
-        "chats": 0,
-        "files": 0,
-        "premium": 0,
-        "used_data": "0 B",
-        "uptime": "N/A",
-        "now": datetime.fromtimestamp(time.time()).strftime("%d %b %Y, %I:%M %p")
-    }
-
-    try:
-        stats["users"] = await db.total_users_count()
-    except:
-        pass
-
-    try:
-        stats["chats"] = await asyncio.to_thread(db.groups.count_documents, {})
-    except:
-        pass
-
-    try:
-        stats["files"] = await asyncio.to_thread(db_count_documents)
-    except:
-        pass
-
-    try:
-        stats["premium"] = await asyncio.to_thread(
-            db.premium.count_documents, {"plan.premium": True}
-        )
-    except:
-        pass
-
-    try:
-        info = await asyncio.to_thread(db.users.database.command, "dbstats")
-        stats["used_data"] = get_size(info.get("dataSize", 0))
-    except:
-        pass
-
-    try:
-        stats["uptime"] = get_readable_time(time.time() - temp.START_TIME)
-    except:
-        pass
-
-    idx_text = "❌ Not running"
-    try:
-        idx = temp.INDEX_STATS
-        if idx.get("running"):
-            dur = max(1, time.time() - idx.get("start", time.time()))
-            speed = idx.get("saved", 0) / dur
-            idx_text = f"🚀 {speed:.2f} files/sec"
-    except:
-        pass
+    s = await snapshot()
+    queue = s["thumb_queue"]
+    groups = (
+        f"{s['groups']} (🎞️ {s['quality_groups']} · "
+        f"📺 {s['episode_groups']} · 🎬 {s['episodes_total']} eps)"
+    )
 
     return (
         "📊 <b>BOT STATISTICS</b>\n\n"
-        f"👤 <b>Users</b>        : <code>{stats['users']}</code>\n"
-        f"👥 <b>Groups</b>       : <code>{stats['chats']}</code>\n"
-        f"📦 <b>Indexed Files</b>: <code>{stats['files']}</code>\n"
-        f"💎 <b>Premium Users</b>: <code>{stats['premium']}</code>\n\n"
-        f"⚡ <b>Index Speed</b>  : <code>{idx_text}</code>\n"
-        f"🗃 <b>DB Size</b>      : <code>{stats['used_data']}</code>\n\n"
-        f"⏱ <b>Uptime</b>       : <code>{stats['uptime']}</code>\n"
-        f"🔄 <b>Updated</b>      : <code>{stats['now']}</code>\n\n"
-        "⌨️ <b>Commands</b>\n"
-        "💎 <code>/addpremium user_id days</code>\n"
-        "⏳ <code>/extendpremium user_id days</code>\n"
-        "➖ <code>/removepremium user_id</code>\n"
-        "🗑 <code>/delete keyword</code>\n"
-        "🗑 <code>/deleteall</code>\n"
-        "🖼 <code>/warmup_thumbs</code>\n"
-        "📁 Indexing – forward a channel post or send a t.me link in PM"
+        + _row("👤", "Users", s["users"])
+        + _row("👥", "Groups", s["chats"])
+        + _row("📦", "Indexed Files", s["files"])
+        + _row("💎", "Premium Users", s["premium"])
+        + _row("🗃", "DB Size", s["db_size"])
+        + _row("⏱", "Uptime", s["uptime"])
+        + "\n🌐 <b>WEB STATISTICS</b>\n\n"
+        + _row("🖥", "Server", s["web_state"])
+        + _row("🔗", "URL", s["url"])
+        + _row("🔌", "Port", s["port"])
+        + _row("⏱", "Web Uptime", s["web_uptime"])
+        + _row("🧑‍💻", "Web Accounts", s["web_accounts"])
+        + _row("🔓", "Live Sessions", s["live_sessions"])
+        + _row("📝", "Posts", s["posts"])
+        + _row("🎭", "Profiles", s["actors"])
+        + _row("🗂", "Catalog Groups", groups)
+        + _row("🖼", "Posters", s["thumbnails"])
+        + _row("⏳", "Thumb Queue", queue.get("queued", 0))
+        + "\n" + _row("🔄", "Updated", s["now"])
     )
 
 
 # ======================================================
-# 📊 /stats COMMAND — STATS + COMMANDS (NO BUTTONS)
+# 📊 /stats COMMAND — BOT + WEB COUNTERS (NO BUTTONS)
 # ======================================================
 
 @Client.on_message(filters.command("stats") & filters.user(ADMINS))
 async def stats_cmd(bot, message):
-    """Live counters + the admin command list (replaces the old panel)"""
+    """Live bot + web counters (replaces the old panel)"""
     msg = await message.reply("⏳ Collecting stats...")
     await safe_edit(msg, await build_stats())
 
