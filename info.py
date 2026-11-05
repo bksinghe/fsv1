@@ -132,8 +132,14 @@ THUMB_FETCH_CONCURRENCY = max(1, min(int(environ.get('THUMB_FETCH_CONCURRENCY', 
 # ── 🖼️ FIRST-TIME THUMBNAIL EXTRACTION (like JoneySin/v5's warmup engine) ──
 # Opening 21 new files at once can trigger Telegram FLOOD_WAIT, so probes
 # run one at a time with a random gap between files.
-THUMB_PROBE_GAP_MIN = float(environ.get('THUMB_PROBE_GAP_MIN', '1.2'))
-THUMB_PROBE_GAP_MAX = max(THUMB_PROBE_GAP_MIN, float(environ.get('THUMB_PROBE_GAP_MAX', '3.0')))
+#
+# ⏱️ PACING: a bot may send ~20 messages per minute to the same chat — one
+#    every 3s. Each probe costs more than that one send (download + delete),
+#    so the default gap is 3.0–5.0s (≈12–20 probes/min). The old 1.2–3.0s
+#    average (~28/min) sat above the limit and kept returning FloodWait
+#    during /warmup_thumbs. Tune with the env vars, no code change needed.
+THUMB_PROBE_GAP_MIN = max(1.0, float(environ.get('THUMB_PROBE_GAP_MIN', '3.0')))
+THUMB_PROBE_GAP_MAX = max(THUMB_PROBE_GAP_MIN, float(environ.get('THUMB_PROBE_GAP_MAX', '5.0')))
 THUMB_PROBE_ATTEMPTS = max(1, min(int(environ.get('THUMB_PROBE_ATTEMPTS', '5')), 10))
 # On FLOOD_WAIT, wait for Telegram's requested seconds plus this extra buffer
 THUMB_FLOOD_EXTRA = max(0, int(environ.get('THUMB_FLOOD_EXTRA', '10')))
