@@ -413,6 +413,21 @@ async def delete_all_files() -> int:
         return 0
 
 # =====================================================
+# 📊 COUNT BY QUALITY (admin delete confirmation)
+# =====================================================
+async def count_by_quality(quality: str) -> int:
+    """How many files carry this quality — shown before the delete is confirmed."""
+    if not quality:
+        return 0
+
+    try:
+        return await asyncio.to_thread(collection.count_documents, {"quality": quality})
+    except Exception as e:
+        logger.error(f"❌ Count by quality error: {e}")
+        return 0
+
+
+# =====================================================
 # 🗑 DELETE BY QUALITY
 # =====================================================
 async def delete_by_quality(quality: str) -> int:

@@ -11,7 +11,13 @@ from hydrogram.errors import MessageNotModified, MessageIdInvalid, BadRequest, L
 
 from info import ADMINS, LOG_CHANNEL
 from database.users_chats_db import db
-from database.ia_filterdb import db_count_documents, delete_files, delete_all_files, delete_by_quality
+from database.ia_filterdb import (
+    db_count_documents,
+    delete_files,
+    delete_all_files,
+    delete_by_quality,
+    count_by_quality,
+)
 from utils import get_size, get_readable_time, temp
 
 
@@ -142,14 +148,15 @@ async def build_dashboard():
 # ======================================================
 
 def admin_panel_buttons():
+    """📊 Dashboard — two sections (manage) + two utilities + close."""
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton("💎 Premium", callback_data="admin_premium"),
-            InlineKeyboardButton("🗑 Delete Files", callback_data="admin_delete")
+            InlineKeyboardButton("🗑 Files", callback_data="admin_delete")
         ],
         [
             InlineKeyboardButton("🔄 Refresh", callback_data="admin_refresh"),
-            InlineKeyboardButton("🔄 Restart Bot", callback_data="admin_restart")
+            InlineKeyboardButton("♻️ Restart", callback_data="admin_restart")
         ],
         [
             InlineKeyboardButton("❌ Close", callback_data="close_data")
@@ -158,22 +165,17 @@ def admin_panel_buttons():
 
 
 def premium_panel_buttons():
+    """💎 Premium — only actions; the add/extend/remove commands are shown as
+    text in the panel body, so no button exists just to print usage."""
     return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("➕ Add", callback_data="prm_add"),
-            InlineKeyboardButton("➖ Remove", callback_data="prm_remove"),
-            InlineKeyboardButton("⏳ Extend", callback_data="prm_extend")
+            InlineKeyboardButton("🔍 Check User", callback_data="prm_check"),
+            InlineKeyboardButton("📊 Expiry Chart", callback_data="prm_chart")
         ],
         [
-            InlineKeyboardButton("🔍 Check User", callback_data="prm_check")
-        ],
-        [
-            InlineKeyboardButton("⏰ Expiring 3d", callback_data="prm_exp_3"),
+            InlineKeyboardButton("⏰ 3d", callback_data="prm_exp_3"),
             InlineKeyboardButton("⏰ 7d", callback_data="prm_exp_7"),
             InlineKeyboardButton("⏰ 30d", callback_data="prm_exp_30")
-        ],
-        [
-            InlineKeyboardButton("📊 Expiry Chart", callback_data="prm_chart")
         ],
         [
             InlineKeyboardButton("🔙 Back", callback_data="admin_back")
@@ -182,14 +184,11 @@ def premium_panel_buttons():
 
 
 def delete_panel_buttons():
-    """Delete files management panel"""
+    """🗑 Files — the two bulk actions; /delete <keyword> is shown as text."""
     return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("🔍 Delete by Keyword", callback_data="del_keyword"),
-            InlineKeyboardButton("📹 Delete by Quality", callback_data="del_quality")
-        ],
-        [
-            InlineKeyboardButton("🗑 Delete ALL Files", callback_data="del_all_confirm")
+            InlineKeyboardButton("📹 By Quality", callback_data="del_quality"),
+            InlineKeyboardButton("🗑 Delete ALL", callback_data="del_all_confirm")
         ],
         [
             InlineKeyboardButton("🔙 Back", callback_data="admin_back")
@@ -212,6 +211,16 @@ def delete_quality_buttons():
         ],
         [
             InlineKeyboardButton("🔙 Back", callback_data="admin_delete")
+        ]
+    ])
+
+
+def confirm_buttons(yes_callback: str, back_callback: str, yes_label: str = "✅ Yes"):
+    """⚠️ One confirm row for every destructive action."""
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(yes_label, callback_data=yes_callback),
+            InlineKeyboardButton("❌ Cancel", callback_data=back_callback)
         ]
     ])
 
@@ -251,22 +260,28 @@ async def admin_callbacks(bot, query: CallbackQuery):
         await safe_edit(
             query.message,
             (
-                "💎 <b>Premium Management Panel</b>\n\n"
-                f"👤 Active Premium : <code>{total}</code>\n"
-                f"🕒 Time : <code>{fmt(datetime.utcnow())}</code>"
+                "💎 <b>Premium</b>\n\n"
+                f"👑 Active premium : <code>{total}</code>\n"
+                f"🕒 Time : <code>{fmt(datetime.utcnow())}</code>\n\n"
+                "<b>Commands</b>\n"
+                "➕ <code>/addpremium user_id days</code>\n"
+                "⏳ <code>/extendpremium user_id days</code>\n"
+                "➖ <code>/removepremium user_id</code>"
             ),
             reply_markup=premium_panel_buttons()
         )
         await safe_answer(query)
 
-    # Delete files panel
+    # Files panel
     elif action == "admin_delete":
         file_count = await asyncio.to_thread(db_count_documents)
         await safe_edit(
             query.message,
-            "🗑 <b>Delete Files Management</b>\n\n"
-            f"📦 Total Files: <code>{file_count}</code>\n\n"
-            "Choose deletion method:",
+            "🗑 <b>Files</b>\n\n"
+            f"📦 Total files: <code>{file_count}</code>\n\n"
+            "<b>Command</b>\n"
+            "🔍 <code>/delete keyword</code> – delete matching files\n\n"
+            "Or delete in bulk:",
             reply_markup=delete_panel_buttons()
         )
         await safe_answer(query)
@@ -298,26 +313,12 @@ async def delete_callbacks(bot, query: CallbackQuery):
 
     action = query.data
 
-    # Delete by keyword
-    if action == "del_keyword":
-        await safe_edit(
-            query.message,
-            "🔍 <b>Delete Files by Keyword</b>\n\n"
-            "Use command:\n<code>/delete keyword</code>\n\n"
-            "Example: <code>/delete movie_name</code>\n\n"
-            "This will delete all files matching the keyword.",
-            reply_markup=InlineKeyboardMarkup(
-                [[InlineKeyboardButton("🔙 Back", callback_data="admin_delete")]]
-            )
-        )
-        await safe_answer(query)
-
     # Delete by quality
-    elif action == "del_quality":
+    if action == "del_quality":
         await safe_edit(
             query.message,
-            "📹 <b>Delete Files by Quality</b>\n\n"
-            "Select quality to delete all files of that quality:",
+            "📹 <b>Delete by Quality</b>\n\n"
+            "Pick a quality — you get a confirmation with the file count first:",
             reply_markup=delete_quality_buttons()
         )
         await safe_answer(query)
@@ -327,16 +328,12 @@ async def delete_callbacks(bot, query: CallbackQuery):
         file_count = await asyncio.to_thread(db_count_documents)
         await safe_edit(
             query.message,
-            f"⚠️ <b>WARNING: Delete ALL Files</b>\n\n"
-            f"📦 Total Files: <code>{file_count}</code>\n\n"
-            f"❗ This will permanently delete ALL {file_count} files from the database!\n\n"
-            "Are you absolutely sure?",
-            reply_markup=InlineKeyboardMarkup([
-                [
-                    InlineKeyboardButton("✅ Yes, Delete ALL", callback_data="del_all_execute"),
-                    InlineKeyboardButton("❌ Cancel", callback_data="admin_delete")
-                ]
-            ])
+            f"⚠️ <b>Delete ALL Files?</b>\n\n"
+            f"📦 <code>{file_count}</code> files will be permanently deleted.\n"
+            "This cannot be undone.",
+            reply_markup=confirm_buttons(
+                "del_all_execute", "admin_delete", "✅ Yes, delete ALL"
+            )
         )
         await safe_answer(query)
 
@@ -382,7 +379,29 @@ async def delete_quality_callbacks(bot, query: CallbackQuery):
         return await safe_answer(query, "Admins only", True)
 
     quality = query.data.replace("delq_", "")
-    
+
+    # ---- 1️⃣ ASK FIRST: never wipe a whole quality on a single tap ----
+    if not quality.startswith("go_"):
+        count = await count_by_quality(quality)
+        if not count:
+            await safe_answer(query, f"ℹ️ No {quality} files in the database", True)
+            return
+
+        await safe_edit(
+            query.message,
+            f"⚠️ <b>Delete all {quality} files?</b>\n\n"
+            f"📹 <code>{count}</code> files will be permanently deleted.\n"
+            "This cannot be undone.",
+            reply_markup=confirm_buttons(
+                f"delq_go_{quality}", "del_quality", f"✅ Yes, delete {quality}"
+            )
+        )
+        await safe_answer(query)
+        return
+
+    # ---- 2️⃣ CONFIRMED ----
+    quality = quality[3:]  # strip the "go_" prefix
+
     await safe_answer(query, f"🗑 Deleting {quality} files...", True)
     msg = await query.message.edit(f"⏳ Deleting all {quality} files...")
     
@@ -457,22 +476,22 @@ async def premium_callbacks(bot, query: CallbackQuery):
             if len(result) >= 20:
                 break
 
+        back = InlineKeyboardMarkup(
+            [[InlineKeyboardButton("🔙 Back", callback_data="admin_premium")]]
+        )
+
         if not result:
             await safe_edit(
                 query.message,
-                f"✅ No premium users expiring in next {days} days.\n\n"
-                "Use /admin to return to panel.",
-                reply_markup=InlineKeyboardMarkup(
-                    [[InlineKeyboardButton("🔙 Back", callback_data="admin_premium")]]
-                )
+                f"✅ <b>Nothing expiring</b>\n\n"
+                f"No premium user expires in the next {days} days.",
+                reply_markup=back
             )
         else:
             await safe_edit(
                 query.message,
                 f"⏰ <b>Premium Expiring in {days} Days</b>\n\n" + "\n".join(result),
-                reply_markup=InlineKeyboardMarkup(
-                    [[InlineKeyboardButton("🔙 Back", callback_data="admin_premium")]]
-                )
+                reply_markup=back
             )
 
     # Expiry chart
@@ -591,42 +610,6 @@ async def premium_callbacks(bot, query: CallbackQuery):
             f"👤 User: <code>{target}</code>\n\n"
             f"{body}",
             reply_markup=back
-        )
-
-    # Add premium
-    elif action == "prm_add":
-        await safe_edit(
-            query.message,
-            "➕ <b>Add Premium</b>\n\n"
-            "Use command:\n<code>/addpremium user_id days</code>\n\n"
-            "Example: <code>/addpremium 123456789 30</code>",
-            reply_markup=InlineKeyboardMarkup(
-                [[InlineKeyboardButton("🔙 Back", callback_data="admin_premium")]]
-            )
-        )
-
-    # Remove premium
-    elif action == "prm_remove":
-        await safe_edit(
-            query.message,
-            "➖ <b>Remove Premium</b>\n\n"
-            "Use command:\n<code>/removepremium user_id</code>\n\n"
-            "Example: <code>/removepremium 123456789</code>",
-            reply_markup=InlineKeyboardMarkup(
-                [[InlineKeyboardButton("🔙 Back", callback_data="admin_premium")]]
-            )
-        )
-
-    # Extend premium
-    elif action == "prm_extend":
-        await safe_edit(
-            query.message,
-            "⏳ <b>Extend Premium</b>\n\n"
-            "Use command:\n<code>/extendpremium user_id days</code>\n\n"
-            "Example: <code>/extendpremium 123456789 15</code>",
-            reply_markup=InlineKeyboardMarkup(
-                [[InlineKeyboardButton("🔙 Back", callback_data="admin_premium")]]
-            )
         )
 
 

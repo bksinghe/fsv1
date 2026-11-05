@@ -67,6 +67,22 @@ The help menu (`/start` → 👨‍🚒 Help) is the **only** place commands are
 
 ---
 
+## 🎛 `/admin` panel layout
+
+The panel was restructured so that **no button exists just to print usage text** — commands are shown as text inside the panel body, and every destructive action asks for a confirmation first. `tests/test_admin_panel.py` guards the structure.
+
+| Screen | Buttons |
+|---|---|
+| 📊 Dashboard (`/admin`) | `💎 Premium` · `🗑 Files` · `🔄 Refresh` · `♻️ Restart` · `❌ Close` |
+| 💎 Premium | `🔍 Check User` · `📊 Expiry Chart` · `⏰ 3d` `⏰ 7d` `⏰ 30d` · `🔙 Back` — the body lists `/addpremium` · `/extendpremium` · `/removepremium` |
+| 🗑 Files | `📹 By Quality` · `🗑 Delete ALL` · `🔙 Back` — the body lists `/delete <keyword>` |
+| 📹 Quality | `360p` `480p` `720p` / `1080p` `1440p` `2160p` · `🔙 Back` |
+| ⚠️ Confirm | `✅ Yes, …` · `❌ Cancel` — shown before **every** bulk delete (quality delete also reports how many files will go) |
+
+`🔍 Check User` asks for a user ID and listens for it (60 s), then reports the plan, expiry and time left. A quality delete now goes `delq_720p` → *confirmation with the file count* → `delq_go_720p`, so a mis-tap can no longer wipe a whole quality.
+
+---
+
 ## 🧭 Routes
 
 | Method | Path | Purpose |
