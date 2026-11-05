@@ -111,7 +111,26 @@ async def stats_page(req):
 
     s = await _stats_numbers()
 
-    body = f'''<div class="main" style="padding-top:24px;">
+    body = f'''<style>
+#statsDashboard{{max-width:1160px;margin:0 auto;padding:26px 4% 40px}}
+#statsDashboard .stat-title{{font-size:26px;letter-spacing:-.6px}}
+#statsDashboard .stat-lead{{margin-bottom:18px}}
+#statsDashboard .stat-hero{{display:grid;grid-template-columns:1fr auto;align-items:center;padding:20px 24px;border-radius:14px;background:linear-gradient(115deg,var(--card),var(--bg3));}}
+#statsDashboard .stat-hero::before{{width:4px;height:auto;bottom:0;right:auto;background:var(--red)}}
+#statsDashboard .stat-hero-label{{margin:0 0 5px}}
+#statsDashboard .stat-hero-num{{font-size:40px}}
+#statsDashboard .stat-hero-sub{{grid-column:1/-1;margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}}
+#statsDashboard .stat-grid{{grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}}
+#statsDashboard .st-card{{padding:15px;border-radius:11px;background:linear-gradient(150deg,var(--card),color-mix(in srgb,var(--card) 88%,var(--bg3)));}}
+#statsDashboard .st-card:nth-child(7){{grid-column:span 2;border-color:rgba(229,9,20,.28);background:linear-gradient(120deg,var(--card),rgba(229,9,20,.07))}}
+#statsDashboard .st-card:nth-child(7) .st-sub{{font-size:11px}}
+#statsDashboard .st-label{{font-size:9px;letter-spacing:.65px}}
+#statsDashboard .st-val{{font-size:28px;margin-bottom:5px}}
+#statsDashboard .st-sub{{font-size:10px;line-height:1.4}}
+@media(max-width:850px){{#statsDashboard .stat-grid{{grid-template-columns:repeat(2,minmax(0,1fr))}}}}
+@media(max-width:520px){{#statsDashboard{{padding:18px 4% 28px}}#statsDashboard .stat-hero{{padding:17px}}#statsDashboard .stat-hero-num{{font-size:34px}}#statsDashboard .st-card:nth-child(7){{grid-column:span 2}}}}
+@media(prefers-reduced-motion:reduce){{#statsDashboard .anim-card{{animation:none}}}}
+</style><div id="statsDashboard" class="main">
   <div class="stat-title anim-card">📊 Database Stats</div>
   <div class="stat-lead anim-card">A quick overview of your files, users and library activity.</div>
 
@@ -128,7 +147,7 @@ async def stats_page(req):
       <div class="st-sub">Indexed media documents</div></div>
 
     <div class="st-card anim-card"><div class="st-bar" style="background:#9933ff"></div>
-      <div class="st-label">🖼️ Cached Thumbnails</div>
+      <div class="st-label">🖼️ Poster IDs saved</div>
       <div class="st-val" style="color:#9933ff" data-count="{s['thumbnails']}" data-delay="160">{s['thumbnails']:,}</div>
       <div class="st-sub">Files with a Telegram poster reference</div></div>
 
