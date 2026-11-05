@@ -79,23 +79,19 @@ color:var(--txt);border-radius:6px;padding:4px 7px;font-size:11px;font-weight:80
 font-family:inherit;outline:none;text-align:center}
 .gmep:focus{border-color:var(--red)}
 .gmcount{font-size:11px;font-weight:800;color:#c4b5fd;margin-top:6px}
-.gbody{padding:10px 11px 12px;display:flex;align-items:flex-start;gap:8px}
-.gtitle{flex:1;min-width:0;color:var(--txt);font-size:12.5px;font-weight:600;
-line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.gcard.open .gtitle{-webkit-line-clamp:unset}
-.gtitle:hover{color:var(--red);text-decoration:underline;text-underline-offset:2px}
-.gopenbtn{flex:0 0 auto;border:1px solid var(--line);background:var(--bg3);
-color:var(--mut);border-radius:6px;padding:4px 8px;font-size:11px;font-weight:800;
-cursor:pointer;font-family:inherit}
-.gopenbtn:hover{border-color:var(--red);color:var(--txt)}
-/* The name now has only a ▾ chevron — the "Files" label was removed;
-   the arrow rotates when open and the toggle/expand behaves exactly as before. */
-.gcard.open .gopenbtn{transform:rotate(180deg);border-color:var(--red);color:var(--txt)}
-.gvariants{display:none;border-top:1px solid var(--line);gap:12px;padding:10px;
-grid-template-columns:1fr}
-.gcard.open .gvariants{display:grid}
-@media(min-width:620px){.gcard.open .gvariants{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(min-width:1024px){.gcard.open .gvariants{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.gbody{padding:11px 13px 13px;display:flex;align-items:flex-start;gap:8px}
+.gtitle{flex:1;min-width:0;color:var(--txt);font-size:13px;font-weight:700;
+line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+cursor:pointer;transition:color .15s}
+.gcard.open .gtitle{-webkit-line-clamp:unset;color:var(--red)}
+.gtitle:hover{color:var(--red)}
+.gvariants{display:grid;grid-template-columns:1fr;gap:12px;max-height:0;overflow:hidden;
+padding:0 10px;opacity:0;transform:translateY(-4px);border-top:1px solid transparent;
+transition:max-height .24s ease,opacity .16s ease,transform .2s ease,padding .2s ease,border-color .2s ease}
+.gvariants-inner{min-height:0;display:grid;grid-template-columns:1fr;gap:12px}
+.gcard.open .gvariants{max-height:5000px;padding:10px;opacity:1;transform:translateY(0);border-top-color:var(--line)}
+@media(min-width:620px){.gcard.open .gvariants-inner{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(min-width:1024px){.gcard.open .gvariants-inner{grid-template-columns:repeat(3,minmax(0,1fr))}}
 .gvariants .vcard:hover{transform:none}
 .gadmin{position:absolute;left:0;right:0;bottom:0;z-index:6;display:flex;gap:5px;
 flex-wrap:wrap;padding:8px;background:rgba(0,0,0,.86);opacity:0;visibility:hidden;
@@ -193,11 +189,9 @@ GROUP_CARD_TEMPLATE = (
     '<div class="vchips vm-details">{TOPCHIPS}</div>'
     '<div class="gbottom vm-details">{QCHIPS}</div>{ADMIN}'
     '</div>'
-    '<div class="gbody vm-body"><div class="gtitle vm-title" onclick="event.stopPropagation();gToggle(this)">{NAME}</div>'
-    '<button class="gopenbtn" type="button" title="Expand / collapse" '
-    'aria-label="Expand / collapse" onclick="event.stopPropagation();gToggle(this)">▾</button></div>'
+    '<div class="gbody vm-body"><div class="gtitle vm-title" onclick="event.stopPropagation();gToggle(this)">{NAME}</div></div>'
     '</div>'
-    '<div class="gvariants">{VARIANTS}</div></div>'
+    '<div class="gvariants"><div class="gvariants-inner">{VARIANTS}</div></div></div>'
 )
 
 _GROUP_JS_TPL = r"""/* 🗂️ SHARED GROUP CARD — template from web/group_assets.py (Python → JS) */

@@ -235,7 +235,7 @@ class TestSingleSource(unittest.TestCase):
             self.assertIn(token, gr, f"compact open-group rule missing: {token}")
         # the variants' 1/2/3 grid stays completely unchanged
         self.assertIn(
-            "@media(min-width:1024px){.gcard.open .gvariants{"
+            "@media(min-width:1024px){.gcard.open .gvariants-inner{"
             "grid-template-columns:repeat(3,minmax(0,1fr))}}", gr)
         # an open group card still spans the full width (variants 3/row)
         self.assertIn(".gcard.open{grid-column:1/-1", gr)

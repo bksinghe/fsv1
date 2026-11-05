@@ -37,12 +37,14 @@ class TestGroupNameLabel(unittest.TestCase):
                          "the 'Files' label returned next to the name")
         self.assertNotIn(">▾ Files<", GROUP)
 
-    def test_02_expand_toggle_still_works(self):
-        self.assertIn('class="gopenbtn"', GROUP)
-        self.assertIn("gToggle(this)", GROUP)
-        self.assertIn(">▾</button>", GROUP, "the chevron toggle was removed")
-        self.assertIn('aria-label="Expand / collapse"', GROUP)
-        self.assertIn(".gcard.open .gopenbtn{transform:rotate(180deg)", GROUP)
+    def test_02_group_name_is_the_only_toggle_and_expansion_is_animated(self):
+        self.assertIn('class="gtitle vm-title" onclick="event.stopPropagation();gToggle(this)"', GROUP)
+        self.assertNotIn('class="gopenbtn"', GROUP, "redundant chevron toggle returned")
+        self.assertNotIn(">▾</button>", GROUP)
+        self.assertIn("window.gToggle=function(node)", GROUP)
+        self.assertIn("transition:max-height .24s ease", GROUP)
+        self.assertIn(".gcard.open .gvariants{max-height:5000px", GROUP)
+        self.assertIn('<div class="gvariants-inner">{VARIANTS}</div>', GROUP)
 
 
 class TestCreateButtonPlacement(unittest.TestCase):
