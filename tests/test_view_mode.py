@@ -180,10 +180,12 @@ class TestSingleSource(unittest.TestCase):
         self.assertIn("defaultMode:DEFAULT", js)
         self.assertNotIn("cur='poster'", js, "the old poster default remains")
         self.assertNotIn("v||'poster'", js, "the old poster fallback remains")
-        # the old saved 'poster' preference is reset once, then the user's choice is remembered
+        # Existing per-page choices migrate into one shared preference.
         self.assertIn("function resetOnce()", js)
-        self.assertIn("RESET_FLAG", js)
-        self.assertIn("localStorage.removeItem(n)", js)
+        self.assertIn("'ff_view_mode_shared'", js)
+        self.assertIn("localStorage.setItem('ff_view_mode_shared',norm(old))", js)
+        self.assertIn("window.addEventListener('storage'", js)
+        self.assertIn("function storageFor(kind){return 'ff_view_mode_shared';}", js)
         # no other file may define its own default / initial mode
         for name, src in OTHER_FILES.items():
             self.assertNotIn("modeSel').value", src)

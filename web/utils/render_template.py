@@ -21,7 +21,10 @@ WATCH_HTML = """<!DOCTYPE html>
 body{{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);
 color:var(--txt);min-height:100vh}}
 header{{display:flex;align-items:center;gap:10px;padding:14px 5%;border-bottom:1px solid var(--line)}}
-.logo{{font-weight:900;color:var(--red);font-size:18px;letter-spacing:1px;text-decoration:none;flex:1}}
+.logo{{display:flex;align-items:center;gap:10px;font-weight:900;color:var(--txt);font-size:15px;letter-spacing:1px;text-decoration:none;flex:1}}
+.logo-mark{{display:grid;place-items:center;width:34px;height:34px;border-radius:9px;background:linear-gradient(140deg,#ff2733,#b30710);color:#fff;font-size:19px;box-shadow:0 6px 20px rgba(229,9,20,.3)}}
+.logo-title{{display:flex;flex-direction:column;font-size:15px;line-height:1.1;letter-spacing:1.4px}}
+.logo-title small{{font-size:8px;letter-spacing:2px;color:var(--mut);margin-top:3px}}
 .badge{{font-size:11px;color:var(--mut);border:1px solid var(--line);border-radius:20px;padding:5px 10px}}
 .wrap{{max-width:1000px;margin:22px auto;padding:0 16px 40px}}
 .player{{background:#000;border:1px solid var(--line);border-radius:12px;overflow:hidden}}
@@ -35,7 +38,7 @@ padding:11px 20px;border-radius:8px;text-decoration:none}}
 </style>
 </head>
 <body>
-<header><a class="logo" href="/search">▶ FAST FINDER</a><span class="badge">SIGNED STREAM</span></header>
+<header><a class="logo" href="/search"><span class="logo-mark">F</span><span class="logo-title">FAST FINDER<small>WEB FILE SEARCH</small></span></a><span class="badge">SIGNED STREAM</span></header>
 <div class="wrap">
   <div class="player">
     <video controls playsinline preload="metadata" poster="{poster}">

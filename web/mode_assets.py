@@ -111,16 +111,19 @@ window.ViewMode=(function(){
   var VALID=['poster','text'], cur=DEFAULT, cfg={}, bound=[];
   function norm(v){return VALID.indexOf(v)>=0?v:DEFAULT;}
   /* Storage keys live here too — search / posts / actors are remembered separately */
-  function storageFor(kind){return kind?'ff_cat_mode_'+kind:'ff_view_mode';}
+  /* One preference across search, posts, actors and every shared video grid. */
+  function storageFor(kind){return 'ff_view_mode_shared';}
   /* Older browsers may have saved 'poster' ⇒ apply the new default once:
      only the old mode keys are removed; afterwards the user's choice is remembered. */
   function resetOnce(){
+    /* Preserve the previous per-page choice when upgrading to shared mode. */
     try{
-      if(localStorage.getItem(RESET_FLAG))return;
-      for(var i=localStorage.length-1;i>=0;i--){
-        var n=localStorage.key(i);
-        if(n==='ff_view_mode'||n.indexOf('ff_cat_mode_')===0)localStorage.removeItem(n);
-      }
+      if(localStorage.getItem('ff_view_mode_shared'))return;
+      var old=localStorage.getItem(key());
+      if(!old)old=localStorage.getItem('ff_view_mode');
+      if(!old&&cfg.kind)old=localStorage.getItem('ff_cat_mode_'+cfg.kind);
+      if(!old)old=localStorage.getItem('ff_cat_mode_posts')||localStorage.getItem('ff_cat_mode_actors');
+      if(old)localStorage.setItem('ff_view_mode_shared',norm(old));
       localStorage.setItem(RESET_FLAG,'1');
     }catch(e){}
   }
@@ -164,6 +167,11 @@ window.ViewMode=(function(){
         s.addEventListener('change',function(){set(s.value);});
       });
   }
+  window.addEventListener('storage',function(e){
+    if(e.key==='ff_view_mode_shared'){
+      cur=norm(e.newValue||DEFAULT);apply();
+    }
+  });
   function init(o){
     cfg=o||{};
     resetOnce();                 /* first visit only — clears the old Poster preference */

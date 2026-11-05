@@ -932,10 +932,16 @@ body{font-family:'DM Sans',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
 background:var(--bg);color:var(--txt);min-height:100vh;transition:background .2s,color .2s}
 a{color:inherit;text-decoration:none}
 .top{position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:14px;
-height:62px;padding:0 4%;background:var(--bg2);border-bottom:1px solid var(--line);
-box-shadow:0 4px 20px rgba(0,0,0,.35)}
-.logo{font-size:19px;font-weight:900;letter-spacing:1px;color:var(--red);display:flex;
-align-items:center;gap:8px;flex:1}
+height:70px;padding:0 5%;background:rgba(11,11,15,.82);border-bottom:1px solid var(--line);
+backdrop-filter:blur(16px);box-shadow:0 4px 20px rgba(0,0,0,.22)}
+html.light .top{background:rgba(255,255,255,.82)}
+.logo{display:flex;align-items:center;gap:11px;flex:1;min-width:0;color:var(--txt)}
+.logo .nfi{display:grid;place-items:center;width:34px;height:34px;flex:0 0 auto;padding:0;
+border-radius:9px;background:linear-gradient(140deg,#ff2733,#b30710);color:#fff;
+font-size:20px;font-weight:900;box-shadow:0 6px 20px rgba(229,9,20,.30)}
+.logo .brand-txt{display:flex;flex-direction:column;font-size:16px;font-weight:900;
+letter-spacing:1.6px;line-height:1.1;white-space:nowrap}
+.logo .brand-txt small{margin-top:3px;font-size:8px;font-weight:800;letter-spacing:2.2px;color:var(--mut)}
 .nfi{background:var(--red);color:#fff;border-radius:4px;padding:2px 8px;font-size:17px}
 .tbtn{background:transparent;border:1px solid var(--line);color:var(--txt);border-radius:6px;
 padding:7px 13px;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit}
@@ -1122,8 +1128,15 @@ font-weight:800;font-size:13px;cursor:pointer;font-family:inherit}
 
 # Theme + sidebar — one shared script on every logged-in page (like v5's shared head)
 SITE_JS = """
-(function(){if(localStorage.getItem('ff_theme')==='light')document.documentElement.classList.add('light')})();
-function toggleTheme(){var l=document.documentElement.classList.toggle('light');localStorage.setItem('ff_theme',l?'light':'dark')}
+(function(){
+  try{document.documentElement.classList.toggle('light',localStorage.getItem('ff_theme')==='light')}catch(e){}
+})();
+function applyTheme(mode){document.documentElement.classList.toggle('light',mode==='light');}
+function toggleTheme(){
+  var mode=document.documentElement.classList.contains('light')?'dark':'light';
+  applyTheme(mode);try{localStorage.setItem('ff_theme',mode)}catch(e){}
+}
+window.addEventListener('storage',function(e){if(e.key==='ff_theme')applyTheme(e.newValue||'dark')});
 function openSidebar(){var s=document.getElementById('sidebar'),o=document.getElementById('sbOverlay');if(s)s.classList.add('open');if(o)o.classList.add('open')}
 function closeSidebar(){var s=document.getElementById('sidebar'),o=document.getElementById('sbOverlay');if(s)s.classList.remove('open');if(o)o.classList.remove('open')}
 document.addEventListener('keydown',function(e){if(e.key==='Escape')closeSidebar()});
@@ -1175,7 +1188,7 @@ def nav_shell(tg_id: int, role: str, active_tab: str = "") -> str:
           '<button class="ham-btn" id="hamBtn" onclick="openSidebar()" aria-label="Open menu">'
             '<span class="ham-line"></span><span class="ham-line"></span><span class="ham-line"></span>'
           '</button>'
-          '<a class="logo" href="/search"><span class="nfi">F</span> FAST FINDER</a>'
+          '<a class="logo" href="/search"><span class="nfi">F</span><span class="brand-txt">FAST FINDER<small>WEB FILE SEARCH</small></span></a>'
           '<div class="topbar-right">'
             '<button class="tbtn" onclick="toggleTheme()">Theme</button>'
           '</div>'
