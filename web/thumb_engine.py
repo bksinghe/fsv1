@@ -4,8 +4,9 @@ Storage model (Koyeb free / 512 MB RAM) — **unchanged**:
   * MongoDB   → only the Telegram thumbnail **file_id string**
                  `thumb_url: "TG_ID:<file_id>"` (as in v5), or `"NO_THUMB"`.
                  No image bytes are stored.
-  * Server RAM → no thumbnail cache. Only a transient buffer for the in-flight
-                 request, released as soon as the response is sent.
+  * Server RAM → a byte-bounded LRU hot cache (16 MiB default) avoids repeat
+                 Telegram downloads; entries evict oldest-first and are never persisted.
+                 In-flight buffers remain transient.
   * Browser   → `/api/thumb` uses `ETag` + `Cache-Control` + 304, so the poster
                  lives in the browser's own cache.
 
@@ -35,6 +36,7 @@ import asyncio
 import io
 import logging
 import random
+from collections import OrderedDict
 import re
 import zlib
 
@@ -71,6 +73,11 @@ _MAX_QUEUE = 2000
 _worker_task = None
 # fid -> asyncio.Task: identical concurrent requests share one download
 _INFLIGHT = {}
+# Small byte-bounded hot cache: repeatedly requested, already-saved Telegram IDs
+# otherwise still incur a Telegram download on every browser/cache miss.
+_THUMB_CACHE_MAX_BYTES = max(0, int(getattr(_info, "THUMB_CACHE_BYTES", 16 * 1024 * 1024)))
+_THUMB_CACHE = OrderedDict()
+_THUMB_CACHE_BYTES = 0
 _STATS = {"done": 0, "ok": 0, "no_thumb": 0, "failed": 0,
           "rejected": 0, "meta": 0}
 
@@ -107,12 +114,37 @@ def is_no_thumb(doc) -> bool:
     return str((doc or {}).get("thumb_url") or "") == "NO_THUMB"
 
 
+def _cache_get(key: str):
+    data = _THUMB_CACHE.pop(key, None)
+    if data is not None:
+        _THUMB_CACHE[key] = data
+    return data
+
+
+def _cache_put(key: str, data: bytes) -> None:
+    global _THUMB_CACHE_BYTES
+    if not _THUMB_CACHE_MAX_BYTES or len(data) > _THUMB_CACHE_MAX_BYTES:
+        return
+    previous = _THUMB_CACHE.pop(key, None)
+    if previous is not None:
+        _THUMB_CACHE_BYTES -= len(previous)
+    while _THUMB_CACHE and _THUMB_CACHE_BYTES + len(data) > _THUMB_CACHE_MAX_BYTES:
+        _, evicted = _THUMB_CACHE.popitem(last=False)
+        _THUMB_CACHE_BYTES -= len(evicted)
+    _THUMB_CACHE[key] = data
+    _THUMB_CACHE_BYTES += len(data)
+
+
 def invalidate_thumb(fid: str) -> None:
     """✏️ An admin changed the custom poster → an in-flight download must not restore the old one."""
+    global _THUMB_CACHE_BYTES
     if not fid:
         return
     _INFLIGHT.pop(f"dl:{fid}", None)
     _queued.discard(fid)
+    cached = _THUMB_CACHE.pop(fid, None)
+    if cached is not None:
+        _THUMB_CACHE_BYTES -= len(cached)
 
 
 def thumb_queue_state() -> dict:
@@ -482,6 +514,9 @@ async def get_thumb(fid: str, retry: bool = False):
     thumb_file_id = thumb_id_from_doc(doc)
 
     if thumb_file_id:
+        cached = _cache_get(fid)
+        if cached is not None:
+            return cached
         key = f"dl:{fid}"
         task = None if retry else _INFLIGHT.get(key)
         if task is None or task.done():
@@ -500,6 +535,7 @@ async def get_thumb(fid: str, retry: bool = False):
                 min_dim=_MIN_THUMB_DIM, min_stddev=_MIN_THUMB_STDDEV,
             )[0]
             if ok:
+                _cache_put(fid, data)
                 return data
             # 💾 A fake poster was found in the DB → remove it and fetch a real one
             _STATS["rejected"] += 1

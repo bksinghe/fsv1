@@ -15,8 +15,6 @@ image, no CDN, just CSS gradients, a decorative app preview and the shared
 every guest page. Auth form markup, field names, endpoints, error/message query
 parameters and the logged-in shell are deliberately untouched.
 """
-import html
-
 GUEST_BODY_CLASS = "guest"
 
 GUEST_TOPBAR = (
@@ -51,7 +49,6 @@ GUEST_AMBIENT = (
 
 def landing_body(bot_username: str) -> str:
     """Hero, feature strip and footer for the unauthenticated `/` page."""
-    bot = html.escape(str(bot_username or "AutoFilterBot"), quote=True)
     chips = "".join(
         f'<a class="wc-chip" href="/login">{label}</a>'
         for label in ("Movies", "Web Series", "4K UHD", "Anime", "Apps")
@@ -107,7 +104,6 @@ def landing_body(bot_username: str) -> str:
         '</section>'
         '<footer class="wc-foot"><span>© FAST FINDER · Web File Search</span>'
           '<div class="wc-foot-links">'
-            f'<a href="https://t.me/{bot}">🤖 Telegram Bot</a>'
             '<a href="/login">Sign In</a>'
             '<a href="/register">Create Account</a>'
           '</div></footer>'
@@ -235,10 +231,8 @@ font-size:9px;font-weight:900;letter-spacing:1.6px;color:var(--mut)}
 .wc-win-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;padding:0 14px 16px}
 .wc-mini{border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--card);padding-bottom:9px}
 .wc-mini-poster{aspect-ratio:16/9;
-background:linear-gradient(90deg,var(--bg3) 0,#30303f 50%,var(--bg3) 100%);
-background-size:200% 100%;animation:sh 1.6s infinite linear}
-.wc-mini:nth-child(2) .wc-mini-poster{animation-delay:-.5s}
-.wc-mini:nth-child(3) .wc-mini-poster{animation-delay:-1s}
+background:linear-gradient(135deg,var(--bg3),#30303f 52%,var(--bg3));
+/* Static preview placeholders: avoid an endless shimmer competing with real posters. */}
 .wc-mini-name{height:7px;margin:9px 9px 0;border-radius:4px;background:var(--bg3)}
 .wc-mini-name.short{width:58%;margin-top:5px}
 .wc-mini-chips{display:flex;gap:4px;margin:9px 9px 0}

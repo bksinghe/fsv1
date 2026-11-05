@@ -39,11 +39,7 @@ _STATS_JS = """<script>
     });
   }
   document.querySelectorAll('[data-count]').forEach(function(el){
-    setTimeout(function(){countUp(el, parseFloat(el.dataset.count), 900);},
-               parseFloat(el.dataset.delay||'0'));
-  });
-  document.querySelectorAll('.anim-card').forEach(function(el,i){
-    el.style.animationDelay=(i*0.07)+'s';
+    countUp(el, parseFloat(el.dataset.count), 360);
   });
 })();
 </script>"""
@@ -65,39 +61,28 @@ def _count(coll, query=None) -> int:
 
 
 async def _stats_numbers():
-    """One place for every counter — used by both the page and /api/db_stats."""
-    total_files = await _safe(asyncio.to_thread(db_count_documents), 0)
-
-    # 🆕 The same "Recently Added" count that used to sit in the search meta line:
-    # `total` from get_recent_files() = all files in the Recently Added grid.
-    _, _, recent_files = await _safe(get_recent_files(0, 1), ([], "", 0))
-    recent_files = recent_files or total_files
-
-    bot_users = await _safe(user_db.total_users_count(), 0)
-    premium_users = len(await _safe(user_db.get_premium_users(), []))
-    web_accounts = await _safe(asyncio.to_thread(_count, web_db.col), 0)
-    thumbnails = await _safe(
-        asyncio.to_thread(_count, collection, {"thumb_url": {"$exists": True}}), 0
+    """Read independent counters concurrently so the page waits for the slowest query only."""
+    (total_files, recent_result, bot_users, premium_users, web_accounts,
+     thumbnails, catalog, groups, gkinds) = await asyncio.gather(
+        _safe(asyncio.to_thread(db_count_documents), 0),
+        _safe(get_recent_files(0, 1), ([], "", 0)),
+        _safe(user_db.total_users_count(), 0),
+        _safe(user_db.get_premium_users(), []),
+        _safe(asyncio.to_thread(_count, web_db.col), 0),
+        _safe(asyncio.to_thread(_count, collection, {"thumb_url": {"$exists": True}}), 0),
+        _safe(catalog_store.counts(), {"posts": 0, "actors": 0}),
+        _safe(group_store.count(), 0),
+        _safe(group_store.kind_counts(),
+              {"quality_groups": 0, "episode_groups": 0, "episodes_total": 0}),
     )
-    # 🖼️ v5-style serial warmup queue (first-time thumbnails, one at a time)
+    recent_files = recent_result[2] or total_files
     queue = thumb_queue_state()
-    # 📚 Posts + Directory counts (v5's "Content Posts / Universal Directory" cards)
-    catalog = await _safe(catalog_store.counts(), {"posts": 0, "actors": 0})
-    groups = await _safe(group_store.count(), 0)
-    # 🎞️ qualities ⇄ 📺 episodes — how many groups of each kind, total episodes
-    gkinds = await _safe(group_store.kind_counts(),
-                         {"quality_groups": 0, "episode_groups": 0, "episodes_total": 0})
     return {
-        "total_files": total_files,
-        "recent_files": recent_files,
-        "bot_users": bot_users,
-        "premium_users": premium_users,
-        "web_accounts": web_accounts,
-        "thumbnails": thumbnails,
-        "thumb_queue": queue,
-        "posts": catalog.get("posts", 0),
-        "actors": catalog.get("actors", 0),
-        "groups": groups,
+        "total_files": total_files, "recent_files": recent_files,
+        "bot_users": bot_users, "premium_users": len(premium_users),
+        "web_accounts": web_accounts, "thumbnails": thumbnails,
+        "thumb_queue": queue, "posts": catalog.get("posts", 0),
+        "actors": catalog.get("actors", 0), "groups": groups,
         "quality_groups": gkinds.get("quality_groups", 0),
         "episode_groups": gkinds.get("episode_groups", 0),
         "episodes_total": gkinds.get("episodes_total", 0),
@@ -126,9 +111,28 @@ async def stats_page(req):
 
     s = await _stats_numbers()
 
-    body = f'''<div class="main" style="padding-top:36px;">
+    body = f'''<style>
+#statsDashboard{{max-width:1160px;margin:0 auto;padding:26px 4% 40px}}
+#statsDashboard .stat-title{{font-size:26px;letter-spacing:-.6px}}
+#statsDashboard .stat-lead{{margin-bottom:18px}}
+#statsDashboard .stat-hero{{display:grid;grid-template-columns:1fr auto;align-items:center;padding:20px 24px;border-radius:14px;background:linear-gradient(115deg,var(--card),var(--bg3));}}
+#statsDashboard .stat-hero::before{{width:4px;height:auto;bottom:0;right:auto;background:var(--red)}}
+#statsDashboard .stat-hero-label{{margin:0 0 5px}}
+#statsDashboard .stat-hero-num{{font-size:40px}}
+#statsDashboard .stat-hero-sub{{grid-column:1/-1;margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}}
+#statsDashboard .stat-grid{{grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}}
+#statsDashboard .st-card{{padding:15px;border-radius:11px;background:linear-gradient(150deg,var(--card),color-mix(in srgb,var(--card) 88%,var(--bg3)));}}
+#statsDashboard .st-card:nth-child(7){{grid-column:span 2;border-color:rgba(229,9,20,.28);background:linear-gradient(120deg,var(--card),rgba(229,9,20,.07))}}
+#statsDashboard .st-card:nth-child(7) .st-sub{{font-size:11px}}
+#statsDashboard .st-label{{font-size:9px;letter-spacing:.65px}}
+#statsDashboard .st-val{{font-size:28px;margin-bottom:5px}}
+#statsDashboard .st-sub{{font-size:10px;line-height:1.4}}
+@media(max-width:850px){{#statsDashboard .stat-grid{{grid-template-columns:repeat(2,minmax(0,1fr))}}}}
+@media(max-width:520px){{#statsDashboard{{padding:18px 4% 28px}}#statsDashboard .stat-hero{{padding:17px}}#statsDashboard .stat-hero-num{{font-size:34px}}#statsDashboard .st-card:nth-child(7){{grid-column:span 2}}}}
+@media(prefers-reduced-motion:reduce){{#statsDashboard .anim-card{{animation:none}}}}
+</style><div id="statsDashboard" class="main">
   <div class="stat-title anim-card">📊 Database Stats</div>
-  <div class="stat-lead anim-card">A v5-style database overview. The "Recently Added" file count now lives here instead of the search page meta line.</div>
+  <div class="stat-lead anim-card">A quick overview of your files, users and library activity.</div>
 
   <div class="stat-hero anim-card">
     <div class="stat-hero-label">🆕 Recently Added Files</div>
@@ -143,7 +147,7 @@ async def stats_page(req):
       <div class="st-sub">Indexed media documents</div></div>
 
     <div class="st-card anim-card"><div class="st-bar" style="background:#9933ff"></div>
-      <div class="st-label">🖼️ Cached Thumbnails</div>
+      <div class="st-label">🖼️ Poster IDs saved</div>
       <div class="st-val" style="color:#9933ff" data-count="{s['thumbnails']}" data-delay="160">{s['thumbnails']:,}</div>
       <div class="st-sub">Files with a Telegram poster reference</div></div>
 

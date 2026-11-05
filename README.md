@@ -100,6 +100,7 @@ Variables that are actually used in code (`API_ID`, `API_HASH`, `BOT_TOKEN`, `AD
 | `CATALOG_STORAGE_CHANNEL` | `BIN_CHANNEL` | Telegram channel for Post/Actor cover images. If `BIN_CHANNEL` is also in `INDEX_CHANNELS`, use a separate private channel so covers do not appear in file search |
 | `THUMB_BROWSER_CACHE` | `604800` | How long the browser caches a poster in seconds (7 days) |
 | `THUMB_FETCH_CONCURRENCY` | `6` | Download concurrency for files that **already have a `TG_ID:`** (first-time probing is always 1) |
+| `THUMB_CACHE_BYTES` | `16777216` | Maximum process-RAM thumbnail hot cache (16 MiB, LRU; set `0` to disable). Speeds up repeat loads of saved `TG_ID:` posters without storing image bytes in MongoDB |
 | `THUMB_PROBE_GAP_MIN` / `THUMB_PROBE_GAP_MAX` | `1.2` / `3.0` | Random anti-flood gap between first-time probes in seconds, like the v5 warmup |
 | `THUMB_PROBE_ATTEMPTS` | `5` | Maximum `send_cached_media` attempts per file |
 | `THUMB_FLOOD_EXTRA` | `10` | Extra buffer added to the seconds Telegram reports on FLOOD_WAIT |

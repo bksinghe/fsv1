@@ -43,11 +43,11 @@ class TestSingleSource(unittest.TestCase):
     def test_01_module_owns_the_whole_animation(self):
         css, js = reveal_css(), reveal_js()
         for frag in ("@keyframes rvEnter", ".rv-enter{opacity:0}",
-                     ".rv-enter.in{animation:rvEnter", "cubic-bezier(.34,1.2,.64,1)",
+                     ".rv-enter.in{animation:rvEnter .22s ease-out", "from{opacity:0}to{opacity:1}",
                      ".vcard:active,.gcard:active{transform:scale(.97)",
                      "prefers-reduced-motion:reduce"):
             self.assertIn(frag, css, f"REVEAL_CSS is missing {frag}")
-        for frag in ("IntersectionObserver", "threshold:.08", "animationDelay",
+        for frag in ("var DUR=0.22, STEP=0.03, MAX=4;", "IntersectionObserver", "threshold:.08", "animationDelay",
                      "window.RevealCards=", "function reveal(", "function stagger("):
             self.assertIn(frag, js, f"REVEAL_JS is missing {frag}")
         # The engine cleans the classes up so hover/press transforms keep working.
