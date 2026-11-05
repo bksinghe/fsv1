@@ -69,9 +69,9 @@ class script(object):
     ADMIN_COMMAND_TXT = (
         "<b>🛡️ ADMIN COMMANDS</b>\n\n"
 
-        "🎛 <b>Panel</b>\n"
-        "• /admin (or /dashboard) – live stats +\n"
-        "  this command list (no buttons)\n\n"
+        "📊 <b>Stats</b>\n"
+        "• /stats – Users, groups, files, premium,\n"
+        "  index speed, DB size &amp; uptime\n\n"
 
         "📁 <b>Indexing</b> <i>(PM · no command)</i>\n"
         "• Forward a channel post or a t.me link\n\n"

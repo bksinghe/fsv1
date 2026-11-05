@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""🎛 /admin panel — it must stay a button-free, text-only dashboard.
+"""📊 /stats command — it must stay a button-free, text-only report.
 
 Stdlib-only; runs without MongoDB / Telegram / hydrogram:
 
@@ -11,7 +11,7 @@ The dashboard used to be a wall of buttons: 💎 Premium, 🗑 Files, 🔄 Refre
 📊 Expiry Chart, ⏰ 3d/7d/30d, 📹 By Quality, 🗑 Delete ALL … every one of
 them only opened a screen that repeated a command that already exists.
 
-`/admin` is now **pure text**: live stats + the command list. Every action is
+`/stats` is now **pure text**: live stats + the command list. Every action is
 a command (`/addpremium`, `/extendpremium`, `/removepremium`, `/delete`,
 `/deleteall`, `/warmup_thumbs`), so a button would be dead weight.
 
@@ -92,24 +92,28 @@ class TestButtonFreePanel(unittest.TestCase):
             "only the /deleteall cancel button may carry a callback",
         )
 
-    def test_admin_command_still_exists(self):
+    def test_stats_command_exists(self):
         self.assertIn(
-            'filters.command(["admin", "dashboard"])', ADMIN_TOOLS,
-            "/admin must still open the dashboard",
+            'filters.command("stats")', ADMIN_TOOLS,
+            "/stats must show the statistics",
         )
 
-    def test_dashboard_is_sent_without_buttons(self):
+    def test_admin_panel_command_is_gone(self):
+        self.assertNotIn('"admin"', ADMIN_TOOLS, "/admin was replaced by /stats")
+        self.assertNotIn('"dashboard"', ADMIN_TOOLS, "/dashboard was replaced by /stats")
+
+    def test_stats_is_sent_without_buttons(self):
         src = ADMIN_TOOLS
-        open_idx = src.index('async def open_admin_panel')
+        open_idx = src.index("async def stats_cmd")
         open_body = src[open_idx:src.index("async def delete_cmd")]
-        self.assertNotIn("reply_markup", open_body, "the dashboard takes no keyboard")
+        self.assertNotIn("reply_markup", open_body, "the stats report takes no keyboard")
 
 
 class TestDashboardContent(unittest.TestCase):
     """The text replaces the buttons, so it must list what an admin can do."""
 
     def setUp(self):
-        self.dashboard = ADMIN_TOOLS[ADMIN_TOOLS.index("async def build_dashboard"):]
+        self.dashboard = ADMIN_TOOLS[ADMIN_TOOLS.index("async def build_stats"):]
 
     def test_stats_are_still_shown(self):
         for stat in ("Users", "Groups", "Indexed Files", "Premium Users",

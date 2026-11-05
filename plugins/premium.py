@@ -257,8 +257,7 @@ async def back_to_myplan_cb(client, query: CallbackQuery):
 
 # ======================================================
 # 🛠 ADMIN PREMIUM COMMANDS (PM)
-#    The buttons of /admin → 💎 Premium point at these
-#    commands, so they must stay in sync with that panel.
+#    /stats lists these commands, so keep the two in sync.
 # ======================================================
 
 def _admin_usage(cmd: str) -> str:

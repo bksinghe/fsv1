@@ -58,14 +58,14 @@ def fmt(dt):
 
 
 # ======================================================
-# 📊 DASHBOARD BUILDER (BUTTON-FREE)
-#    The panel used to carry 💎 Premium / 🗑 Files / 🔄 Refresh /
-#    ♻️ Restart buttons. Every one of them only opened a screen that
-#    repeated a command, so the dashboard is now pure text: live stats
-#    plus the command list, and admins simply type what they need.
+# 📊 STATS TEXT (BUTTON-FREE)
+#    The old admin-panel command used to carry 💎 Premium / 🗑 Files /
+#    🔄 Refresh / ♻️ Restart buttons. Every one of them only opened a
+#    screen that repeated a command, so that command was replaced by
+#    /stats, which is pure text: live stats plus the command list.
 # ======================================================
 
-async def build_dashboard():
+async def build_stats():
     stats = {
         "users": 0,
         "chats": 0,
@@ -120,7 +120,7 @@ async def build_dashboard():
         pass
 
     return (
-        "📊 <b>ADMIN CONTROL PANEL</b>\n\n"
+        "📊 <b>BOT STATISTICS</b>\n\n"
         f"👤 <b>Users</b>        : <code>{stats['users']}</code>\n"
         f"👥 <b>Groups</b>       : <code>{stats['chats']}</code>\n"
         f"📦 <b>Indexed Files</b>: <code>{stats['files']}</code>\n"
@@ -141,13 +141,14 @@ async def build_dashboard():
 
 
 # ======================================================
-# 🚀 /admin COMMAND — STATS + COMMANDS (NO BUTTONS)
+# 📊 /stats COMMAND — STATS + COMMANDS (NO BUTTONS)
 # ======================================================
 
-@Client.on_message(filters.command(["admin", "dashboard"]) & filters.user(ADMINS))
-async def open_admin_panel(bot, message):
-    msg = await message.reply("⏳ Loading admin panel...")
-    await safe_edit(msg, await build_dashboard())
+@Client.on_message(filters.command("stats") & filters.user(ADMINS))
+async def stats_cmd(bot, message):
+    """Live counters + the admin command list (replaces the old panel)"""
+    msg = await message.reply("⏳ Collecting stats...")
+    await safe_edit(msg, await build_stats())
 
 
 # ======================================================

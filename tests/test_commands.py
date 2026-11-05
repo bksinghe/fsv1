@@ -45,7 +45,7 @@ EXPECTED_USER_COMMANDS = {
 }
 
 EXPECTED_ADMIN_COMMANDS = {
-    "admin", "dashboard",
+    "stats",
     "addpremium", "extendpremium", "removepremium",
     "delete", "deleteall",
     "warmup_thumbs",
@@ -66,6 +66,7 @@ FORBIDDEN_COMMANDS = {
     "addblacklist", "removeblacklist", "blacklist", "blacklistwarn",
     "dlink", "removedlink", "dlinklist",
     "commands", "ping", "botinfo",
+    "admin", "dashboard",
 }
 
 
@@ -199,7 +200,7 @@ class TestCommandLists(unittest.TestCase):
 
     def test_admin_list_advertises_the_admin_features(self):
         listed = listed_commands("ADMIN_COMMAND_TXT")
-        for cmd in ("admin", "delete", "deleteall", "warmup_thumbs",
+        for cmd in ("stats", "delete", "deleteall", "warmup_thumbs",
                     "addpremium", "extendpremium", "removepremium"):
             with self.subTest(command=cmd):
                 self.assertIn(cmd, listed, f"/{cmd} is missing from the admin list")
