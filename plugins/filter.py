@@ -126,6 +126,46 @@ async def search_toggle(client, message):
 
 
 # =====================================================
+# 🤖 GROUP PROTECTION (MOVED FROM plugins/group_mgmt.py)
+# =====================================================
+@Client.on_message(filters.new_chat_members)
+async def anti_bot(client, message):
+    """Ban any bot a non-admin tries to add to the group"""
+    for user in message.new_chat_members:
+        if user.is_bot and not await is_group_admin(
+            client, message.chat.id, message.from_user.id
+        ):
+            await client.ban_chat_member(message.chat.id, user.id)
+
+
+# =====================================================
+# 🛠️ GROUP HELP (ADMIN ONLY · MOVED FROM group_mgmt.py)
+# =====================================================
+@Client.on_message(filters.group & filters.command("help"))
+async def help_command(client, message):
+    if not await is_group_admin(client, message.chat.id, message.from_user.id):
+        return
+
+    help_text = (
+        "🛠️ **Admin Help Menu**\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+
+        "🔍 **File Search:**\n"
+        "• `/search` – Show the current status\n"
+        "• `/search on` – Enable file search here\n"
+        "• `/search off` – Disable file search here\n\n"
+
+        "🤖 **Auto Protection:**\n"
+        "• Anti-bot system is enabled\n"
+        "• Only admins can add bots\n\n"
+
+        "⚠️ **Note:** `/help` is admin-only"
+    )
+
+    await message.reply(help_text)
+
+
+# =====================================================
 # 🛡️ RATE LIMITER
 # =====================================================
 def is_rate_limited(user_id):

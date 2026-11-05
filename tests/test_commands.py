@@ -278,6 +278,22 @@ class TestPluginLayout(unittest.TestCase):
         start = (ROOT / "plugins" / "start.py").read_text(encoding="utf-8")
         self.assertIn('filters.command("id")', start, "/id now lives in start.py")
 
+    def test_group_mgmt_is_gone(self):
+        """Its last two features moved to plugins/filter.py."""
+        self.assertFalse(
+            (ROOT / "plugins" / "group_mgmt.py").exists(),
+            "plugins/group_mgmt.py was merged into plugins/filter.py — keep it that way",
+        )
+
+    def test_group_features_live_in_filter(self):
+        src = (ROOT / "plugins" / "filter.py").read_text(encoding="utf-8")
+        self.assertIn("filters.new_chat_members", src, "🤖 anti-bot lives in filter.py")
+        self.assertIn(
+            'filters.group & filters.command("help")', src,
+            "the group /help command lives in filter.py",
+        )
+        self.assertIn("async def is_group_admin(", src)
+
 
 class TestUploadSites(unittest.TestCase):
     """/upload offers only the hosts that answer (and only when they fit)."""
