@@ -4,7 +4,7 @@ import asyncio
 from io import BytesIO
 from datetime import datetime, timedelta
 
-from hydrogram import Client, filters
+from hydrogram import Client, filters, enums
 from hydrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 
 from info import ADMINS, IS_PREMIUM, PRE_DAY_AMOUNT, UPI_ID, UPI_NAME, RECEIPT_SEND_USERNAME
@@ -253,6 +253,148 @@ async def back_to_myplan_cb(client, query: CallbackQuery):
         msg = "❌ Your premium plan has expired!" if status == "expired" else "❌ You don't have any active premium plan"
         return await query.message.edit(msg, reply_markup=buy_btn())
     await query.message.edit(myplan_text(data), reply_markup=myplan_buttons())
+
+
+# ======================================================
+# 🛠 ADMIN PREMIUM COMMANDS (PM)
+#    The buttons of /admin → 💎 Premium point at these
+#    commands, so they must stay in sync with that panel.
+# ======================================================
+
+def _admin_usage(cmd: str) -> str:
+    return (
+        f"❌ <b>Usage:</b> <code>/{cmd} user_id days</code>\n\n"
+        f"Example: <code>/{cmd} 123456789 30</code>"
+    )
+
+
+@Client.on_message(
+    filters.command(["addpremium", "extendpremium"]) & filters.private & filters.user(ADMINS)
+)
+async def admin_add_premium(client, message):
+    """💎 /addpremium <user_id> <days> · /extendpremium <user_id> <days>"""
+    cmd = message.command[0].lower()
+
+    if len(message.command) < 3:
+        return await message.reply(_admin_usage(cmd), parse_mode=enums.ParseMode.HTML)
+
+    try:
+        uid = int(message.command[1])
+        days = int(message.command[2])
+    except ValueError:
+        return await message.reply("❌ <code>user_id</code> and <code>days</code> must be numbers.",
+                                   parse_mode=enums.ParseMode.HTML)
+
+    if days <= 0 or days > 3650:
+        return await message.reply("❌ Days must be between <code>1</code> and <code>3650</code>.",
+                                   parse_mode=enums.ParseMode.HTML)
+
+    now = datetime.utcnow()
+    old = await db.get_plan(uid) or {}
+
+    old_expire = old.get("expire")
+    old_expire_dt = get_expiry_datetime(old_expire) if old_expire else None
+
+    # extend = add on top of a plan that is still running, add = start from now
+    if cmd == "extendpremium" and old_expire_dt and old_expire_dt > now:
+        expire_dt = old_expire_dt + timedelta(days=days)
+        action = "Extended"
+    else:
+        expire_dt = now + timedelta(days=days)
+        action = "Granted"
+
+    plan_text = f"{days} Days (Admin)"
+    invoice = {
+        "id": gen_invoice_id(),
+        "plan": plan_text,
+        "amount": 0,
+        "activated": fmt(now),
+        "expire": fmt(expire_dt),
+        "created_at": now.timestamp(),
+        "by": "admin",
+    }
+
+    # NOTE: db.get_plan() returns a shallow copy of the default plan for a user
+    #       without a document, so the list must be copied before appending.
+    invoices = list(old.get("invoices") or [])
+    invoices.append(invoice)
+
+    await db.update_plan(uid, {
+        "premium": True,
+        "plan": plan_text,
+        "expire": expire_dt.timestamp(),
+        "activated_at": now.timestamp(),
+        "invoices": invoices,
+    })
+
+    # Best-effort notice to the user (they may never have started the bot)
+    try:
+        await client.send_message(
+            uid,
+            f"🎉 <b>Premium {action}!</b>\n\n"
+            f"💎 Plan: <b>{plan_text}</b>\n"
+            f"⏰ Expires: <code>{fmt(expire_dt)}</code>\n\n"
+            "Use /myplan to check your subscription.",
+            parse_mode=enums.ParseMode.HTML,
+        )
+    except Exception:
+        pass
+
+    await message.reply(
+        f"✅ <b>Premium {action}</b>\n\n"
+        f"👤 User: <code>{uid}</code>\n"
+        f"💎 Plan: <b>{plan_text}</b>\n"
+        f"⏰ Expires: <code>{fmt(expire_dt)}</code>",
+        parse_mode=enums.ParseMode.HTML,
+    )
+
+
+@Client.on_message(filters.command("removepremium") & filters.private & filters.user(ADMINS))
+async def admin_remove_premium(client, message):
+    """🗑 /removepremium <user_id> — drop premium, keep the invoice history"""
+    if len(message.command) < 2:
+        return await message.reply(
+            "❌ <b>Usage:</b> <code>/removepremium user_id</code>\n\n"
+            "Example: <code>/removepremium 123456789</code>",
+            parse_mode=enums.ParseMode.HTML,
+        )
+
+    try:
+        uid = int(message.command[1])
+    except ValueError:
+        return await message.reply("❌ <code>user_id</code> must be a number.",
+                                   parse_mode=enums.ParseMode.HTML)
+
+    old = await db.get_plan(uid) or {}
+    if not old.get("premium"):
+        return await message.reply(
+            f"ℹ️ <code>{uid}</code> has no active premium plan.",
+            parse_mode=enums.ParseMode.HTML,
+        )
+
+    await db.update_plan(uid, {
+        "premium": False,
+        "plan": None,
+        "expire": None,
+        "activated_at": None,
+        "invoices": list(old.get("invoices") or []),
+    })
+
+    try:
+        await client.send_message(
+            uid,
+            "⚠️ <b>Premium Removed</b>\n\n"
+            "Your premium subscription has been removed by an admin.\n"
+            "Use /plan to buy a new plan.",
+            parse_mode=enums.ParseMode.HTML,
+        )
+    except Exception:
+        pass
+
+    await message.reply(
+        f"✅ <b>Premium removed</b>\n\n👤 User: <code>{uid}</code>",
+        parse_mode=enums.ParseMode.HTML,
+    )
 
 
 # ======================================================
@@ -537,7 +679,9 @@ async def update_user_premium(uid, plan_txt, amount):
         "created_at": now.timestamp()
     }
     
-    invoices = old.get("invoices", [])
+    # NOTE: get_plan() returns a shallow copy of the default plan for a user
+    #       without a document — copy the list so the default stays empty.
+    invoices = list(old.get("invoices") or [])
     invoices.append(invoice)
     
     await db.update_plan(uid, {

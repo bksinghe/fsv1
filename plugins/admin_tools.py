@@ -5,7 +5,7 @@ import asyncio
 from datetime import datetime, timedelta
 from collections import defaultdict
 
-from hydrogram import Client, filters
+from hydrogram import Client, filters, enums
 from hydrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
 from hydrogram.errors import MessageNotModified, MessageIdInvalid, BadRequest, ListenerTimeout
 
@@ -33,11 +33,11 @@ if not hasattr(temp, "START_TIME"):
 # 🛡 SAFE HELPERS
 # ======================================================
 
-async def safe_edit(msg, text, **kwargs):
+async def safe_edit(msg, text, parse_mode=enums.ParseMode.HTML, **kwargs):
     try:
         if msg.text == text:
             return True
-        await msg.edit(text, **kwargs)
+        await msg.edit(text, parse_mode=parse_mode, **kwargs)
         return True
     except (MessageNotModified, MessageIdInvalid, BadRequest):
         return False
@@ -57,6 +57,13 @@ def fmt(dt):
     if isinstance(dt, (int, float)):
         dt = datetime.utcfromtimestamp(dt)
     return dt.strftime("%d %b %Y, %I:%M %p")
+
+
+def get_expiry_datetime(expire):
+    """`expire` is a timestamp in newer plans and a datetime in older ones"""
+    if isinstance(expire, (int, float)):
+        return datetime.utcfromtimestamp(expire)
+    return expire
 
 
 # ======================================================
@@ -454,7 +461,7 @@ async def premium_callbacks(bot, query: CallbackQuery):
             await safe_edit(
                 query.message,
                 f"✅ No premium users expiring in next {days} days.\n\n"
-                "Use /premium to return to panel.",
+                "Use /admin to return to panel.",
                 reply_markup=InlineKeyboardMarkup(
                     [[InlineKeyboardButton("🔙 Back", callback_data="admin_premium")]]
                 )
@@ -509,15 +516,81 @@ async def premium_callbacks(bot, query: CallbackQuery):
             )
         )
 
-    # Check user
+    # Check user (asks for the ID and listens for it, like /deleteall does)
     elif action == "prm_check":
+        back = InlineKeyboardMarkup(
+            [[InlineKeyboardButton("🔙 Back", callback_data="admin_premium")]]
+        )
+
         await safe_edit(
             query.message,
             "🔍 <b>Check Premium Status</b>\n\n"
-            "Reply with user ID to check their premium status.",
-            reply_markup=InlineKeyboardMarkup(
-                [[InlineKeyboardButton("🔙 Back", callback_data="admin_premium")]]
+            "Send the user ID now (60s timeout).",
+            reply_markup=back
+        )
+
+        try:
+            reply = await bot.listen(query.message.chat.id, filters=filters.text, timeout=60)
+        except (ListenerTimeout, asyncio.TimeoutError):
+            return await safe_edit(
+                query.message,
+                "⌛ <b>Timed out</b> — no user ID received.",
+                reply_markup=back
             )
+
+        if reply is None or not (reply.text or "").strip():
+            return await safe_edit(
+                query.message,
+                "❌ No user ID received.",
+                reply_markup=back
+            )
+
+        # Remove the ID message so the chat stays clean
+        try:
+            await reply.delete()
+        except Exception:
+            pass
+
+        await safe_answer(query)
+
+        raw = (reply.text or "").split()[0] if reply.text else ""
+        try:
+            target = int(raw)
+        except (ValueError, TypeError):
+            return await safe_edit(
+                query.message,
+                f"❌ <code>{raw or 'empty'}</code> is not a valid user ID.",
+                reply_markup=back
+            )
+
+        if target in ADMINS:
+            body = "👑 <b>Bot admin</b> — lifetime premium access."
+        else:
+            plan = await db.get_plan(target) or {}
+            if not plan.get("premium"):
+                body = "🆓 <b>No active premium plan.</b>"
+            else:
+                expire = plan.get("expire")
+                exp_dt = get_expiry_datetime(expire) if expire else None
+                if exp_dt and exp_dt > datetime.utcnow():
+                    left = get_readable_time(
+                        int((exp_dt - datetime.utcnow()).total_seconds())
+                    )
+                    body = (
+                        "💎 <b>Premium Active</b>\n\n"
+                        f"📦 Plan: <code>{plan.get('plan')}</code>\n"
+                        f"⏰ Expires: <code>{fmt(exp_dt)}</code>\n"
+                        f"⏳ Remaining: <code>{left}</code>"
+                    )
+                else:
+                    body = "⌛ <b>Premium expired.</b>"
+
+        await safe_edit(
+            query.message,
+            f"🔍 <b>Premium Status</b>\n\n"
+            f"👤 User: <code>{target}</code>\n\n"
+            f"{body}",
+            reply_markup=back
         )
 
     # Add premium

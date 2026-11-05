@@ -1,9 +1,7 @@
 import random
-import time
 import asyncio
-from datetime import timedelta
 
-from hydrogram import Client
+from hydrogram import Client, enums
 from hydrogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton,
@@ -22,14 +20,26 @@ from info import ADMINS, PICS, URL, BIN_CHANNEL
 from Script import script
 
 from utils import is_premium, temp  # ✅ REMOVED: get_wish
-from database.users_chats_db import db
-from database.ia_filterdb import db_count_documents
 from stream_security import sign_params, USER_LINK_TTL
 
 
 # ======================================================
 # 🛡 SAFE EDIT HELPERS (IMPROVED)
 # ======================================================
+
+def has_media(msg) -> bool:
+    """True when `msg` carries media (photo / video / ...), i.e. it has a caption.
+
+    /start replies with a photo, but its fallback (and /help) sends plain text,
+    so the same help menu must be able to edit both kinds of message.
+    """
+    if getattr(msg, "media", None):
+        return True
+    return any(
+        getattr(msg, key, None)
+        for key in ("photo", "video", "animation", "audio", "document")
+    )
+
 
 async def safe_edit_media(msg, media, reply_markup=None, max_retries=3):
     """Safely edit message media with retry logic"""
@@ -51,11 +61,17 @@ async def safe_edit_media(msg, media, reply_markup=None, max_retries=3):
     return False
 
 
-async def safe_edit_caption(msg, caption, reply_markup=None, max_retries=3):
+async def safe_edit_caption(
+    msg,
+    caption,
+    reply_markup=None,
+    parse_mode=enums.ParseMode.HTML,
+    max_retries=3,
+):
     """Safely edit message caption with retry logic"""
     for attempt in range(max_retries):
         try:
-            await msg.edit_caption(caption, reply_markup=reply_markup)
+            await msg.edit_caption(caption, parse_mode=parse_mode, reply_markup=reply_markup)
             return True
         except MessageNotModified:
             return True  # Already in desired state
@@ -69,6 +85,89 @@ async def safe_edit_caption(msg, caption, reply_markup=None, max_retries=3):
             print(f"Unexpected edit caption error: {e}")
             return False
     return False
+
+
+async def safe_edit_text(
+    msg,
+    text,
+    reply_markup=None,
+    parse_mode=enums.ParseMode.HTML,
+    max_retries=3,
+):
+    """Safely edit a plain (non-media) message with retry logic"""
+    for attempt in range(max_retries):
+        try:
+            await msg.edit_text(text, parse_mode=parse_mode, reply_markup=reply_markup)
+            return True
+        except MessageNotModified:
+            return True  # Already in desired state
+        except (MessageIdInvalid, BadRequest) as e:
+            print(f"Edit text error (attempt {attempt + 1}): {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(0.5)
+            else:
+                return False
+        except Exception as e:
+            print(f"Unexpected edit text error: {e}")
+            return False
+    return False
+
+
+CAPTION_LIMIT = 1024  # Telegram's limit for photo / video captions
+
+
+async def safe_edit_body(
+    msg,
+    text,
+    reply_markup=None,
+    parse_mode=enums.ParseMode.HTML,
+    max_retries=3,
+):
+    """Edit a message in place — its caption when it has media, its text otherwise.
+
+    A caption holds only 1024 characters, so a longer list is sent as a new
+    message instead of failing with a silent BadRequest.
+    """
+    if has_media(msg):
+        if len(text.encode("utf-16-le")) // 2 > CAPTION_LIMIT:
+            try:
+                await msg.reply_text(text, parse_mode=parse_mode, reply_markup=reply_markup)
+                return True
+            except Exception as e:
+                print(f"Long text fallback error: {e}")
+                return False
+        return await safe_edit_caption(
+            msg, text, reply_markup=reply_markup,
+            parse_mode=parse_mode, max_retries=max_retries,
+        )
+    return await safe_edit_text(
+        msg, text, reply_markup=reply_markup,
+        parse_mode=parse_mode, max_retries=max_retries,
+    )
+
+
+# ======================================================
+# 🔘 HELP MENU BUTTONS
+# ======================================================
+
+def help_buttons(is_admin: bool = False):
+    """Buttons of the help menu — 🛡️ Admin Commands only for bot admins."""
+    rows = [[InlineKeyboardButton("👤 User Commands", callback_data="user_cmds")]]
+    if is_admin:
+        rows[0].append(
+            InlineKeyboardButton("🛡️ Admin Commands", callback_data="admin_cmds")
+        )
+    rows.append([InlineKeyboardButton("❌ Close", callback_data="close_data")])
+    return InlineKeyboardMarkup(rows)
+
+
+def back_buttons():
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton("🔙 Back", callback_data="help")],
+            [InlineKeyboardButton("❌ Close", callback_data="close_data")],
+        ]
+    )
 
 
 async def safe_edit_markup(msg, reply_markup, max_retries=3):
@@ -269,38 +368,25 @@ async def cb_handler(client: Client, query: CallbackQuery):
         # ==================================================
         if data == "help":
             try:
+                caption = script.HELP_TXT.format(query.from_user.mention)
+                buttons = help_buttons(uid in ADMINS)
                 pic = random.choice(PICS) if PICS else None
-                
-                if pic:
+
+                if pic and has_media(query.message):
                     success = await safe_edit_media(
                         query.message,
                         InputMediaPhoto(
                             pic,
-                            caption=script.HELP_TXT.format(query.from_user.mention)
+                            caption=caption,
+                            parse_mode=enums.ParseMode.HTML
                         ),
-                        reply_markup=InlineKeyboardMarkup(
-                            [
-                                [
-                                    InlineKeyboardButton("👤 User Commands", callback_data="user_cmds"),
-                                    InlineKeyboardButton("🛡️ Admin Commands", callback_data="admin_cmds")
-                                ],
-                                [InlineKeyboardButton("❌ Close", callback_data="close_data")]
-                            ]
-                        )
+                        reply_markup=buttons
                     )
                 else:
-                    success = await safe_edit_caption(
+                    success = await safe_edit_body(
                         query.message,
-                        script.HELP_TXT.format(query.from_user.mention),
-                        reply_markup=InlineKeyboardMarkup(
-                            [
-                                [
-                                    InlineKeyboardButton("👤 User Commands", callback_data="user_cmds"),
-                                    InlineKeyboardButton("🛡️ Admin Commands", callback_data="admin_cmds")
-                                ],
-                                [InlineKeyboardButton("❌ Close", callback_data="close_data")]
-                            ]
-                        )
+                        caption,
+                        reply_markup=buttons
                     )
                 
                 if success:
@@ -319,13 +405,10 @@ async def cb_handler(client: Client, query: CallbackQuery):
         # ==================================================
         if data == "user_cmds":
             try:
-                success = await safe_edit_caption(
+                success = await safe_edit_body(
                     query.message,
                     script.USER_COMMAND_TXT,
-                    reply_markup=InlineKeyboardMarkup(
-                        [[InlineKeyboardButton("🔙 Back", callback_data="help")],
-                         [InlineKeyboardButton("❌ Close", callback_data="close_data")]]
-                    )
+                    reply_markup=back_buttons()
                 )
                 
                 if success:
@@ -348,13 +431,10 @@ async def cb_handler(client: Client, query: CallbackQuery):
                 return
 
             try:
-                success = await safe_edit_caption(
+                success = await safe_edit_body(
                     query.message,
                     script.ADMIN_COMMAND_TXT,
-                    reply_markup=InlineKeyboardMarkup(
-                        [[InlineKeyboardButton("🔙 Back", callback_data="help")],
-                         [InlineKeyboardButton("❌ Close", callback_data="close_data")]]
-                    )
+                    reply_markup=back_buttons()
                 )
                 
                 if success:
@@ -365,51 +445,6 @@ async def cb_handler(client: Client, query: CallbackQuery):
             except Exception as e:
                 print(f"Admin commands error: {e}")
                 await safe_answer_query(query, "❌ Error loading commands", show_alert=True)
-            
-            return
-
-        # ==================================================
-        # 📊 ADMIN STATS
-        # ==================================================
-        if data == "stats_callback":
-            if uid not in ADMINS:
-                await safe_answer_query(query, "⚠️ Admins only", show_alert=True)
-                return
-
-            try:
-                # Gather stats with error handling
-                try:
-                    files = db_count_documents()
-                except Exception as e:
-                    print(f"File count error: {e}")
-                    files = "N/A"
-
-                try:
-                    users = await db.total_users_count()
-                except Exception as e:
-                    print(f"User count error: {e}")
-                    users = "N/A"
-
-                try:
-                    uptime = str(
-                        timedelta(seconds=int(time.time() - temp.START_TIME))
-                    )
-                except Exception as e:
-                    print(f"Uptime calc error: {e}")
-                    uptime = "N/A"
-
-                stats_text = (
-                    f"📊 <b>Bot Statistics</b>\n\n"
-                    f"📁 Files: <code>{files}</code>\n"
-                    f"👥 Users: <code>{users}</code>\n"
-                    f"⏱ Uptime: <code>{uptime}</code>"
-                )
-
-                await safe_answer_query(query, stats_text, show_alert=True)
-                
-            except Exception as e:
-                print(f"Stats callback error: {e}")
-                await safe_answer_query(query, "❌ Error loading stats", show_alert=True)
             
             return
 
