@@ -42,7 +42,7 @@ The Telegram Auto-Filter Bot (`fsv1`) now lets you **sign in on the web**, searc
 
 ## 🤖 Telegram Commands
 
-The help menu (`/start` → 👨‍🚒 Help, or `/help` / `/commands` in PM) is the **only** place commands are documented, and it is generated from two constants — `USER_COMMAND_TXT` and `ADMIN_COMMAND_TXT` in `Script.py`. `tests/test_commands.py` parses `plugins/` with `ast` and fails if a listed command has no `filters.command(...)` handler, if a `/cmd` written inside any reply is dead, or if a block grows past Telegram's 1024-character caption limit. **Commands that do not exist are no longer advertised** (`/index`, `/premium`, `/broadcast`, `/stats`, `/restart`, `/go`, `/trans`, `/uptime`, `/health`, `/softban`, `/tempban` were all dead entries and were removed).
+The help menu (`/start` → 👨‍🚒 Help) is the **only** place commands are documented, and it is generated from two constants — `USER_COMMAND_TXT` and `ADMIN_COMMAND_TXT` in `Script.py`. `tests/test_commands.py` parses `plugins/` with `ast` and fails if a listed command has no `filters.command(...)` handler, if a `/cmd` written inside any reply is dead, if a block grows past Telegram's 1024-character caption limit, or if a removed feature ever comes back. **Commands that do not exist are no longer advertised** (`/index`, `/premium`, `/broadcast`, `/stats`, `/restart`, `/go`, `/trans`, `/uptime`, `/health`, `/softban`, `/tempban` were all dead entries and were removed).
 
 | Where | Command | What it does |
 |---|---|---|
@@ -50,22 +50,18 @@ The help menu (`/start` → 👨‍🚒 Help, or `/help` / `/commands` in PM) is
 | 👤 PM + groups | `/id` | User / chat / sticker ID (reply to inspect someone else) |
 | 👤 PM + groups | `/ping` | Bot response time |
 | 👤 PM + groups | `/botinfo` | Uptime, Python version, library |
-| 👤 PM | `/help` · `/commands` | Help menu + 👤 User Commands / 🛡️ Admin Commands |
 | 👤 PM | _(plain text)_ | Search — **PM search is 💎 premium only**, group search is free |
 | 👤 PM | `/plan` · `/myplan` · `/invoice` | Premium plans, your plan/expiry/renew, latest invoice |
 | 👤 PM 💎 | `/upload` · `/cancel_upload` | Reply to a file → GoFile / Catbox / TmpFiles / File.io (premium or admin) |
 | 🛡️ PM | `/admin` (or `/dashboard`) | Live stats, 💎 Premium panel, 🗑 Delete Files, 🔄 Restart |
 | 🛡️ PM | `/addpremium <user_id> <days>` · `/extendpremium <user_id> <days>` · `/removepremium <user_id>` | Grant / extend / revoke premium (invoices are kept) |
 | 🛡️ PM | `/delete <keyword>` · `/deleteall` | Delete matching files · delete everything (asks `CONFIRM DELETE ALL`) |
-| 🛡️ PM | `/broadcast_all` · `/broadcast_premium` · `/broadcast_free` · `/pin_broadcast` | User broadcast (reply to a message) |
-| 🛡️ PM | `/grp_broadcast` · `/pin_grp_broadcast` | Group broadcast (reply to a message) |
 | 🛡️ PM | `/warmup_thumbs` | Sequential scan → real posters + duration / quality / size metadata |
 | 🛡️ PM | _(forward a channel post or send a `t.me` link)_ | Indexing — there is **no** `/index` command, the bot replies with ✅ START INDEXING |
 | 👥 Groups only | `/search on\|off` | Toggle group search (group admins) |
-| 👥 Groups only | `/mute` `/unmute` `/ban` `/warn` `/resetwarn` | Moderation (reply required) |
-| 👥 Groups only | `/addblacklist` `/removeblacklist` `/blacklist` `/blacklistwarn on\|off` | Blacklist system |
-| 👥 Groups only | `/dlink` `/removedlink` `/dlinklist` | Delayed auto-delete rules |
-| 👥 Groups only | `/help` | Group admin help (managed by `plugins/group_mgmt.py`) |
+| 👥 Groups only | `/help` | Group admin help (`plugins/group_mgmt.py`) — search toggle + anti-bot |
+
+**Removed features (no longer part of the bot):** 📢 broadcast (`/broadcast_all`, `/broadcast_premium`, `/broadcast_free`, `/pin_broadcast`, `/grp_broadcast`, `/pin_grp_broadcast` — `plugins/broadcast.py` and the `utils.py` helpers are gone; `/grp_broadcast` called a `db.get_all_chats()` that never existed), 👮 group moderation (`/mute` `/unmute` `/ban` `/warn` `/resetwarn` — `/warn` used `db.get_warn()`/`set_warn()`/`clear_warn()`, which were never defined, so it always raised), 🚫 blacklist (`/addblacklist` `/removeblacklist` `/blacklist` `/blacklistwarn`) and ⏱ delayed delete (`/dlink` `/removedlink` `/dlinklist`). Group `/help` now documents only what still exists.
 
 ---
 
@@ -245,7 +241,7 @@ plugins/callbacks.py             → the bot's Watch/Download links are now sign
 
 `info.py` now keeps only the config that is actually read by the code (unused env vars, `import os` and old link/collection/template constants were removed). Unused message templates in `Script.py`, DB helpers and methods that were never called (`run_sync`, `update_file_quality`, `database_health_check`, `delete_file_by_id`, ban/add-user API, `update_profile`, `download_as_bytesio`, `drop_media_info`, `last_online`), unused imports/locals and pointless `f`-strings/`global` statements were removed too. `pyflakes` is clean across the repo; web/auth/stream/thumbnail behaviour is unchanged.
 
-**🤖 Telegram command audit (this pass):** every entry of `Script.py`'s `USER_COMMAND_TXT` / `ADMIN_COMMAND_TXT` was checked against the handlers registered in `plugins/`. Dead entries (`/index`, `/premium`, `/broadcast`, `/stats`, `/restart`, `/go`, `/trans`, `/uptime`, `/health`, `/softban`, `/tempban`) were dropped and the real commands were filled in. The unreachable `stats_callback` branch of `plugins/callbacks.py` was removed, the admin panel's `Use /premium` hint now points at `/admin`, and the 💎 Premium buttons that printed `/addpremium` · `/extendpremium` · `/removepremium` without a handler are now real PM commands (`plugins/premium.py`), with 🔍 Check User listening for the user ID it asks for. `tests/test_commands.py` keeps the lists honest from now on.
+**🤖 Telegram command audit (this pass):** every entry of `Script.py`'s `USER_COMMAND_TXT` / `ADMIN_COMMAND_TXT` was checked against the handlers registered in `plugins/`. Dead entries (`/index`, `/premium`, `/broadcast`, `/stats`, `/restart`, `/go`, `/trans`, `/uptime`, `/health`, `/softban`, `/tempban`) were dropped and the real commands were filled in. The unreachable `stats_callback` branch of `plugins/callbacks.py` was removed, the admin panel's `Use /premium` hint now points at `/admin`, and the 💎 Premium buttons that printed `/addpremium` · `/extendpremium` · `/removepremium` without a handler are now real PM commands (`plugins/premium.py`), with 🔍 Check User listening for the user ID it asks for. The 📢 broadcast, 👮 moderation, 🚫 blacklist and ⏱ dlink features (and the PM `/help` · `/commands` shortcuts) were then **removed on request** — `plugins/broadcast.py`, the broadcast helpers in `utils.py`, the unused `db.get_all_users()` and the moderation/blacklist/dlink handlers in `plugins/group_mgmt.py` are gone. `tests/test_commands.py` keeps the lists honest from now on, including a guard that a removed command can never be registered or advertised again.
 
 ---
 

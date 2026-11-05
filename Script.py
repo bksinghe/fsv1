@@ -12,8 +12,7 @@ class script(object):
         "📌 Just send any movie / series name\n"
         "📌 Works in Groups &amp; PM (PM search = 💎 premium)\n"
         "📌 Premium unlocks extra power 💎\n\n"
-        "ℹ️ /help – Help menu\n"
-        "👤 /commands – Every user command\n"
+        "👇 Tap 👨‍🚒 Help for every command."
     )
 
     # ================= HELP =================
@@ -35,9 +34,7 @@ class script(object):
         "<b>👤 USER COMMANDS</b>\n\n"
 
         "🚀 <b>Basic</b>\n"
-        "• /start – Welcome message\n"
-        "• /help – This help menu\n"
-        "• /commands – This list\n\n"
+        "• /start – Welcome + 👨‍🚒 Help menu\n\n"
 
         "🔍 <b>Search</b>\n"
         "• Just send a movie / series name\n"
@@ -90,21 +87,9 @@ class script(object):
         "• /delete &lt;keyword&gt; – matching files\n"
         "• /deleteall – ALL files (confirmation)\n\n"
 
-        "📢 <b>Broadcast</b> <i>(reply to a message)</i>\n"
-        "• /broadcast_all – every user\n"
-        "• /broadcast_premium – premium users\n"
-        "• /broadcast_free – free users\n"
-        "• /pin_broadcast – every user, pinned\n"
-        "• /grp_broadcast – every group\n"
-        "• /pin_grp_broadcast – groups, pinned\n\n"
-
         "🖼 /warmup_thumbs – posters + metadata\n\n"
 
         "👥 <b>Group Only</b> <i>(not in PM)</i>\n"
-        "• /search on|off – group search\n"
-        "• /mute /unmute /ban /warn /resetwarn\n"
-        "• /addblacklist /removeblacklist\n"
-        "• /blacklist /blacklistwarn on|off\n"
-        "• /dlink /removedlink /dlinklist\n"
+        "• /search on|off – group file search\n"
         "• /help – group admin help"
     )

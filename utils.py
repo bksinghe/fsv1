@@ -341,58 +341,6 @@ async def cleanup_files_memory():
 
 
 # ======================================================
-# 📢 BROADCAST HELPERS (Koyeb Optimized)
-# ======================================================
-
-async def broadcast_messages(user_id, message, pin=False):
-    """Broadcast message to user with flood protection"""
-    try:
-        msg = await message.copy(chat_id=user_id)
-        if pin:
-            try:
-                await msg.pin(both_sides=True)
-            except:
-                pass
-        return "Success"
-    except FloodWait as e:
-        if e.value > 300:
-            return "Error"
-        await asyncio.sleep(e.value)
-        return await broadcast_messages(user_id, message, pin)
-    except Exception as e:
-        print(f"[ERROR] Broadcast error for user {user_id}: {e}")
-        try:
-            await db.delete_user(int(user_id))
-        except:
-            pass
-        return "Error"
-
-
-async def groups_broadcast_messages(chat_id, message, pin=False):
-    """Broadcast message to group with flood protection"""
-    try:
-        msg = await message.copy(chat_id=chat_id)
-        if pin:
-            try:
-                await msg.pin()
-            except:
-                pass
-        return "Success"
-    except FloodWait as e:
-        if e.value > 300:
-            return "Error"
-        await asyncio.sleep(e.value)
-        return await groups_broadcast_messages(chat_id, message, pin)
-    except Exception as e:
-        print(f"[ERROR] Group broadcast error for {chat_id}: {e}")
-        try:
-            await db.delete_chat(chat_id)
-        except:
-            pass
-        return "Error"
-
-
-# ======================================================
 # 🧰 UTILITIES
 # ======================================================
 

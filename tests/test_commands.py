@@ -38,7 +38,7 @@ ALLOWED_REFERENCES = {
 
 # Commands the PM help menu must keep advertising (they are the bot's features)
 EXPECTED_USER_COMMANDS = {
-    "start", "help", "commands",
+    "start",
     "plan", "myplan", "invoice",
     "upload", "cancel_upload",
     "id", "ping", "botinfo",
@@ -48,17 +48,24 @@ EXPECTED_ADMIN_COMMANDS = {
     "admin", "dashboard",
     "addpremium", "extendpremium", "removepremium",
     "delete", "deleteall",
-    "broadcast_all", "broadcast_premium", "broadcast_free", "pin_broadcast",
-    "grp_broadcast", "pin_grp_broadcast",
     "warmup_thumbs",
 }
 
 # Group-only commands (they live in the group /help text, not in the PM menu)
 EXPECTED_GROUP_COMMANDS = {
-    "search",
+    "search", "help",
+}
+
+# Features that were removed on purpose: no handler may come back, and no list
+# or reply may mention them again (broadcast, group moderation, blacklist,
+# delayed-delete, and the PM /help · /commands shortcuts).
+FORBIDDEN_COMMANDS = {
+    "broadcast", "broadcast_all", "broadcast_premium", "broadcast_free",
+    "pin_broadcast", "grp_broadcast", "pin_grp_broadcast",
     "mute", "unmute", "ban", "warn", "resetwarn",
     "addblacklist", "removeblacklist", "blacklist", "blacklistwarn",
     "dlink", "removedlink", "dlinklist",
+    "commands",
 }
 
 
@@ -192,24 +199,55 @@ class TestCommandLists(unittest.TestCase):
 
     def test_admin_list_advertises_the_admin_features(self):
         listed = listed_commands("ADMIN_COMMAND_TXT")
-        for cmd in ("admin", "delete", "deleteall", "broadcast_all",
-                    "grp_broadcast", "warmup_thumbs", "addpremium",
-                    "extendpremium", "removepremium"):
+        for cmd in ("admin", "delete", "deleteall", "warmup_thumbs",
+                    "addpremium", "extendpremium", "removepremium"):
             with self.subTest(command=cmd):
                 self.assertIn(cmd, listed, f"/{cmd} is missing from the admin list")
+
+    def test_removed_features_stay_removed(self):
+        """Broadcast / moderation / blacklist / dlink / PM /commands are gone."""
+        for cmd in sorted(FORBIDDEN_COMMANDS):
+            with self.subTest(command=cmd):
+                self.assertNotIn(
+                    cmd, self.registered,
+                    f"/{cmd} was removed — do not register a handler again",
+                )
+
+    def test_removed_features_are_not_advertised(self):
+        listed = listed_commands("USER_COMMAND_TXT") | listed_commands("ADMIN_COMMAND_TXT")
+        for cmd in sorted(FORBIDDEN_COMMANDS):
+            with self.subTest(command=cmd):
+                self.assertNotIn(
+                    cmd, listed,
+                    f"/{cmd} is listed in the help menu but the feature is gone",
+                )
+
+    def test_no_broadcast_plugin_left(self):
+        self.assertFalse(
+            (ROOT / "plugins" / "broadcast.py").exists(),
+            "plugins/broadcast.py was deleted — keep it that way",
+        )
+        self.assertNotIn(
+            "broadcast", (ROOT / "utils.py").read_text(encoding="utf-8").lower(),
+            "utils.py still carries broadcast helpers",
+        )
 
 
 class TestHelpMenu(unittest.TestCase):
     """The help menu is reachable in PM and hides admin commands from users."""
 
-    def test_pm_help_and_commands_handlers_exist(self):
+    def test_pm_help_and_commands_handlers_are_gone(self):
+        """/help and /commands were removed from PM — the 👨‍🚒 Help button is the menu."""
         start = (ROOT / "plugins" / "start.py").read_text(encoding="utf-8")
-        self.assertRegex(
-            start,
-            r'filters\.command\(\["help",\s*"commands"\]\)|filters\.command\(\["commands",\s*"help"\]\)',
-            "/help and /commands must have a PM handler",
+        self.assertNotRegex(
+            start, r'filters\.command\(\[[^\]]*"(help|commands)"',
+            "PM /help and /commands handlers were removed — keep it that way",
         )
-        self.assertIn("filters.private", start)
+        self.assertRegex(
+            start, r'filters\.command\("start"\)', "/start must still have a PM handler"
+        )
+        # The 👨‍🚒 Help button is the way in, so its callback must survive
+        self.assertIn('callback_data="help"', start)
 
     def test_admin_commands_button_is_gated(self):
         self.assertRegex(
