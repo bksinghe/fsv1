@@ -51,14 +51,12 @@ class script(object):
         "• /invoice – Your latest invoice\n\n"
 
         "📤 <b>Upload Tools</b> <i>(PM · 💎 premium or admin)</i>\n"
-        "• /upload – Reply to a file, then pick\n"
-        "  GoFile / Catbox / TmpFiles / File.io\n"
+        "• /upload – Reply to a file (max 200 MB),\n"
+        "  then pick 🟢 GoFile or 🔵 TmpFiles\n"
         "• /cancel_upload – Cancel a pending upload\n\n"
 
         "⚙️ <b>Utilities</b>\n"
-        "• /id – User / chat / sticker ID\n"
-        "• /ping – Bot response time\n"
-        "• /botinfo – Uptime, python &amp; library info"
+        "• /id – User / chat / sticker ID"
     )
 
     # ================= ADMIN COMMANDS =================

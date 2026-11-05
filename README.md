@@ -48,11 +48,9 @@ The help menu (`/start` → 👨‍🚒 Help) is the **only** place commands are
 |---|---|---|
 | 👤 PM + groups | `/start` | Welcome card with the 👨‍🚒 Help button |
 | 👤 PM + groups | `/id` | User / chat / sticker ID (reply to inspect someone else) |
-| 👤 PM + groups | `/ping` | Bot response time |
-| 👤 PM + groups | `/botinfo` | Uptime, Python version, library |
 | 👤 PM | _(plain text)_ | Search — **PM search is 💎 premium only**, group search is free |
 | 👤 PM | `/plan` · `/myplan` · `/invoice` | Premium plans, your plan/expiry/renew, latest invoice |
-| 👤 PM 💎 | `/upload` · `/cancel_upload` | Reply to a file → GoFile / Catbox / TmpFiles / File.io (premium or admin) |
+| 👤 PM 💎 | `/upload` · `/cancel_upload` | Reply to a file (**max 200 MB**) → 🟢 GoFile or 🔵 TmpFiles, with per-site limits and an automatic fallback if the chosen host fails (`plugins/tools.py`) |
 | 🛡️ PM | `/admin` (or `/dashboard`) | Live stats, 💎 Premium panel, 🗑 Delete Files, 🔄 Restart |
 | 🛡️ PM | `/addpremium <user_id> <days>` · `/extendpremium <user_id> <days>` · `/removepremium <user_id>` | Grant / extend / revoke premium (invoices are kept) |
 | 🛡️ PM | `/delete <keyword>` · `/deleteall` | Delete matching files · delete everything (asks `CONFIRM DELETE ALL`) |
@@ -61,7 +59,9 @@ The help menu (`/start` → 👨‍🚒 Help) is the **only** place commands are
 | 👥 Groups only | `/search on\|off` | Toggle group search (group admins) |
 | 👥 Groups only | `/help` | Group admin help (`plugins/group_mgmt.py`) — search toggle + anti-bot |
 
-**Removed features (no longer part of the bot):** 📢 broadcast (`/broadcast_all`, `/broadcast_premium`, `/broadcast_free`, `/pin_broadcast`, `/grp_broadcast`, `/pin_grp_broadcast` — `plugins/broadcast.py` and the `utils.py` helpers are gone; `/grp_broadcast` called a `db.get_all_chats()` that never existed), 👮 group moderation (`/mute` `/unmute` `/ban` `/warn` `/resetwarn` — `/warn` used `db.get_warn()`/`set_warn()`/`clear_warn()`, which were never defined, so it always raised), 🚫 blacklist (`/addblacklist` `/removeblacklist` `/blacklist` `/blacklistwarn`) and ⏱ delayed delete (`/dlink` `/removedlink` `/dlinklist`). Group `/help` now documents only what still exists.
+**Removed features (no longer part of the bot):** 📢 broadcast (`/broadcast_all`, `/broadcast_premium`, `/broadcast_free`, `/pin_broadcast`, `/grp_broadcast`, `/pin_grp_broadcast` — `plugins/broadcast.py` and the `utils.py` helpers are gone; `/grp_broadcast` called a `db.get_all_chats()` that never existed), 👮 group moderation (`/mute` `/unmute` `/ban` `/warn` `/resetwarn` — `/warn` used `db.get_warn()`/`set_warn()`/`clear_warn()`, which were never defined, so it always raised), 🚫 blacklist (`/addblacklist` `/removeblacklist` `/blacklist` `/blacklistwarn`), ⏱ delayed delete (`/dlink` `/removedlink` `/dlinklist`) and the ⚙️ `/ping` · `/botinfo` utilities. Group `/help` now documents only what still exists.
+
+**📤 `/upload` hosts:** 🟠 Catbox and 🟡 File.io were removed — every upload to them ended in `❌ Upload to … failed`. Only 🟢 **GoFile** (≤ 200 MB) and 🔵 **TmpFiles** (≤ 100 MB) remain, each with its own size limit: a host that cannot take the file is never offered (the picker shows `🚫 Too big for …` instead), the hard cap is **200 MB**, and if the chosen host still fails the bot silently tries the other one before reporting a failure.
 
 ---
 

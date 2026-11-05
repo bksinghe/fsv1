@@ -1,10 +1,4 @@
-import time
-import sys
-import platform
-
 from hydrogram import Client, filters, enums
-from utils import temp
-from info import IS_PREMIUM
 
 
 # ======================================================
@@ -85,42 +79,3 @@ async def get_id(client, message):
         parse_mode=enums.ParseMode.HTML,
         disable_web_page_preview=True
     )
-
-
-# ======================================================
-# 🏓 PING
-# ======================================================
-
-@Client.on_message(filters.command("ping"))
-async def ping_cmd(client, message):
-    start = time.time()
-    msg = await message.reply_text("🏓 Pinging…")
-    end = time.time()
-
-    await msg.edit_text(
-        f"🏓 <b>Pong!</b>\n\n⚡ <code>{int((end - start) * 1000)} ms</code>",
-        parse_mode=enums.ParseMode.HTML
-    )
-
-
-# ======================================================
-# 🤖 BOT INFO
-# ======================================================
-
-@Client.on_message(filters.command("botinfo"))
-async def bot_info(client, message):
-    uptime = int(time.time() - temp.START_TIME)
-    h = uptime // 3600
-    m = (uptime % 3600) // 60
-
-    text = (
-        f"🤖 <b>BOT INFO</b>\n\n"
-        f"⏱️ Uptime: <code>{h}h {m}m</code>\n"
-        f"🐍 Python: <code>{sys.version.split()[0]}</code>\n"
-        f"⚙️ Platform: <code>{platform.system()}</code>\n"
-        f"📦 Library: <code>Hydrogram</code>\n"
-        f"💎 Premium System: <code>{'ON' if IS_PREMIUM else 'OFF'}</code>\n"
-        f"🚀 Mode: <code>Ultra-Pro</code>"
-    )
-
-    await message.reply_text(text, parse_mode=enums.ParseMode.HTML)

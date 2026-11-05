@@ -41,7 +41,7 @@ EXPECTED_USER_COMMANDS = {
     "start",
     "plan", "myplan", "invoice",
     "upload", "cancel_upload",
-    "id", "ping", "botinfo",
+    "id",
 }
 
 EXPECTED_ADMIN_COMMANDS = {
@@ -65,7 +65,7 @@ FORBIDDEN_COMMANDS = {
     "mute", "unmute", "ban", "warn", "resetwarn",
     "addblacklist", "removeblacklist", "blacklist", "blacklistwarn",
     "dlink", "removedlink", "dlinklist",
-    "commands",
+    "commands", "ping", "botinfo",
 }
 
 
@@ -193,7 +193,7 @@ class TestCommandLists(unittest.TestCase):
     def test_user_list_advertises_the_pm_features(self):
         listed = listed_commands("USER_COMMAND_TXT")
         for cmd in ("start", "plan", "myplan", "invoice", "upload",
-                    "cancel_upload", "id", "ping", "botinfo"):
+                    "cancel_upload", "id"):
             with self.subTest(command=cmd):
                 self.assertIn(cmd, listed, f"/{cmd} is missing from the user list")
 
@@ -262,6 +262,43 @@ class TestHelpMenu(unittest.TestCase):
         for cmd in _tokens(_block("HELP_TXT")):
             with self.subTest(command=cmd):
                 self.assertIn(cmd, registered | ALLOWED_REFERENCES)
+
+
+class TestUploadSites(unittest.TestCase):
+    """/upload offers only the hosts that answer (and only when they fit)."""
+
+    def setUp(self):
+        self.tools = (ROOT / "plugins" / "tools.py").read_text(encoding="utf-8")
+
+    def test_dead_hosts_are_gone(self):
+        """The two hosts that always failed must not come back.
+
+        "https://file.io" (and not the harmless "gofile.io" of the GoFile API)
+        is what a re-added File.io uploader would contain.
+        """
+        low = self.tools.lower()
+        for host in ("catbox", "fileio", "https://file.io"):
+            with self.subTest(host=host):
+                self.assertNotIn(
+                    host, low, f"{host} always failed — do not add it back"
+                )
+
+    def test_only_two_hosts_are_offered(self):
+        keys = re.findall(r'^\s{4}"(\w+)": \{$', self.tools, re.M)
+        self.assertEqual(sorted(keys), ["gofile", "tmpfiles"])
+
+    def test_every_host_declares_a_size_limit(self):
+        for key, block in re.findall(r'^\s{4}"(\w+)": \{(.*?)\n\s{4}\},?$',
+                                     self.tools, re.M | re.S):
+            with self.subTest(host=key):
+                self.assertIn('"max"', block, f"{key} has no per-site limit")
+
+    def test_upload_limit_is_200_mb(self):
+        self.assertIn("MAX_FILE_SIZE = 200 * MB", self.tools)
+
+    def test_hosts_are_filtered_by_size(self):
+        self.assertIn("def sites_for(", self.tools)
+        self.assertIn("sites_for(size)", self.tools)
 
 
 class TestCommandTexts(unittest.TestCase):
