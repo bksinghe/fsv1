@@ -289,6 +289,20 @@ plugins/callbacks.py             → the bot's Watch/Download links are now sign
 
 **📊 /stats cleanup:** the report no longer repeats the admin command list (👨‍🚒 Help already documents every command) and the ⚡ index-speed counter is gone; it gained a 🌐 WEB section (server state, URL, port, web uptime, web accounts, live sessions, posts, profiles, catalog groups, posters, thumb queue). All counters now come from the new `database/stats_db.py` — the same `snapshot()` the web *Database Stats* page and `/api/db_stats` use, so the three screens always agree. `bot.py` records `temp.WEB_START` when the aiohttp site starts, which is what the 🖥️ server line reports. 80 tests pass; `tests/test_admin_panel.py` now asserts the command list and index speed stay out and that the web lines stay in.
 
+**🚨 plugins/index.py + plugins/channel.py audit:** these two were **not** fine — `channel.py` called three `database.ia_filterdb` helpers with arguments they do not accept, so every call raised `TypeError` and the handler's `except Exception` swallowed it:
+
+| call in `channel.py` | real signature | effect |
+|---|---|---|
+| `save_file(media, quality=quality)` | `save_file(media)` | 🔴 **auto-index saved nothing** — every new channel post got ❌ |
+| `detect_quality(media.file_name, caption)` | `detect_quality(name)` | 🔴 same try-block, crashed first |
+| `update_file_caption(fid, caption, quality)` | `update_file_caption(fid, caption)` | 🔴 every caption edit got ❌ |
+
+Fixed by matching the real API (quality is derived inside `save_file()`, and `update_file_caption()` only owns the caption — quality comes from the file name, which an edit never changes). Two silent bugs fell out with it: live posts now carry `media.caption = message.caption` before `save_file()` (**caption is part of the search text index**, so auto-indexed files used to be unfindable by their caption), and `from plugins.index import CANCEL_INDEX` imported a name that **never existed** — `index.py` now owns `ACTIVE_INDEXES`, the set of channels a manual run is working on, and `channel.py` skips live auto-indexing for them.
+
+`index.py` was also cleaned up: the always-`0` `skip` parameter (left over from the deleted "ask for skip" step) is gone, `idx#cancel` no longer crashes the `^idx#` start handler (`data[1] != "start"` guard — pressing 🛑 STOP raised `ValueError` before reaching `stop_index`), a stopped run reports ⏹ **Indexing Stopped** instead of ✅ **Index Completed**, a failed status edit can no longer abort a long run, and the resume collection reuses `ia_filterdb`'s Mongo client instead of opening a second one.
+
+`tests/test_db_calls.py` (new) parses every `plugins/` call against the real `database/` signatures with `ast`, so this class of bug now fails in CI — 88 tests pass.
+
 ---
 
 ## 🚢 Deploy
