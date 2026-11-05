@@ -61,6 +61,8 @@ The help menu (`/start` → 👨‍🚒 Help) is the **only** place commands are
 
 **Removed features (no longer part of the bot):** 📢 broadcast (`/broadcast_all`, `/broadcast_premium`, `/broadcast_free`, `/pin_broadcast`, `/grp_broadcast`, `/pin_grp_broadcast` — `plugins/broadcast.py` and the `utils.py` helpers are gone; `/grp_broadcast` called a `db.get_all_chats()` that never existed), 👮 group moderation (`/mute` `/unmute` `/ban` `/warn` `/resetwarn` — `/warn` used `db.get_warn()`/`set_warn()`/`clear_warn()`, which were never defined, so it always raised), 🚫 blacklist (`/addblacklist` `/removeblacklist` `/blacklist` `/blacklistwarn`), ⏱ delayed delete (`/dlink` `/removedlink` `/dlinklist`) and the ⚙️ `/ping` · `/botinfo` utilities. Group `/help` now documents only what still exists.
 
+**📦 Plugin layout:** `plugins/misc.py` held a single command (`/id`) after the `/ping` and `/botinfo` clean-up, so it was merged into `plugins/start.py` and deleted — `start.py` is now the home of the plain-user commands (`/start`, `/id`).
+
 **📤 `/upload` hosts:** 🟠 Catbox and 🟡 File.io were removed — every upload to them ended in `❌ Upload to … failed`. Only 🟢 **GoFile** (≤ 200 MB) and 🔵 **TmpFiles** (≤ 100 MB) remain, each with its own size limit: a host that cannot take the file is never offered (the picker shows `🚫 Too big for …` instead), the hard cap is **200 MB**, and if the chosen host still fails the bot silently tries the other one before reporting a failure.
 
 ---

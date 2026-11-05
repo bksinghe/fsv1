@@ -264,6 +264,20 @@ class TestHelpMenu(unittest.TestCase):
                 self.assertIn(cmd, registered | ALLOWED_REFERENCES)
 
 
+class TestPluginLayout(unittest.TestCase):
+    """Plugins that were merged into another file must not come back."""
+
+    def test_misc_plugin_is_gone(self):
+        self.assertFalse(
+            (ROOT / "plugins" / "misc.py").exists(),
+            "plugins/misc.py was merged into plugins/start.py — keep it that way",
+        )
+
+    def test_id_command_lives_in_start(self):
+        start = (ROOT / "plugins" / "start.py").read_text(encoding="utf-8")
+        self.assertIn('filters.command("id")', start, "/id now lives in start.py")
+
+
 class TestUploadSites(unittest.TestCase):
     """/upload offers only the hosts that answer (and only when they fit)."""
 
