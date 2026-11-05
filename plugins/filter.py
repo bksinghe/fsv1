@@ -15,7 +15,10 @@ from utils import (
     is_premium,
     temp,
     learn_keywords,
-    suggest_query
+    suggest_query,
+    premium_required_text,
+    premium_buy_markup,
+    log_error
 )
 
 # Configuration
@@ -267,49 +270,33 @@ async def filter_handler(client, message):
         # ==============================
         is_group_chat = message.chat.type in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP)
 
+        # Admins have every premium right; everyone else is looked up once here
+        # (the result is handed to send_results() so the 👑 crown is free)
+        user_is_premium = (
+            True if user_id in ADMINS else await check_premium(user_id, client)
+        )
+
         # ==============================
         # 📩 PM SEARCH - CHECK PREMIUM FIRST
         # ==============================
         if not is_group_chat:
-            # Admin always allowed
-            if user_id not in ADMINS:
-                # Check premium status
+            if not user_is_premium:
                 try:
-                    user_is_premium = await is_premium(user_id, client)
+                    await message.reply_text(
+                        premium_required_text(
+                            "PM search is only available for premium users."
+                        ),
+                        reply_markup=premium_buy_markup(),
+                        quote=True,
+                        parse_mode=enums.ParseMode.HTML,
+                    )
                 except Exception as e:
-                    print(f"Premium check error for {user_id}: {e}")
-                    user_is_premium = False
-                
-                # Block non-premium users
-                if not user_is_premium:
-                    text = (
-                        "🔒 <b>Premium Required</b>\n\n"
-                        "PM search is only available for premium users.\n\n"
-                        "💎 Get unlimited search access\n"
-                        "⚡ Faster responses\n"
-                        "🎯 Priority support\n\n"
-                        "Upgrade now to unlock this feature!"
+                    print(f"Failed to send premium message: {e}")
+                    await message.reply_text(
+                        "🔒 PM search requires premium subscription.",
+                        quote=True
                     )
-
-                    btn = InlineKeyboardMarkup(
-                        [[
-                            InlineKeyboardButton(
-                                "💰 Buy / Renew Premium",
-                                callback_data="buy_premium"
-                            )
-                        ]]
-                    )
-                    
-                    # Send message and return immediately
-                    try:
-                        await message.reply_text(text, reply_markup=btn, quote=True)
-                    except Exception as e:
-                        print(f"Failed to send premium message: {e}")
-                        await message.reply_text(
-                            "🔒 PM search requires premium subscription.",
-                            quote=True
-                        )
-                    return
+                return
 
             # If we reach here, user is premium or admin
             chat_id = user_id
@@ -331,20 +318,14 @@ async def filter_handler(client, message):
             is_pm = False
 
             # Rate limit check for groups (non-premium users only)
-            if user_id not in ADMINS:
-                try:
-                    user_is_premium = await is_premium(user_id, client)
-                except:
-                    user_is_premium = False
-                
-                if not user_is_premium:
-                    if is_rate_limited(user_id):
-                        text = (
-                            "⚠️ <b>Too many searches!</b>\n\n"
-                            "Please wait a moment before searching again.\n\n"
-                            "💡 <b>Tip:</b> Premium users get unlimited searches!"
-                        )
-                        return await message.reply_text(text, quote=True)
+            if not user_is_premium:
+                if is_rate_limited(user_id):
+                    text = (
+                        "⚠️ <b>Too many searches!</b>\n\n"
+                        "Please wait a moment before searching again.\n\n"
+                        "💡 <b>Tip:</b> Premium users get unlimited searches!"
+                    )
+                    return await message.reply_text(text, quote=True)
 
         # 🔥 auto-learn keywords (RAM only, ultra fast)
         try:
@@ -365,13 +346,12 @@ async def filter_handler(client, message):
             search=search,
             offset=0,
             source_chat_id=source_chat_id,
-            is_pm=is_pm
+            is_pm=is_pm,
+            premium=user_is_premium
         )
     
     except Exception as e:
-        print(f"Filter handler error: {e}")
-        import traceback
-        traceback.print_exc()
+        log_error("Filter handler", e)
         try:
             await message.reply_text(
                 "❌ An error occurred. Please try again.",
@@ -384,6 +364,58 @@ async def filter_handler(client, message):
 # =====================================================
 # 🔎 SEND / EDIT RESULTS
 # =====================================================
+
+async def check_premium(user_id, client):
+    """Premium lookup that never raises (DB / network hiccups are not fatal)"""
+    try:
+        return await is_premium(user_id, client)
+    except Exception as e:
+        print(f"Premium check error for {user_id}: {e}")
+        return False
+
+
+def build_results_text(files, search, total, page, total_pages, source_chat_id, crown=""):
+    """Header + file list of one result page"""
+    text = (
+        f"{crown}🔎 <b>Search:</b> <code>{search}</code>\n"
+        f"🎬 <b>Total Files:</b> <code>{total}</code>\n"
+        f"📄 <b>Page:</b> <code>{page} / {total_pages}</code>\n\n"
+    )
+
+    for f in files:
+        try:
+            size = get_size(f.get("file_size", 0))
+            file_id = f.get('_id', '')
+            file_name = f.get('file_name', 'Unknown')
+
+            link = f"https://t.me/{temp.U_NAME}?start=file_{source_chat_id}_{file_id}"
+            text += f"📁 <a href='{link}'>[{size}] {file_name}</a>\n\n"
+        except Exception as e:
+            print(f"File list error: {e}")
+            continue
+
+    return text
+
+
+def build_nav(search, offset, next_offset, results_per_page, source_chat_id, owner, is_pm):
+    """◀️ Prev / Next ▶️ row — None when the page stands alone"""
+    nav = []
+
+    if offset > 0:
+        callback_key = make_callback_key(
+            search, offset - results_per_page, source_chat_id, owner, is_pm
+        )
+        nav.append(InlineKeyboardButton("◀️ Prev", callback_data=f"page#{callback_key}"))
+
+    if next_offset:
+        callback_key = make_callback_key(
+            search, offset + results_per_page, source_chat_id, owner, is_pm
+        )
+        nav.append(InlineKeyboardButton("Next ▶️", callback_data=f"page#{callback_key}"))
+
+    return InlineKeyboardMarkup([nav]) if nav else None
+
+
 async def send_results(
     client,
     chat_id,
@@ -393,7 +425,8 @@ async def send_results(
     source_chat_id,
     is_pm,
     message=None,
-    tried_fallback=False
+    tried_fallback=False,
+    premium=None
 ):
     try:
         # Determine results per page based on PM or Group
@@ -438,47 +471,19 @@ async def send_results(
         page = (offset // results_per_page) + 1
         total_pages = ceil(total / results_per_page)
 
-        try:
-            is_premium_user = await is_premium(owner, client)
-            crown = "👑 " if is_premium_user else ""
-        except:
-            crown = ""
+        # The crown was decided by the caller; otherwise look it up (pagination)
+        if premium is None:
+            premium = await check_premium(owner, client)
+        crown = "👑 " if premium else ""
 
-        text = (
-            f"{crown}🔎 <b>Search:</b> <code>{search}</code>\n"
-            f"🎬 <b>Total Files:</b> <code>{total}</code>\n"
-            f"📄 <b>Page:</b> <code>{page} / {total_pages}</code>\n\n"
+        text = build_results_text(
+            files, search, total, page, total_pages, source_chat_id, crown
         )
 
-        # -------- FILE LIST --------
-        for f in files:
-            try:
-                size = get_size(f.get("file_size", 0))
-                file_id = f.get('_id', '')
-                file_name = f.get('file_name', 'Unknown')
-                
-                link = f"https://t.me/{temp.U_NAME}?start=file_{source_chat_id}_{file_id}"
-                text += f"📁 <a href='{link}'>[{size}] {file_name}</a>\n\n"
-            except Exception as e:
-                print(f"File list error: {e}")
-                continue
-
         # -------- PAGINATION --------
-        nav = []
-
-        if offset > 0:
-            callback_key = make_callback_key(search, offset - results_per_page, source_chat_id, owner, is_pm)
-            nav.append(
-                InlineKeyboardButton("◀️ Prev", callback_data=f"page#{callback_key}")
-            )
-
-        if next_offset:
-            callback_key = make_callback_key(search, offset + results_per_page, source_chat_id, owner, is_pm)
-            nav.append(
-                InlineKeyboardButton("Next ▶️", callback_data=f"page#{callback_key}")
-            )
-
-        markup = InlineKeyboardMarkup([nav]) if nav else None
+        markup = build_nav(
+            search, offset, next_offset, results_per_page, source_chat_id, owner, is_pm
+        )
 
         if message:
             # Update existing message
@@ -504,9 +509,7 @@ async def send_results(
             asyncio.create_task(auto_expire(msg))
     
     except Exception as e:
-        print(f"Send results error: {e}")
-        import traceback
-        traceback.print_exc()
+        log_error("Send results", e)
         error_text = "❌ An error occurred while fetching results."
         try:
             if message:
@@ -561,9 +564,7 @@ async def pagination_handler(client, query):
         )
     
     except Exception as e:
-        print(f"Pagination handler error: {e}")
-        import traceback
-        traceback.print_exc()
+        log_error("Pagination handler", e)
         try:
             await query.answer("❌ An error occurred", show_alert=True)
         except:

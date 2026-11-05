@@ -12,7 +12,7 @@ from database.ia_filterdb import (
     delete_files,
     delete_all_files,
 )
-from utils import get_size, get_readable_time, temp
+from utils import get_size, get_readable_time, fmt, temp
 
 
 # ======================================================
@@ -48,13 +48,6 @@ async def safe_answer(query, text="", alert=False):
         await query.answer(text, show_alert=alert)
     except Exception:
         pass
-
-
-def fmt(dt):
-    """Format datetime"""
-    if isinstance(dt, (int, float)):
-        dt = datetime.utcfromtimestamp(dt)
-    return dt.strftime("%d %b %Y, %I:%M %p")
 
 
 # ======================================================

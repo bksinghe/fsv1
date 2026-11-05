@@ -295,6 +295,87 @@ class TestPluginLayout(unittest.TestCase):
         self.assertIn("async def is_group_admin(", src)
 
 
+class TestSharedPremiumCode(unittest.TestCase):
+    """Pass 8: the premium text, the plan write and the checks exist once.
+
+    plugins/premium.py, plugins/filter.py and plugins/file_deliver.py used to
+    build the same 🔒 Premium Required message, the same datetime formatter and
+    the same "is this user premium" lookup in every place they needed them.
+    Those now live in utils.py / premium.py — these tests keep it that way.
+    """
+
+    def _read(self, name):
+        return (ROOT / name).read_text(encoding="utf-8")
+
+    def test_premium_prompt_is_defined_once(self):
+        """The 🔒 Premium Required text is written once — in utils.py."""
+        utils = self._read("utils.py")
+        self.assertIn("def premium_required_text(", utils)
+        self.assertIn("def premium_buy_markup(", utils)
+
+        for plugin in PLUGINS:
+            with self.subTest(plugin=plugin.name):
+                self.assertNotIn(
+                    "🔒 <b>Premium Required</b>", plugin.read_text(encoding="utf-8"),
+                    f"{plugin.name} rebuilds the premium prompt — call "
+                    "utils.premium_required_text() instead",
+                )
+
+    def test_premium_prompt_is_shared_by_every_feature(self):
+        for name in ("plugins/filter.py", "plugins/file_deliver.py"):
+            src = self._read(name)
+            with self.subTest(plugin=name):
+                self.assertIn("premium_required_text", src)
+                self.assertIn("premium_buy_markup", src)
+
+    def test_datetime_formatter_lives_in_utils_only(self):
+        """admin_tools.py and premium.py each used to carry a copy of fmt()."""
+        utils = self._read("utils.py")
+        self.assertIn("def fmt(", utils)
+
+        for plugin in PLUGINS:
+            with self.subTest(plugin=plugin.name):
+                self.assertNotIn(
+                    "def fmt(", plugin.read_text(encoding="utf-8"),
+                    f"{plugin.name} re-defines fmt() — import it from utils",
+                )
+
+    def test_plan_is_written_through_one_helper(self):
+        """apply_premium() / revoke_premium() own every db.update_plan() write."""
+        premium = self._read("plugins/premium.py")
+        self.assertIn("async def apply_premium(", premium)
+        self.assertIn("async def revoke_premium(", premium)
+        self.assertLessEqual(
+            premium.count("db.update_plan("), 2,
+            "a new plan write bypasses apply_premium()/revoke_premium()",
+        )
+
+    def test_pricing_comes_from_one_table(self):
+        premium = self._read("plugins/premium.py")
+        self.assertIn("PLAN_UNITS = {", premium)
+        self.assertIn("def plan_quote(", premium)
+        # the duration buttons and the selection handler quote the same way
+        self.assertEqual(
+            len(re.findall(r"= plan_quote\(", premium)), 2,
+            "duration_buttons() and duration_selected() must quote the same way",
+        )
+
+    def test_premium_check_is_not_reimplemented(self):
+        """file_deliver used to run its own DB lookup with its own grace rule."""
+        file_deliver = self._read("plugins/file_deliver.py")
+        self.assertNotIn("GRACE_PERIOD", file_deliver)
+        self.assertIn("await is_premium(user_id)", file_deliver)
+
+    def test_error_reporting_uses_one_helper(self):
+        for plugin in PLUGINS:
+            src = plugin.read_text(encoding="utf-8")
+            with self.subTest(plugin=plugin.name):
+                self.assertNotIn(
+                    "import traceback", src,
+                    f"{plugin.name} imports traceback inline — use utils.log_error()",
+                )
+
+
 class TestUploadSites(unittest.TestCase):
     """/upload offers only the hosts that answer (and only when they fit)."""
 
