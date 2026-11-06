@@ -901,6 +901,9 @@ FILTER_JS = r"""
 FILTER_OPTIONS = {
     "view":  VIEW_MODE_OPTIONS,
     "group": (("all", "All"), ("group", "Group"), ("ungroup", "UnGroup")),
+    # Admins get the v5-style scan action in the same filter dropdown.
+    "group_admin": (("all", "All"), ("group", "Group"), ("ungroup", "UnGroup"),
+                    ("scan_all", "⚙️ Scan all & build groups")),
 }
 
 # (id, options, caption, aria/title label, onchange)
@@ -1399,7 +1402,15 @@ let groupMode=localStorage.getItem('ff_group_mode')||'all';
 if(!['all','group','ungroup'].includes(groupMode))groupMode='all';
 ViewMode.init({storage:ViewMode.storageFor()});
 $('#groupSel').value=groupMode;
-function setGroup(v){groupMode=['all','group','ungroup'].includes(v)?v:'all';
+function setGroup(v){
+  if(v==='scan_all'){
+    // This is an admin action, not a persistent search filter. Restore the
+    // previous selection before launching the same scan used by the Group UI.
+    $('#groupSel').value=groupMode;
+    if(typeof window.gScanAll==='function')window.gScanAll();
+    return;
+  }
+  groupMode=['all','group','ungroup'].includes(v)?v:'all';
   localStorage.setItem('ff_group_mode',groupMode);
   $('#groupSel').value=groupMode;doSearch()}
 function doSearch(){curQ=$('#q').value.trim();load(true)}
@@ -1528,8 +1539,12 @@ def search_page(tg_id: int, role: str):
       the count lives only on the `/stats` (Database Stats) page.
     """
     admin = role == "admin"
+    search_filters = tuple(
+        dict(sp, options="group_admin") if admin and sp["id"] == "groupSel" else sp
+        for sp in SEARCH_FILTERS
+    )
     body = (SEARCH_BODY
-            .replace("__FILTER_BUTTONS__", filter_buttons(SEARCH_FILTERS))
+            .replace("__FILTER_BUTTONS__", filter_buttons(search_filters))
             .replace("__PLAYER_MODAL__", PLAYER_MODAL_HTML)
             .replace("__PLAYER_JS__", PLAYER_JS)
             .replace("__FILE_EDIT_HTML__", FILE_EDIT_HTML if admin else "")
