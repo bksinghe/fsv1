@@ -61,7 +61,7 @@ _NUM_OF_RE = re.compile(r"\b(\d{1,3})\s*(?:of|/)\s*\d{1,3}\b", re.I)
 _EPISODE_PATTERNS = (_S_E_RE, _X_RE, _EP_RE, _E_RE, _NUM_OF_RE)
 
 
-def _title_key(name, strip_episodes=False) -> str:
+def _title_key(name, strip_episodes=False, max_tokens=4) -> str:
     text = re.sub(r"[\[(][^\])]*[\])]", " ", str(name or "").lower())
     if strip_episodes:
         for pattern in _EPISODE_PATTERNS:
@@ -70,10 +70,10 @@ def _title_key(name, strip_episodes=False) -> str:
     for token in re.findall(r"[^\W_]+", text, re.UNICODE):
         if token in NOISE or _EPISODE_RE.match(token):
             continue
-        if len(token) <= 2 and token.isdigit():
+        if len(token) <= 2 and token.isdigit() and not strip_episodes:
             continue
         clean.append(token)
-        if len(clean) == 4:
+        if max_tokens and len(clean) >= max_tokens:
             break
     return " ".join(clean)
 
@@ -84,8 +84,29 @@ def title_key(name) -> str:
 
 
 def series_key(name) -> str:
-    """Series key: `title_key` plus stripping S01E02 / 1x02 / Ep 2 markers."""
-    return _title_key(name, strip_episodes=True)
+    """Normalize the actual series title, retaining more tokens than a quality key.
+
+    For the usual `Series Name S01E02 1080p` format, only the title before the
+    episode marker is used; release tags after it cannot merge unrelated series.
+    When the marker leads the name, fall back to stripping markers from all text.
+    """
+    text = str(name or "").lower()
+    matches = []
+    for pattern in _EPISODE_PATTERNS:
+        match = pattern.search(text)
+        if match:
+            matches.append(match)
+    if matches:
+        marker = min(matches, key=lambda match: match.start())
+        prefix = text[:marker.start()]
+        # Episode markers may be enclosed in a trailing `[...]` / `(...)` tag.
+        for opening, closing in (("[", "]"), ("(", ")")):
+            if prefix.rfind(opening) > prefix.rfind(closing):
+                prefix = prefix[:prefix.rfind(opening)]
+        key = _title_key(prefix, strip_episodes=True, max_tokens=12)
+        if key:
+            return key
+    return _title_key(text, strip_episodes=True, max_tokens=12)
 
 
 def group_title(name) -> str:
@@ -97,8 +118,22 @@ def group_title(name) -> str:
 
 
 def series_title(name) -> str:
-    """Display title for an automatic series group, without episode markers."""
-    s = str(name or "")
+    """Display title for an automatic series group, without episode/release tags."""
+    original = str(name or "")
+    matches = []
+    for pattern in _EPISODE_PATTERNS:
+        match = pattern.search(original)
+        if match:
+            matches.append(match)
+    if matches:
+        prefix = original[:min(matches, key=lambda match: match.start()).start()]
+        for opening, closing in (("[", "]"), ("(", ")")):
+            if prefix.rfind(opening) > prefix.rfind(closing):
+                prefix = prefix[:prefix.rfind(opening)]
+        if _title_key(prefix, strip_episodes=True, max_tokens=12):
+            return group_title(prefix)
+
+    s = re.sub(r"[\[(][^\])]*[\])]", " ", original)
     for pattern in _EPISODE_PATTERNS:
         s = pattern.sub(" ", s)
     return group_title(s)

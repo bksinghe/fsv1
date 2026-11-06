@@ -210,6 +210,56 @@ class TestDurationAwareSearchGrouping(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(group_card["episodes"], 3)
         self.assertEqual(group_card["duration"], "")
 
+    async def test_series_join_rejects_incomplete_member_metadata(self):
+        self.store.files["known"] = {
+            "_id": "known", "file_name": "North Star S01E01.mkv", "duration": 1500,
+        }
+        group = await self.store.create(
+            name="North Star", items=[("known", "North Star S01E01.mkv"),
+                                      ("missing", "North Star S01E02.mkv")],
+            auto_keys=[group_db.series_key("North Star S01E01.mkv")],
+            kind=group_db.KIND_EPISODES,
+        )
+        compatible = await ROUTE_NAMESPACE["_auto_join_compatible"](
+            group, {"name": "North Star S01E03.mkv", "duration_seconds": 2100},
+            {}, {},
+        )
+        self.assertFalse(compatible)
+
+    async def test_series_titles_sharing_four_word_prefix_are_not_merged(self):
+        cards = [
+            {"file_id": "batman", "name": "The Amazing Adventures of Batman S01E01.mkv",
+             "duration_seconds": 1800},
+            {"file_id": "superman", "name": "The Amazing Adventures of Superman S01E02.mkv",
+             "duration_seconds": 1800},
+        ]
+        grouped = await ROUTE_NAMESPACE["group_cards"](cards)
+        self.assertEqual(self.store.groups, {})
+        self.assertEqual(len(grouped), 2)
+
+    async def test_short_numeric_series_title_is_still_grouped_by_episode_identity(self):
+        cards = [
+            {"file_id": "24e1", "name": "24 S01E01 1080p.mkv", "duration_seconds": 1800},
+            {"file_id": "24e2", "name": "24 S01E02 720p.mkv", "duration_seconds": 2100},
+        ]
+        grouped = await ROUTE_NAMESPACE["group_cards"](cards)
+        self.assertEqual(len(self.store.groups), 1)
+        group = next(iter(self.store.groups.values()))
+        self.assertEqual(group["auto_keys"], ["24"])
+        self.assertEqual(group["kind"], group_db.KIND_EPISODES)
+        self.assertTrue(any(card.get("group") for card in grouped))
+
+    async def test_large_search_quality_bucket_is_left_ungrouped(self):
+        cards = [
+            {"file_id": str(i), "name": f"Alpha Feature Film 1080p (copy {i}).mkv",
+             "duration_seconds": 5400}
+            for i in range(31)
+        ]
+        grouped = await ROUTE_NAMESPACE["group_cards"](cards)
+        self.assertEqual(self.store.groups, {})
+        self.assertEqual(len(grouped), 31)
+        self.assertTrue(all(not card.get("group") for card in grouped))
+
     async def test_unequal_or_unknown_quality_durations_never_form_search_groups(self):
         cards = [
             {"file_id": "a", "name": "Quiet River 1080p.mkv", "duration_seconds": 6000},
@@ -330,6 +380,10 @@ class TestDurationAndEpisodeKeys(unittest.TestCase):
         self.assertNotEqual(group_db.title_key(first), group_db.title_key(another))
         self.assertEqual(group_db.series_key(first), group_db.series_key(another))
         self.assertNotEqual(group_db.episode_identity(first), group_db.episode_identity(another))
+        self.assertEqual(
+            group_db.series_title("Northern Lights [S01E02] WEB-DL 1080p.mkv"),
+            "Northern Lights",
+        )
 
     def test_duration_normalizes_numeric_and_clock_values(self):
         self.assertEqual(group_db.duration_seconds({"duration": "1:02:03"}), 3723)

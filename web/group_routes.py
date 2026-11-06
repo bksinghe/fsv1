@@ -160,9 +160,12 @@ async def _auto_join_compatible(g, card, meta_cache, cards_by_id):
     if normal_kind(g.get("kind")) == KIND_EPISODES:
         if not incoming_episode:
             return False
+        members = [str(m) for m in (g.get("members") or [])]
         rows = await _group_member_meta(g, meta_cache, cards_by_id)
+        if not members or len(rows) != len(members):
+            return False
         names = [str(row.get("file_name") or row.get("name") or "") for row in rows]
-        return bool(names) and all(
+        return all(
             episode_identity(name) and series_key(name) == series_key(incoming_name)
             for name in names
         )
@@ -353,13 +356,14 @@ async def group_cards(cards, normalize=None, auto_join=True):
     for c in unowned:
         if episode_identity(c.get("name")):
             key = series_key(c.get("name"))
-            if len(key) >= 3:
+            if len(key) >= 2:
                 episode_buckets[key].append(c)
 
     auto_candidates = []
     series_ids = set()
     for key, entries in episode_buckets.items():
-        if guess_kind([c.get("name") for c in entries]) == KIND_EPISODES:
+        if (len(entries) <= SCAN_MAX_SERIES
+                and guess_kind([c.get("name") for c in entries]) == KIND_EPISODES):
             auto_candidates.append((key, KIND_EPISODES, entries, f"series:{key}"))
             series_ids.update(str(c.get("file_id") or "") for c in entries)
 
@@ -373,7 +377,7 @@ async def group_cards(cards, normalize=None, auto_join=True):
         if key and secs:
             quality_buckets[(key, secs, episode_identity(c.get("name")))].append(c)
     for (key, secs, ep_id), bucket in quality_buckets.items():
-        if len(bucket) >= 2:
+        if 2 <= len(bucket) <= SCAN_MAX_GROUP:
             auto_candidates.append((key, KIND_QUALITIES, bucket,
                                     f"quality:{key}:{secs}:{ep_id}"))
 
@@ -684,7 +688,9 @@ async def api_group_update(req):
         if tf:
             fields["thumb_url"] = ""       # remove the custom upload, use the selected member
     if data.get("auto_keys"):
-        fields["auto_keys"] = sorted({title_key(k) for k in data["auto_keys"] if title_key(k)})
+        key_fn = (series_key if normal_kind(data.get("kind") or g.get("kind")) == KIND_EPISODES
+                  else title_key)
+        fields["auto_keys"] = sorted({key_fn(k) for k in data["auto_keys"] if key_fn(k)})
     if data.get("clear_custom"):
         fields["thumb_url"] = ""
     if "kind" in data:
@@ -692,6 +698,14 @@ async def api_group_update(req):
         if k not in (KIND_QUALITIES, KIND_EPISODES):
             return _json({"ok": False, "error": "Invalid group type"}, 400)
         fields["kind"] = k
+        if "auto_keys" not in data:
+            key_fn = series_key if k == KIND_EPISODES else title_key
+            derived_keys = {
+                key_fn(f.get("name")) for f in (g.get("files") or [])
+                if key_fn(f.get("name"))
+            }
+            if derived_keys:
+                fields["auto_keys"] = sorted(derived_keys)
     if "episode_map" in data:
         fields["episode_map"] = clean_episode_map(data.get("episode_map"))
     updated = await store.update(gid, fields)
@@ -842,11 +856,11 @@ async def _scan_all_groups():
                 )
                 if not updated:
                     continue
-                group_by_id[gid] = updated
-                for key2, group_list in groups_by_key.items():
-                    for i, old in enumerate(group_list):
-                        if str(old.get("_id") or "") == gid:
-                            group_list[i] = updated
+                # `g` is shared by every key bucket for this group; update it in
+                # place instead of scanning every group key on each attachment.
+                g.clear()
+                g.update(updated)
+                group_by_id[gid] = g
                 for fid, _ in fresh:
                     owner[fid] = gid
                     fix_set[gid].append(fid)
@@ -861,7 +875,7 @@ async def _scan_all_groups():
             name = str(d.get("file_name") or "")
             if episode_identity(name):
                 key = series_key(name)
-                if len(key) >= 3:
+                if len(key) >= 2:
                     episode_buckets[key].append(d)
 
         series_ids = set()
