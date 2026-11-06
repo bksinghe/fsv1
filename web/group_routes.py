@@ -30,8 +30,9 @@ import info as _info
 from info import BIN_CHANNEL, THUMB_BROWSER_CACHE
 from utils import temp
 from database.group_db import (
-    store, title_key, group_title, quality_label, episode_chips,
-    episode_label, detect_episodes, guess_kind, normal_kind,
+    store, title_key, series_key, group_title, series_title, quality_label, episode_chips,
+    episode_label, episode_identity, duration_seconds,
+    detect_episodes, guess_kind, normal_kind,
     clean_episode_map, group_kind_meta, KIND_QUALITIES, KIND_EPISODES,
 )
 from web.web_assets import get_auth
@@ -43,8 +44,10 @@ group_routes = web.RouteTableDef()
 
 _STORAGE_CHANNEL = getattr(_info, "CATALOG_STORAGE_CHANNEL", BIN_CHANNEL)
 _MAX_UPLOAD = 5 * 1024 * 1024
-SCAN_MAX_GROUP = 30          # a larger bucket is a very common name — do not group it
+SCAN_MAX_GROUP = 30          # a larger quality bucket is a very common name — do not group it
+SCAN_MAX_SERIES = 500        # series may contain many episodes but should still be bounded
 SCAN_STATE = {"running": False}
+_AUTO_GROUP_LOCK = asyncio.Lock()
 
 
 def _json(data, status=200):
@@ -127,6 +130,128 @@ def _group_thumb_url(g, variants):
     return ""
 
 
+async def _group_member_meta(g, cache, cards_by_id):
+    """Member durations/names for safe auto-join checks; reuse visible search cards."""
+    gid = str(g.get("_id") or "")
+    if gid in cache:
+        return cache[gid]
+    members = [str(m) for m in (g.get("members") or [])]
+    meta = {}
+    for fid in members:
+        card = cards_by_id.get(fid)
+        if card:
+            meta[fid] = {
+                "file_name": str(card.get("name") or card.get("file_name") or ""),
+                "duration_seconds": duration_seconds(card),
+            }
+    missing = [fid for fid in members if fid not in meta]
+    if missing:
+        for doc in await store.files_by_ids(missing):
+            meta[str(doc.get("_id") or "")] = doc
+    rows = [meta[fid] for fid in members if fid in meta]
+    cache[gid] = rows
+    return rows
+
+
+async def _auto_join_compatible(g, card, meta_cache, cards_by_id):
+    """Only series episodes or same-duration/same-episode quality files may auto-join."""
+    incoming_name = card.get("name") or card.get("file_name") or ""
+    incoming_episode = episode_identity(incoming_name)
+    if normal_kind(g.get("kind")) == KIND_EPISODES:
+        if not incoming_episode:
+            return False
+        rows = await _group_member_meta(g, meta_cache, cards_by_id)
+        names = [str(row.get("file_name") or row.get("name") or "") for row in rows]
+        return bool(names) and all(
+            episode_identity(name) and series_key(name) == series_key(incoming_name)
+            for name in names
+        )
+
+    incoming_duration = duration_seconds(card)
+    if not incoming_duration:
+        return False
+    members = [str(m) for m in (g.get("members") or [])]
+    rows = await _group_member_meta(g, meta_cache, cards_by_id)
+    if not members or len(rows) != len(members):
+        return False
+    durations = {duration_seconds(row) for row in rows}
+    if durations != {incoming_duration}:
+        return False
+
+    member_episodes = {
+        episode_identity(row.get("file_name") or row.get("name")) for row in rows
+    }
+    if incoming_episode or any(member_episodes):
+        return bool(incoming_episode) and member_episodes == {incoming_episode}
+    return True
+
+
+async def _persist_auto_group(key, candidates, kind, cards_by_id):
+    """Save one safe automatic bucket, or add it to a compatible permanent group."""
+    if len(candidates) < 2:
+        return None, set()
+    async with _AUTO_GROUP_LOCK:
+        groups = await store.by_keys([key])
+        memberships = await store.by_members([c.get("file_id") for c in candidates])
+        owners = {}
+        for group in memberships:
+            for fid in group.get("members") or []:
+                owners[str(fid)] = str(group.get("_id") or "")
+        meta_cache = {}
+
+        for g in groups:
+            if normal_kind(g.get("kind")) != kind:
+                continue
+            if not await _auto_join_compatible(g, candidates[0], meta_cache, cards_by_id):
+                continue
+            gid = str(g.get("_id") or "")
+            excluded = {str(x) for x in (g.get("excluded") or [])}
+            handled, additions = set(), []
+            existing = {str(x) for x in (g.get("members") or [])}
+            for c in candidates:
+                fid = str(c.get("file_id") or "")
+                owner_gid = owners.get(fid)
+                if fid in excluded or (owner_gid and owner_gid != gid):
+                    handled.add(fid)
+                    continue
+                handled.add(fid)
+                if fid not in existing:
+                    additions.append((fid, str(c.get("name") or "")))
+            if additions:
+                g = await store.add_members(gid, additions, auto_keys=[key]) or g
+                await store.mark_files([fid for fid, _ in additions], gid)
+            return g, handled
+
+        # A concurrent request may have assigned some files while this task waited.
+        additions = []
+        handled = set()
+        for c in candidates:
+            fid = str(c.get("file_id") or "")
+            if fid and not owners.get(fid):
+                handled.add(fid)
+                additions.append((fid, str(c.get("name") or "")))
+            elif fid:
+                handled.add(fid)
+        if len(additions) < 2:
+            return None, handled
+
+        group_items = additions
+        episode_map = detect_episodes(group_items) if kind == KIND_EPISODES else {}
+        first_name = group_items[0][1]
+        group_name = (series_title(first_name) if kind == KIND_EPISODES
+                      else group_title(first_name)) or first_name
+        g = await store.create(
+            name=group_name,
+            items=group_items,
+            auto_keys=[key],
+            auto_created=True,
+            kind=kind,
+            episode_map=episode_map,
+        )
+        await store.mark_files([fid for fid, _ in group_items], str(g["_id"]))
+        return g, handled
+
+
 # ─────────────────────────────────────────────────────────────
 # 🎴 GROUP-FIRST SEARCH — turn the page's cards into groups
 # ─────────────────────────────────────────────────────────────
@@ -135,10 +260,10 @@ async def group_cards(cards, normalize=None, auto_join=True):
 
     * Saved group (`members`/`auto_keys`) → **permanent** group card, `gid` + `num`,
       and **every** group member appears as a variant (even off-page ones).
-    * Same-title unsaved bucket → auto group card (`manual:false`) with a
-      "Save as Group" action for admins — clicking makes it permanent.
-    * `auto_join`: a new file matching a saved group's `auto_keys` is joined in
-      the DB immediately (v5's `_persist_joins`) — an `excluded` file stays out.
+    * Safe same-duration quality buckets and multi-episode series are auto-created
+      as permanent DB groups; only unknown/mismatched-duration quality files stay single.
+    * `auto_join`: a new file matching a saved group's `auto_keys` is joined only
+      when its group kind/duration/episode identity is compatible; exclusions stay out.
     * Input dicts are not mutated; ranking is preserved (the group takes the first file's slot).
     """
     cards = list(cards or [])
@@ -146,6 +271,8 @@ async def group_cards(cards, normalize=None, auto_join=True):
         return cards
     ids = [str(c.get("file_id") or "") for c in cards]
     keys = {title_key(c.get("name")) for c in cards}
+    keys.update(series_key(c.get("name")) for c in cards
+                if episode_identity(c.get("name")))
     keys.discard("")
 
     found = await store.by_members(ids)
@@ -155,38 +282,151 @@ async def group_cards(cards, normalize=None, auto_join=True):
         by_gid[str(g.get("_id"))] = g
     groups = list(by_gid.values())
 
-    owner, key2g = {}, {}
+    owner, key2groups = {}, defaultdict(list)
+    cards_by_id = {str(c.get("file_id") or ""): c for c in cards if c.get("file_id")}
+    member_meta_cache = {}
     for g in groups:
         for m in (g.get("members") or []):
             owner[str(m)] = g
         for k in (g.get("auto_keys") or []):
-            key2g.setdefault(str(k), g)
+            if all(str(x.get("_id") or "") != str(g.get("_id") or "")
+                   for x in key2groups[str(k)]):
+                key2groups[str(k)].append(g)
 
-    # 🆕 New quality (same title) → auto-join the saved group
+    # 🆕 New files join a saved group only when its kind and metadata agree.
     joins = defaultdict(list)
+    join_auto_keys = defaultdict(set)
     if auto_join:
         for c in cards:
             fid = str(c.get("file_id") or "")
             if not fid or fid in owner:
                 continue
-            g = key2g.get(title_key(c.get("name")))
-            if not g or fid in {str(x) for x in (g.get("excluded") or [])}:
-                continue
-            gid = str(g["_id"])
-            owner[fid] = g
-            joins[gid].append((fid, str(c.get("name") or "")))
+            file_keys = [title_key(c.get("name"))]
+            if episode_identity(c.get("name")):
+                file_keys.append(series_key(c.get("name")))
+            seen_groups = set()
+            for key in file_keys:
+                for g in key2groups.get(key, []):
+                    gid = str(g.get("_id") or "")
+                    if gid in seen_groups:
+                        continue
+                    seen_groups.add(gid)
+                    if fid in {str(x) for x in (g.get("excluded") or [])}:
+                        continue
+                    if await _auto_join_compatible(g, c, member_meta_cache, cards_by_id):
+                        owner[fid] = g
+                        name = str(c.get("name") or "")
+                        joins[gid].append((fid, name))
+                        join_key = series_key(name) if normal_kind(g.get("kind")) == KIND_EPISODES \
+                            else title_key(name)
+                        if join_key:
+                            join_auto_keys[gid].add(join_key)
+                        break
+                if fid in owner:
+                    break
         for gid, items in joins.items():
-            await store.add_members(gid, items)
+            await store.add_members(gid, items, auto_keys=sorted(join_auto_keys[gid]))
             await store.mark_files([i for i, _ in items], gid)
         if joins:
-            # Re-read the group docs so variants include the newly added members
+            # Re-read memberships after joins; same-title groups may have different durations.
             fresh = await store.by_members(ids)
             fresh += await store.by_keys(sorted(keys))
-            groups = list({str(g.get("_id")): g for g in fresh}.values())
-            owner = {}
+            by_gid = {str(g.get("_id")): g for g in fresh}
+            groups = list(by_gid.values())
+            owner, key2groups = {}, defaultdict(list)
+            member_meta_cache = {}
             for g in groups:
                 for m in (g.get("members") or []):
                     owner[str(m)] = g
+                for k in (g.get("auto_keys") or []):
+                    key2groups[str(k)].append(g)
+
+    # Episode names get a shared series key; same-episode quality variants keep
+    # their episode-specific title key and are still duration-matched as qualities.
+    unowned, seen_unowned = [], set()
+    for c in cards:
+        fid = str(c.get("file_id") or "")
+        if fid and fid not in owner and fid not in seen_unowned:
+            unowned.append(c)
+            seen_unowned.add(fid)
+    episode_buckets = defaultdict(list)
+    for c in unowned:
+        if episode_identity(c.get("name")):
+            key = series_key(c.get("name"))
+            if len(key) >= 3:
+                episode_buckets[key].append(c)
+
+    auto_candidates = []
+    series_ids = set()
+    for key, entries in episode_buckets.items():
+        if guess_kind([c.get("name") for c in entries]) == KIND_EPISODES:
+            auto_candidates.append((key, KIND_EPISODES, entries, f"series:{key}"))
+            series_ids.update(str(c.get("file_id") or "") for c in entries)
+
+    quality_buckets = defaultdict(list)
+    for c in unowned:
+        fid = str(c.get("file_id") or "")
+        if fid in series_ids:
+            continue
+        key = title_key(c.get("name"))
+        secs = duration_seconds(c)
+        if key and secs:
+            quality_buckets[(key, secs, episode_identity(c.get("name")))].append(c)
+    for (key, secs, ep_id), bucket in quality_buckets.items():
+        if len(bucket) >= 2:
+            auto_candidates.append((key, KIND_QUALITIES, bucket,
+                                    f"quality:{key}:{secs}:{ep_id}"))
+
+    virtual_buckets = {}
+    virtual_group_for = {}
+    if auto_join:
+        for key, kind, candidates, bucket_key in auto_candidates:
+            try:
+                g, handled = await _persist_auto_group(key, candidates, kind, cards_by_id)
+            except Exception as e:
+                logger.warning(f"automatic group save skipped ({key}): {e}")
+                g, handled = None, set()
+            handled = {str(fid) for fid in handled}
+            if g:
+                by_gid[str(g.get("_id") or "")] = g
+                group_members = {str(m) for m in (g.get("members") or [])}
+                for m in group_members:
+                    owner[str(m)] = g
+                continue
+            if handled:
+                continue
+            # A DB hiccup should not remove the safe visual grouping for this response.
+            virtual_buckets[bucket_key] = {
+                "g": None,
+                "key": bucket_key,
+                "title": (series_title(candidates[0].get("name")) if kind == KIND_EPISODES
+                          else group_title(candidates[0].get("name")))
+                         or candidates[0].get("name"),
+                "kind": kind,
+                "fids": [str(c.get("file_id") or "") for c in candidates],
+            }
+            for c in candidates:
+                virtual_group_for[str(c.get("file_id") or "")] = bucket_key
+    elif auto_candidates:
+        for key, kind, candidates, bucket_key in auto_candidates:
+            virtual_buckets[bucket_key] = {
+                "g": None,
+                "key": bucket_key,
+                "title": (series_title(candidates[0].get("name")) if kind == KIND_EPISODES
+                          else group_title(candidates[0].get("name")))
+                         or candidates[0].get("name"),
+                "kind": kind,
+                "fids": [str(c.get("file_id") or "") for c in candidates],
+            }
+            for c in candidates:
+                virtual_group_for[str(c.get("file_id") or "")] = bucket_key
+
+    # Include groups created during this search in the normal expand/render path.
+    if auto_join and auto_candidates:
+        groups = list(by_gid.values())
+        for g in groups:
+            for m in (g.get("members") or []):
+                owner[str(m)] = g
 
     # Load the remaining members of saved groups (not found on this page) from the DB
     needed = []
@@ -213,15 +453,19 @@ async def group_cards(cards, normalize=None, auto_join=True):
         g = owner.get(fid)
         if g:
             k = "m:" + str(g.get("_id"))
+            if k not in buckets:
+                buckets[k] = {"g": g, "key": k, "fids": []}
+                order.append(("group", k))
         else:
-            t = title_key(c.get("name"))
-            k = "a:" + t if t else "s:" + fid
-        if k.startswith("s:"):
-            order.append(("single", c))
-            continue
-        if k not in buckets:
-            buckets[k] = {"g": g if g else None, "key": k, "fids": []}
-            order.append(("group", k))
+            virtual_key = virtual_group_for.get(fid)
+            if not virtual_key:
+                order.append(("single", c))
+                continue
+            k = "a:" + virtual_key
+            if k not in buckets:
+                buckets[k] = dict(virtual_buckets[virtual_key])
+                buckets[k]["key"] = k
+                order.append(("group", k))
         if fid not in buckets[k]["fids"]:
             buckets[k]["fids"].append(fid)
 
@@ -255,7 +499,7 @@ async def group_cards(cards, normalize=None, auto_join=True):
             gkind = normal_kind(g.get("kind"))
             emap = clean_episode_map(g.get("episode_map"))
         else:
-            gkind = guess_kind([v.get("name") for v in variants])
+            gkind = normal_kind(b.get("kind"), guess_kind([v.get("name") for v in variants]))
             emap = {}
         if gkind == KIND_EPISODES:
             chips, episodes = episode_chips(variants, emap)
@@ -290,9 +534,8 @@ async def group_cards(cards, normalize=None, auto_join=True):
         if g:
             title = str(g.get("name") or "") or str(rep.get("name") or "Group")
         else:
-            first = next((c for c in cards if "a:" + title_key(c.get("name")) == value), None)
-            title = (group_title(first.get("name")) if first else "") \
-                or str((first or rep).get("name") or "Group")
+            title = str(b.get("title") or "") or group_title(rep.get("name")) \
+                or str(rep.get("name") or "Group")
         out.append({
             "group": True,
             "manual": bool(g),
@@ -362,13 +605,22 @@ async def api_group_save(req):
         return _json({"ok": False, "error": "No files selected"}, 400)
     gid = _fid(data.get("group_id") or "")
     name = str(data.get("name") or "").strip()[:200]
-    auto_keys = sorted({title_key(n) for _, n in items if title_key(n)})
     raw_kind = data.get("kind")
-    kind = normal_kind(raw_kind) if raw_kind else guess_kind([n for _, n in items])
-    raw_emap = data.get("episode_map")
+    target_group = await store.get(gid) if gid else None
     # ⚠️ Check that the target exists before any side effect (removing from other groups)
-    if gid and not await store.get(gid):
+    if gid and not target_group:
         return _json({"ok": False, "error": "Group not found"}, 404)
+    kind = (
+        normal_kind(raw_kind) if raw_kind
+        else normal_kind(target_group.get("kind")) if target_group
+        else guess_kind([n for _, n in items])
+    )
+    auto_keys = sorted({
+        (series_key(n) if kind == KIND_EPISODES else title_key(n))
+        for _, n in items
+        if (series_key(n) if kind == KIND_EPISODES else title_key(n))
+    })
+    raw_emap = data.get("episode_map")
     if not gid and not name:
         return _json({"ok": False, "error": "Enter a group name"}, 400)
 
@@ -515,75 +767,207 @@ async def _scan_all_groups():
               finished=0)
     try:
         existing = await store.all_groups()
-        key2g, owner = {}, {}
+        groups_by_key, owner, group_by_id = defaultdict(list), {}, {}
         for g in existing:
-            gd = {"id": str(g["_id"]), "excl": {str(x) for x in (g.get("excluded") or [])}}
-            for m in (g.get("members") or []):
-                owner[str(m)] = str(g["_id"])
-            for k in (g.get("auto_keys") or []):
-                key2g.setdefault(str(k), gd)
-        st["existing_groups"] = len({g["id"] for g in key2g.values()})
+            gid = str(g.get("_id") or "")
+            if not gid:
+                continue
+            group_by_id[gid] = g
+            for member in (g.get("members") or []):
+                owner[str(member)] = gid
+
+            kind = normal_kind(g.get("kind"))
+            group_keys = {str(k) for k in (g.get("auto_keys") or []) if k}
+            # Rebuild missing/legacy keys from names already stored on the group.
+            for f in (g.get("files") or []):
+                name = str(f.get("name") or "")
+                key = series_key(name) if kind == KIND_EPISODES else title_key(name)
+                if key:
+                    group_keys.add(key)
+            if group_keys != {str(k) for k in (g.get("auto_keys") or []) if k}:
+                g = await store.update(gid, {"auto_keys": sorted(group_keys)}) or g
+                group_by_id[gid] = g
+            for key in group_keys:
+                if all(str(x.get("_id") or "") != gid for x in groups_by_key[key]):
+                    groups_by_key[key].append(g)
+        st["existing_groups"] = len(group_by_id)
 
         docs = await store.scan_files()
+        docs_by_id = {str(d.get("_id") or ""): d for d in docs if d.get("_id")}
         st["total"] = len(docs)
         st["phase"] = "Scanning files"
-        buckets = defaultdict(list)
         fix_set, fix_unset = defaultdict(list), []
         for d in docs:
             st["scanned"] += 1
             fid = str(d.get("_id") or "")
-            og, cg = owner.get(fid), str(d.get("group_id") or "")
-            if og and cg != og:
-                fix_set[og].append(fid)
-            elif not og and cg:
+            if not fid:
+                continue
+            owner_gid = owner.get(fid)
+            marked_gid = str(d.get("group_id") or "")
+            if owner_gid and marked_gid != owner_gid:
+                fix_set[owner_gid].append(fid)
+            elif not owner_gid and marked_gid:
                 fix_unset.append(fid)
-            k = title_key(d.get("file_name"))
-            if len(k) >= 3:
-                buckets[k].append((fid, str(d.get("file_name") or "")))
             if st["scanned"] % 2000 == 0:
                 await asyncio.sleep(0)
 
         st["phase"] = "Building groups"
         now = int(time.time())
-        for k, items in buckets.items():
-            g = key2g.get(k)
-            if len(items) >= 2:
-                st["multi_buckets"] += 1
-            if g:
-                fresh = [(i, n) for i, n in items
-                         if i not in owner and i not in g["excl"]]
+        meta_cache = {}
+
+        async def attach_to_existing(key, candidates, kind):
+            """Attach compatible unowned rows; return (attached, excluded ids)."""
+            blocked = set()
+            for g in groups_by_key.get(key, []):
+                if normal_kind(g.get("kind")) != kind:
+                    continue
+                if not candidates or not await _auto_join_compatible(
+                        g, candidates[0], meta_cache, docs_by_id):
+                    continue
+                gid = str(g.get("_id") or "")
+                excluded = {str(x) for x in (g.get("excluded") or [])}
+                fresh = []
+                for d in candidates:
+                    fid = str(d.get("_id") or "")
+                    if fid in owner:
+                        continue
+                    if fid in excluded:
+                        blocked.add(fid)
+                        continue
+                    fresh.append((fid, str(d.get("file_name") or "")))
                 if not fresh:
                     continue
-                await store.add_members(g["id"], fresh, auto_keys=[k], scanned_at=now)
-                fix_set[g["id"]].extend(i for i, _ in fresh)
+                updated = await store.add_members(
+                    gid, fresh, auto_keys=[key], scanned_at=now
+                )
+                if not updated:
+                    continue
+                group_by_id[gid] = updated
+                for key2, group_list in groups_by_key.items():
+                    for i, old in enumerate(group_list):
+                        if str(old.get("_id") or "") == gid:
+                            group_list[i] = updated
+                for fid, _ in fresh:
+                    owner[fid] = gid
+                    fix_set[gid].append(fid)
+                meta_cache.pop(gid, None)
                 st["added"] += len(fresh)
+                return True, blocked
+            return False, blocked
+
+        # A series is identified by its normalized show title, not its duration.
+        episode_buckets = defaultdict(list)
+        for d in docs:
+            name = str(d.get("file_name") or "")
+            if episode_identity(name):
+                key = series_key(name)
+                if len(key) >= 3:
+                    episode_buckets[key].append(d)
+
+        series_ids = set()
+        for key, rows in episode_buckets.items():
+            names = [str(d.get("file_name") or "") for d in rows]
+            if guess_kind(names) != KIND_EPISODES:
                 continue
-            if len(items) < 2 or len(items) > SCAN_MAX_GROUP:
-                if len(items) > SCAN_MAX_GROUP:
-                    st["skipped_big"] += 1
-                    if len(st["skipped_keys"]) < 20:
-                        st["skipped_keys"].append(f"{k} ({len(items)} files)")
+            series_ids.update(str(d.get("_id") or "") for d in rows)
+            if len(rows) >= 2:
+                st["multi_buckets"] += 1
+            candidates = [d for d in rows
+                          if str(d.get("_id") or "") not in owner]
+            if not candidates:
                 continue
-            cand = [(i, n) for i, n in items if i not in owner]
-            if len(cand) < 2:
+            attached, blocked = await attach_to_existing(
+                key, candidates, KIND_EPISODES
+            )
+            if attached:
                 continue
-            g = await store.create(name=group_title(cand[0][1]) or cand[0][1],
-                                   items=cand, auto_keys=[k], auto_created=True,
-                                   scan_created=True,
-                                   kind=guess_kind([n for _, n in cand]),
-                                   episode_map=detect_episodes(cand))
-            await store.update(str(g["_id"]), {"scanned_at": now})
-            fix_set[str(g["_id"])].extend(i for i, _ in cand)
+            candidates = [d for d in candidates
+                          if str(d.get("_id") or "") not in blocked]
+            if (len(candidates) < 2
+                    or guess_kind([d.get("file_name") for d in candidates]) != KIND_EPISODES):
+                continue
+            if len(candidates) > SCAN_MAX_SERIES:
+                st["skipped_big"] += 1
+                if len(st["skipped_keys"]) < 20:
+                    st["skipped_keys"].append(f"{key} ({len(candidates)} episodes)")
+                continue
+            items = [(str(d["_id"]), str(d.get("file_name") or ""))
+                     for d in candidates]
+            group_name = series_title(items[0][1]) or items[0][1]
+            g = await store.create(
+                name=group_name, items=items, auto_keys=[key], auto_created=True,
+                scan_created=True, kind=KIND_EPISODES,
+                episode_map=detect_episodes(items),
+            )
+            gid = str(g["_id"])
+            g = await store.update(gid, {"scanned_at": now}) or g
+            group_by_id[gid] = g
+            groups_by_key[key].append(g)
+            for fid, _ in items:
+                owner[fid] = gid
+                fix_set[gid].append(fid)
+            st["created"] += 1
+
+        # Quality variants must share a known duration. Episode identity is also
+        # part of the bucket so different episodes never collapse into one group.
+        quality_buckets = defaultdict(list)
+        for d in docs:
+            fid = str(d.get("_id") or "")
+            if fid in series_ids:
+                continue
+            name = str(d.get("file_name") or "")
+            key = title_key(name)
+            secs = duration_seconds(d)
+            if len(key) >= 3 and secs:
+                quality_buckets[(key, secs, episode_identity(name))].append(d)
+
+        for (key, _secs, _episode), rows in quality_buckets.items():
+            if len(rows) >= 2:
+                st["multi_buckets"] += 1
+            candidates = [d for d in rows
+                          if str(d.get("_id") or "") not in owner]
+            if not candidates:
+                continue
+            attached, blocked = await attach_to_existing(
+                key, candidates, KIND_QUALITIES
+            )
+            if attached:
+                continue
+            candidates = [d for d in candidates
+                          if str(d.get("_id") or "") not in blocked]
+            if len(candidates) < 2:
+                continue
+            if len(candidates) > SCAN_MAX_GROUP:
+                st["skipped_big"] += 1
+                if len(st["skipped_keys"]) < 20:
+                    st["skipped_keys"].append(f"{key} ({len(candidates)} files)")
+                continue
+            items = [(str(d["_id"]), str(d.get("file_name") or ""))
+                     for d in candidates]
+            group_name = group_title(items[0][1]) or items[0][1]
+            g = await store.create(
+                name=group_name, items=items, auto_keys=[key], auto_created=True,
+                scan_created=True, kind=KIND_QUALITIES,
+            )
+            gid = str(g["_id"])
+            g = await store.update(gid, {"scanned_at": now}) or g
+            group_by_id[gid] = g
+            groups_by_key[key].append(g)
+            for fid, _ in items:
+                owner[fid] = gid
+                fix_set[gid].append(fid)
             st["created"] += 1
 
         st["phase"] = "Marking files with group_id"
-        for gid, ids in fix_set.items():
-            if ids:
-                await store.mark_files(ids, gid)
-                st["fixed_marks"] += len(ids)
         if fix_unset:
-            await store.mark_files(fix_unset, "")
-            st["fixed_marks"] += len(fix_unset)
+            unset_ids = list(dict.fromkeys(fix_unset))
+            await store.mark_files(unset_ids, "")
+            st["fixed_marks"] += len(unset_ids)
+        for gid, ids in fix_set.items():
+            unique_ids = list(dict.fromkeys(ids))
+            if unique_ids:
+                await store.mark_files(unique_ids, gid)
+                st["fixed_marks"] += len(unique_ids)
         await store.cleanup_empty()
         st["phase"] = "complete"
     except Exception as e:

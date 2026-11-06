@@ -12,7 +12,8 @@ name collisions with a page's own `$` / `esc` / `const`.
 
 ✏️ `FILE_EDIT_HTML` + `FILE_EDIT_JS` are the admin-only **file editor** — fsv1's
 version of v5's `Edit Title Metadata` (name / caption / poster / delete):
-a JSON API, a CDN-free 16:9 canvas crop and card updates without a reload.
+a JSON API, a CDN-free 16:9 canvas crop, current permanent group ID and admin
+file-to-group transfer, with card updates without a reload.
 
 🎛️ `FILTER_CSS` + `FILTER_JS` are a **shared filter dropdown component** —
 just write `<select class="filter-dd">` and the `FilterDD` engine in `SITE_JS`
@@ -360,6 +361,8 @@ border:1px solid var(--line);border-radius:8px;padding:9px 11px;color:var(--txt)
 font-family:inherit;outline:none}
 .fegrid textarea{resize:vertical;min-height:58px}
 .fegrid input:focus,.fegrid select:focus,.fegrid textarea:focus{border-color:var(--red)}
+.fegrid .fegroup-hint{grid-column:1/-1;margin-top:-5px;color:var(--mut);font-size:10px;
+font-weight:700;line-height:1.5}
 .fefoot{display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--line);flex-wrap:wrap}
 .fefoot .save{margin-left:auto}
 .fetoast{position:fixed;left:50%;bottom:22px;z-index:420;transform:translate(-50%,160%);
@@ -396,6 +399,9 @@ box-shadow:0 12px 34px rgba(0,0,0,.55);transition:transform .3s,opacity .3s;max-
           <option value="HDR">HDR</option></select></label>
         <label>⏱️ Duration<input id="feDuration" type="text" placeholder="1:36:22"></label>
         <label>📐 Resolution<input id="feRes" type="text" placeholder="1920×1080"></label>
+        <label class="wide">🗂️ Group ID<input id="feGroupId" type="text" maxlength="512"
+          inputmode="numeric" autocomplete="off" placeholder="Enter an existing group ID"></label>
+        <div class="fegroup-hint" id="feGroupHint">Loading current group…</div>
       </div>
       <div class="festatus" id="feStatus">…</div>
     </div>
@@ -447,6 +453,19 @@ FILE_EDIT_JS = r"""<script>
     const st=q('#feThumbState');
     if(st) st.textContent=f.custom_thumb?'📸 Custom poster (web upload)':'🖼️ Telegram original';
   }
+  function setGroupInfo(f){
+    const input=q('#feGroupId'), hint=q('#feGroupHint');
+    if(input) input.value=String(f.group_id||'');
+    if(!hint) return;
+    if(f.group_id){
+      const groupNo=f.group_num||f.group_id;
+      const name=f.group_name?' · '+f.group_name:'';
+      hint.textContent='Current group #'+groupNo+' · ID '+f.group_id+name+
+        '. Enter another ID to transfer this file; leave blank to remove it from the group.';
+    }else{
+      hint.textContent='This file is not in a permanent group. Enter an existing group ID to add it.';
+    }
+  }
   function drawCrop(){
     const cv=q('#feCanvas'); if(!cv) return;
     const ctx=cv.getContext && cv.getContext('2d'); if(!ctx) return;
@@ -481,6 +500,7 @@ FILE_EDIT_JS = r"""<script>
     current=String(fid); crop=null; busy=false;
     q('#feModal').classList.add('open');
     q('#feStatus').textContent='Loading…';
+    q('#feGroupId').value=''; q('#feGroupHint').textContent='Loading current group…';
     q('#feFile').value=''; q('#feZoom').value=1;
     fetch('/api/file/meta?id='+encodeURIComponent(current),{credentials:'same-origin'})
       .then(r=>r.json()).then(d=>{
@@ -492,6 +512,7 @@ FILE_EDIT_JS = r"""<script>
         if(f.quality && !Array.prototype.some.call(sel.options,o=>o.value===f.quality))
           sel.add(new Option(f.quality,f.quality));
         sel.value=f.quality||'';
+        setGroupInfo(f);
         q('#feStatus').textContent='✏️ ID: '+esc(f.file_id)+' · '+esc(f.size)+' · '+esc(f.quality||'—');
         setPoster(f);
       }).catch(e=>{ q('#feStatus').textContent='Load error: '+String(e.message||e); });
@@ -508,7 +529,7 @@ FILE_EDIT_JS = r"""<script>
     if(!current||busy) return;
     const payload={file_id:current,name:q('#feName').value,caption:q('#feCaption').value,
       quality:q('#feQuality').value,duration:q('#feDuration').value,
-      res:q('#feRes').value};
+      res:q('#feRes').value,group_id:q('#feGroupId').value.trim()};
     setBusy(true);
     try{
       const r=await fetch('/api/file/edit',{method:'POST',credentials:'same-origin',
@@ -530,7 +551,13 @@ FILE_EDIT_JS = r"""<script>
           if(ud.ok) f=ud.file; else toast('Poster: '+(ud.error||'upload failed'),true);
         }
       }
-      syncCard(f); setPoster(f); toast('✨ File updated — no reload'); close();
+      const moved=!!d.group_changed;
+      syncCard(f); setPoster(f);
+      const groupResult=f.group_id?'moved to group #'+(f.group_num||f.group_id):'ungrouped';
+      toast(moved?'✨ File updated — '+groupResult:'✨ File updated — no reload');
+      close();
+      /* Group cards must be rebuilt after a transfer; keep the current search query/mode. */
+      if(moved && typeof window.load==='function') window.load(true);
     }catch(e){ toast('Network error: '+String(e.message||e),true); }
     finally{ setBusy(false); }
   }
