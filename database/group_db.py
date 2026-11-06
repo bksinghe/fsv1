@@ -53,25 +53,60 @@ _RES_TOKEN_RE = re.compile(
 _EXT_TAIL_RE = re.compile(
     r"[\s._\-]*(?<![A-Za-z0-9])(?:mp4|mkv|avi|mov|webm|m4v|ts|wmv|flv|mpg|mpeg)\s*$", re.I
 )
+_S_E_RE = re.compile(r"\bS(\d{1,2})\s*[._\- ]?E(\d{1,3})\b", re.I)
+_X_RE = re.compile(r"(?<!\d)(\d{1,2})[xX](\d{2,3})(?!\d)")
+_E_RE = re.compile(r"\bE(?:PISODE)?\s*[._\- ]?(\d{1,3})\b", re.I)
+_EP_RE = re.compile(r"\b(?:Ep|Episode|Part|Pt|Chapter|Ch)\s*[._\- ]?(\d{1,3})\b", re.I)
+_NUM_OF_RE = re.compile(r"\b(\d{1,3})\s*(?:of|/)\s*\d{1,3}\b", re.I)
+_EPISODE_PATTERNS = (_S_E_RE, _X_RE, _EP_RE, _E_RE, _NUM_OF_RE)
 
 
-def title_key(name) -> str:
-    """Normalize a file name into a group key (drops quality/language/codec/extension).
-
-    Inspired by v5's `_group_key`, but fsv1 uses its own token-based rule — it is the
-    same key the existing Group/UnGroup filter uses, so the old behaviour is preserved.
-    """
+def _title_key(name, strip_episodes=False, max_tokens=4) -> str:
     text = re.sub(r"[\[(][^\])]*[\])]", " ", str(name or "").lower())
+    if strip_episodes:
+        for pattern in _EPISODE_PATTERNS:
+            text = pattern.sub(" ", text)
     clean = []
     for token in re.findall(r"[^\W_]+", text, re.UNICODE):
         if token in NOISE or _EPISODE_RE.match(token):
             continue
-        if len(token) <= 2 and token.isdigit():
+        if len(token) <= 2 and token.isdigit() and not strip_episodes:
             continue
         clean.append(token)
-        if len(clean) == 4:
+        if max_tokens and len(clean) >= max_tokens:
             break
     return " ".join(clean)
+
+
+def title_key(name) -> str:
+    """Quality-group key: strips quality/language/codec but preserves episode identity."""
+    return _title_key(name)
+
+
+def series_key(name) -> str:
+    """Normalize the actual series title, retaining more tokens than a quality key.
+
+    For the usual `Series Name S01E02 1080p` format, only the title before the
+    episode marker is used; release tags after it cannot merge unrelated series.
+    When the marker leads the name, fall back to stripping markers from all text.
+    """
+    text = str(name or "").lower()
+    matches = []
+    for pattern in _EPISODE_PATTERNS:
+        match = pattern.search(text)
+        if match:
+            matches.append(match)
+    if matches:
+        marker = min(matches, key=lambda match: match.start())
+        prefix = text[:marker.start()]
+        # Episode markers may be enclosed in a trailing `[...]` / `(...)` tag.
+        for opening, closing in (("[", "]"), ("(", ")")):
+            if prefix.rfind(opening) > prefix.rfind(closing):
+                prefix = prefix[:prefix.rfind(opening)]
+        key = _title_key(prefix, strip_episodes=True, max_tokens=12)
+        if key:
+            return key
+    return _title_key(text, strip_episodes=True, max_tokens=12)
 
 
 def group_title(name) -> str:
@@ -80,6 +115,28 @@ def group_title(name) -> str:
     s = _RES_TOKEN_RE.sub(" ", s)
     s = re.sub(r"\s+", " ", s)
     return re.sub(r"^[\s|\-–_.]+|[\s|\-–_.]+$", "", s)
+
+
+def series_title(name) -> str:
+    """Display title for an automatic series group, without episode/release tags."""
+    original = str(name or "")
+    matches = []
+    for pattern in _EPISODE_PATTERNS:
+        match = pattern.search(original)
+        if match:
+            matches.append(match)
+    if matches:
+        prefix = original[:min(matches, key=lambda match: match.start()).start()]
+        for opening, closing in (("[", "]"), ("(", ")")):
+            if prefix.rfind(opening) > prefix.rfind(closing):
+                prefix = prefix[:prefix.rfind(opening)]
+        if _title_key(prefix, strip_episodes=True, max_tokens=12):
+            return group_title(prefix)
+
+    s = re.sub(r"[\[(][^\])]*[\])]", " ", original)
+    for pattern in _EPISODE_PATTERNS:
+        s = pattern.sub(" ", s)
+    return group_title(s)
 
 
 def quality_height(res, name=""):
@@ -123,13 +180,6 @@ KIND_QUALITIES = "qualities"
 KIND_EPISODES = "episodes"
 KINDS = (KIND_QUALITIES, KIND_EPISODES)
 
-_S_E_RE = re.compile(r"\bS(\d{1,2})\s*[._\- ]?E(\d{1,3})\b", re.I)
-_X_RE = re.compile(r"(?<!\d)(\d{1,2})[xX](\d{2,3})(?!\d)")
-_E_RE = re.compile(r"\bE(?:PISODE)?\s*[._\- ]?(\d{1,3})\b", re.I)
-_EP_RE = re.compile(r"\b(?:Ep|Episode|Part|Pt|Chapter|Ch)\s*[._\- ]?(\d{1,3})\b", re.I)
-_NUM_OF_RE = re.compile(r"\b(\d{1,3})\s*(?:of|/)\s*\d{1,3}\b", re.I)
-
-
 def episode_label(name, fallback=0):
     """File name → `('S01E03'|'E03'|'EP 3', episode_number)`.
 
@@ -152,26 +202,58 @@ def episode_label(name, fallback=0):
     return f"E{n:02d}", n
 
 
+def has_episode_marker(name) -> bool:
+    """Whether a filename contains a recognized season/episode marker."""
+    text = str(name or "")
+    return any(pattern.search(text) for pattern in _EPISODE_PATTERNS)
+
+
+def episode_identity(name) -> str:
+    """Stable identity for an episode (including season where it is present)."""
+    return episode_label(name, 0)[0] if has_episode_marker(name) else ""
+
+
+def duration_seconds(value) -> int:
+    """Normalize file docs/cards' numeric or `H:MM:SS` duration to seconds; unknown → 0."""
+    if isinstance(value, dict):
+        raw = value.get("duration_seconds")
+        if raw in (None, "", 0, "0"):
+            raw = value.get("duration")
+    else:
+        raw = value
+    try:
+        seconds = int(raw or 0)
+        if seconds > 0:
+            return seconds
+    except (TypeError, ValueError):
+        pass
+    text = str(raw or "").strip().replace("：", ":")
+    if not text:
+        return 0
+    if text.isdigit():
+        return max(0, int(text))
+    parts = text.split(":")
+    if len(parts) not in (2, 3) or any(not p.strip().isdigit() for p in parts):
+        return 0
+    nums = [int(p) for p in parts]
+    seconds = nums[-1] + nums[-2] * 60 + (nums[-3] * 3600 if len(nums) == 3 else 0)
+    return seconds if seconds > 0 else 0
+
+
 def detect_episodes(items):
     """`[(fid, name), …]` → `{fid: label}` — only names containing an episode marker."""
     out = {}
     for i, (fid, name) in enumerate(items or []):
-        text = str(name or "")
-        if (_S_E_RE.search(text) or _X_RE.search(text) or _E_RE.search(text)
-                or _EP_RE.search(text) or _NUM_OF_RE.search(text)):
+        if has_episode_marker(name):
             out[str(fid)] = episode_label(name, i)[0]
     return out
 
 
 def guess_kind(names):
-    """Guess from the names: 2+ distinct episode numbers → series, otherwise qualities."""
-    nums = set()
-    for i, n in enumerate(names or []):
-        text = str(n or "")
-        if (_S_E_RE.search(text) or _X_RE.search(text) or _E_RE.search(text)
-                or _EP_RE.search(text) or _NUM_OF_RE.search(text)):
-            nums.add(episode_label(text, i)[1])
-    return KIND_EPISODES if len(nums) >= 2 else KIND_QUALITIES
+    """Guess from the names: 2+ distinct episode identities → series, otherwise qualities."""
+    identities = {episode_identity(name) for name in (names or [])}
+    identities.discard("")
+    return KIND_EPISODES if len(identities) >= 2 else KIND_QUALITIES
 
 
 def normal_kind(value, default=KIND_QUALITIES):
@@ -494,7 +576,7 @@ class GroupStore:
         return await asyncio.to_thread(_run)
 
     async def pull_files(self, ids, exclude=False):
-        """Remove deleted files from every group (used by the file editor delete)."""
+        """Remove files from every group (delete or reassign via the file editor)."""
         def _run():
             s = {str(i) for i in ids if i}
             changed = []
@@ -504,6 +586,8 @@ class GroupStore:
                     continue
                 g["members"] = [m for m in g["members"] if str(m) not in s]
                 g["files"] = [f for f in (g.get("files") or []) if str(f.get("id")) not in s]
+                if str(g.get("thumb_fid") or "") in s:
+                    g["thumb_fid"] = ""
                 if exclude:
                     g["excluded"] = sorted(set(map(str, g.get("excluded") or [])) | s)
                 g["updated_at"] = int(time.time())
@@ -513,15 +597,22 @@ class GroupStore:
         return await asyncio.to_thread(_run)
 
     async def cleanup_empty(self):
-        """Drop groups with fewer than 2 members (a one-file group is useless)."""
+        """Drop groups with fewer than 2 members and clear their file markers."""
         def _run():
-            gone = []
+            gone, ungrouped = [], {}
             for g in self._all():
-                if len(g.get("members") or []) < 2:
-                    self._delete(g["_id"])
-                    gone.append(str(g["_id"]))
-            return gone
-        return await asyncio.to_thread(_run)
+                members = [str(m) for m in (g.get("members") or [])]
+                if len(members) < 2:
+                    gid = str(g["_id"])
+                    self._delete(gid)
+                    gone.append(gid)
+                    ungrouped.setdefault(gid, []).extend(members)
+            return gone, ungrouped
+
+        gone, ungrouped = await asyncio.to_thread(_run)
+        for gid, members in ungrouped.items():
+            await self.mark_files(members, "", only_if=gid)
+        return gone
 
     async def merge(self, source, target):
         """Move all files/auto_keys from the source group into the target; drop the source."""
@@ -537,8 +628,8 @@ class GroupStore:
         return await self.get(target)
 
     # ── file collection helpers (fsv1 has just one collection) ────────────
-    async def mark_files(self, ids, gid):
-        """Mark / unset `group_id` on every file document — v5's `_mark_files`."""
+    async def mark_files(self, ids, gid, only_if=None):
+        """Mark / unset `group_id`; `only_if` guards cleanup against stale memberships."""
         ids = [str(i) for i in ids if i]
         if not ids:
             return 0
@@ -548,7 +639,10 @@ class GroupStore:
                 return 0
             try:
                 upd = {"$set": {"group_id": str(gid)}} if gid else {"$unset": {"group_id": ""}}
-                res = col.update_many({"_id": {"$in": ids}}, upd)
+                query = {"_id": {"$in": ids}}
+                if only_if is not None:
+                    query["group_id"] = str(only_if)
+                res = col.update_many(query, upd)
                 return int(getattr(res, "modified_count", 0) or 0)
             except Exception as e:
                 logger.warning(f"group mark_files skipped: {e}")
@@ -572,13 +666,14 @@ class GroupStore:
         return await asyncio.to_thread(_run)
 
     async def scan_files(self, limit=20000):
-        """Lightweight `{_id, file_name, group_id}` list used by scan-all."""
+        """Lightweight `{_id, file_name, group_id, duration}` list used by scan-all."""
         def _run():
             col = file_collection()
             if col is None:
                 return []
             try:
-                return list(col.find({}, {"_id": 1, "file_name": 1, "group_id": 1}).limit(limit))
+                return list(col.find({}, {"_id": 1, "file_name": 1, "group_id": 1,
+                                          "duration": 1}).limit(limit))
             except Exception as e:
                 logger.warning(f"group scan_files skipped: {e}")
                 return []

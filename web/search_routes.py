@@ -25,6 +25,7 @@ from database.ia_filterdb import (
     get_recent_files,
     get_file_details,
 )
+from database.group_db import duration_seconds
 from web.group_routes import group_cards, filter_group_cards
 from stream_security import sign_params
 from web.web_assets import get_auth, search_page, vcard_meta
@@ -79,6 +80,7 @@ def _result(doc) -> dict:
     out = vcard_meta(doc)
     out["thumb"] = _thumb_url(doc)
     out["caption"] = str(doc.get("caption") or "")[:300]
+    out["duration_seconds"] = duration_seconds(doc)
     return out
 
 

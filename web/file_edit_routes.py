@@ -9,8 +9,9 @@ v5's `/api/edit_name` + `/api/upload_thumb` + `/api/delete` made these editable:
 * Delete file
 
 fsv1 has a single MongoDB collection and no primary/cloud/archive `section`
-concept, so this is **not a verbatim copy** — and v5's
-"Move to collection" control was **deliberately not ported**:
+concept, so this is **not a verbatim copy** — v5's collection-move control is not
+ported. The editor does show the file's permanent group ID and lets an admin move
+it to another existing group (or ungroup it):
 
 * no `section` field, no collection-move dropdown, no `/api/search?section=`.
 * Cropper.js CDN → a **fully dependency-free** built-in 16:9 canvas crop (in the UI).
@@ -33,7 +34,9 @@ import info as _info
 from info import BIN_CHANNEL
 from utils import temp, get_size
 from database import ia_filterdb as ia
-from database.group_db import store as group_store, title_key
+from database.group_db import (
+    store as group_store, title_key, series_key, normal_kind, KIND_EPISODES,
+)
 from web.web_assets import get_auth, vcard_is_video
 from web.thumb_engine import thumb_version, invalidate_thumb, enqueue_probe
 
@@ -104,14 +107,27 @@ def _is_image(raw: bytes) -> bool:
     )
 
 
-def _public_file(doc) -> dict:
-    """Safe projection like `/search`'s `_result()` plus editor-only fields."""
+def _public_file(doc, group=None, group_loaded=False) -> dict:
+    """Safe projection like `/search`'s `_result()` plus editor-only fields.
+
+    Group membership is normally copied onto the file document for fast searches;
+    the editor passes `group_loaded=True` to use the canonical group document instead.
+    """
     doc = doc or {}
     fid = str(doc.get("_id") or "")
     w = int(doc.get("width") or 0)
     h = int(doc.get("height") or 0)
     thumb_ref = str(doc.get("thumb_url") or doc.get("thumb_file_id") or "")
     v = thumb_version(fid, thumb_ref)
+    if group_loaded:
+        group = group or {}
+        group_id = str(group.get("_id") or "")
+        group_num = str(group.get("num") or "")
+        group_name = str(group.get("name") or "")
+    else:
+        group_id = str(doc.get("group_id") or "")
+        group_num = group_id
+        group_name = ""
     return {
         "file_id": fid,
         "name": str(doc.get("file_name") or "Untitled"),
@@ -124,6 +140,9 @@ def _public_file(doc) -> dict:
         "width": w,
         "height": h,
         "size": get_size(doc.get("file_size") or 0),
+        "group_id": group_id,
+        "group_num": group_num,
+        "group_name": group_name,
         "thumb": f"/api/thumb?file_id={quote(fid, safe='')}&v={v}",
         "v": v,
         "custom_thumb": (
@@ -148,6 +167,25 @@ def _file_id(value) -> str:
     return fid[:512] if re.fullmatch(r"[A-Za-z0-9_\-=]{1,512}", fid) else ""
 
 
+async def _file_group(fid, doc=None):
+    """Resolve a file's canonical permanent group, preferring its indexed marker."""
+    marker = str((doc or {}).get("group_id") or "")
+    try:
+        if marker:
+            group = await group_store.get(marker)
+            if group and fid in {str(m) for m in (group.get("members") or [])}:
+                return group
+        groups = await group_store.by_members([fid])
+        if not groups:
+            return None
+        return next((g for g in groups if str(g.get("_id") or "") == marker), groups[0])
+    except Exception as e:
+        logger.warning(f"group lookup for file {fid} skipped: {e}")
+        # Preserve the visible marker during a temporary group-store outage so a
+        # routine metadata save cannot accidentally ungroup the file.
+        return {"_id": marker, "num": marker, "name": ""} if marker else None
+
+
 # ───────────────────────── READ ─────────────────────────
 @file_edit_routes.get("/api/file/meta")
 async def api_file_meta(req):
@@ -159,7 +197,8 @@ async def api_file_meta(req):
     doc = await ia.get_file_meta(fid)
     if not doc:
         return _json({"ok": False, "error": "File not found"}, 404)
-    return _json({"ok": True, "file": _public_file(doc)})
+    group = await _file_group(fid, doc)
+    return _json({"ok": True, "file": _public_file(doc, group, group_loaded=True)})
 
 
 # ── 🗂️ Sync with permanent groups (file delete / rename) ───────────────
@@ -176,14 +215,49 @@ async def _group_cleanup(fid):
 async def _sync_group_name(fid, name):
     """A new name from the editor refreshes the group's member list + auto_keys."""
     try:
-        key = title_key(name)
         for g in await group_store.by_members([fid]):
             gid = str(g.get("_id") or "")
             await group_store.rename_member(gid, fid, name)
+            key = (series_key(name) if normal_kind(g.get("kind")) == KIND_EPISODES
+                   else title_key(name))
             if key:
                 await group_store.add_members(gid, [], auto_keys=[key])
     except Exception as e:
         logger.warning(f"group name sync skipped: {e}")
+
+
+async def _move_file_group(fid, name, target_gid, existing):
+    """Move one file into an existing permanent group, or ungroup it when blank."""
+    marker = str((existing or {}).get("group_id") or "")
+    memberships = await group_store.by_members([fid])
+    member_gids = {str(g.get("_id") or "") for g in memberships}
+
+    # Avoid touching group metadata when the file is already consistently placed.
+    if target_gid:
+        if len(memberships) == 1 and target_gid in member_gids and marker == target_gid:
+            return False
+    elif not memberships and not marker:
+        return False
+
+    # Match the group UI's move behavior: remove from old memberships and blacklist
+    # there, then add to the selected target so an old auto_key cannot pull it back.
+    await group_store.pull_files([fid], exclude=True)
+    if target_gid:
+        target_meta = await group_store.get(target_gid)
+        if not target_meta:
+            raise LookupError("Group not found")
+        key = (series_key(name) if normal_kind(target_meta.get("kind")) == KIND_EPISODES
+               else title_key(name))
+        target = await group_store.add_members(
+            target_gid, [(fid, name)], auto_keys=[key] if key else []
+        )
+        if not target:
+            raise LookupError("Group not found")
+        await group_store.mark_files([fid], target_gid)
+    else:
+        await group_store.mark_files([fid], "")
+    await group_store.cleanup_empty()
+    return True
 
 
 # ───────────────────────── EDIT ─────────────────────────
@@ -193,6 +267,8 @@ async def api_file_edit(req):
         return _denied()
     try:
         data = await req.json()
+        if not isinstance(data, dict):
+            raise ValueError("expected an object")
     except Exception:
         return _json({"ok": False, "error": "Bad JSON"}, 400)
     fid = _file_id(data.get("file_id"))
@@ -216,6 +292,21 @@ async def api_file_edit(req):
     if not existing:
         return _json({"ok": False, "error": "File not found"}, 404)
 
+    # Older callers may omit group_id entirely. The editor always sends it; an empty
+    # value means ungroup, while a non-empty value must identify an existing group.
+    has_group_update = "group_id" in data
+    target_gid = ""
+    if has_group_update:
+        raw_gid = str(data.get("group_id") or "").strip()
+        if raw_gid:
+            if raw_gid.startswith("#"):
+                raw_gid = raw_gid[1:].strip()
+            target_gid = _file_id(raw_gid)
+            if not target_gid:
+                return _json({"ok": False, "error": "Invalid group ID"}, 400)
+            if not await group_store.get(target_gid):
+                return _json({"ok": False, "error": "Group not found"}, 404)
+
     fields = {
         "file_name": name,
         "caption": _clean(data.get("caption"), 1000),
@@ -227,8 +318,24 @@ async def api_file_edit(req):
     doc = await ia.update_file_fields(fid, fields)
     if not doc:
         return _json({"ok": False, "error": "Could not save changes"}, 500)
+
+    group_changed = False
+    if has_group_update:
+        try:
+            group_changed = await _move_file_group(fid, name, target_gid, existing)
+        except LookupError:
+            return _json({"ok": False, "error": "Group not found"}, 404)
+        except Exception as e:
+            logger.exception(f"file group transfer failed for {fid}: {e}")
+            return _json({"ok": False, "error": "Could not update group membership"}, 500)
+
     await _sync_group_name(fid, name)
-    return _json({"ok": True, "file": _public_file(doc)})
+    # `group_id` is marked by GroupStore after the file fields are saved; re-read it
+    # so the editor gets the new membership and can refresh grouped search cards.
+    doc = await ia.get_file_meta(fid) or doc
+    group = await _file_group(fid, doc)
+    return _json({"ok": True, "file": _public_file(doc, group, group_loaded=True),
+                  "group_changed": group_changed})
 
 
 # ─────────────────── CUSTOM POSTER THUMBNAIL ───────────────

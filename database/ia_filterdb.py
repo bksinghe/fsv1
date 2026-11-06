@@ -445,27 +445,65 @@ def clean_text(text: str) -> str:
 # =====================================================
 # 💾 SAVE / UPDATE FILE
 # =====================================================
-async def _auto_join_group(file_id: str, file_name: str) -> None:
-    """🗂️ A new quality (same title) automatically joins the saved PERMANENT group.
+async def _auto_join_group(file_id: str, file_name: str, duration=0) -> None:
+    """Auto-join an indexed file only to a compatible permanent group.
 
-    v5 called `_persist_joins()` in its search pipeline; fsv1 does it at index time
-    so groups are correct immediately in Telegram search too. Files an admin removed
-    (`excluded`) are not brought back. Fail-soft: indexing must not stop if the group
-    database is unavailable.
+    Quality groups require a known, identical duration (and the same episode when
+    the group represents one episode's qualities). Episode groups ignore duration
+    and accept recognized episode names. Admin-excluded files stay excluded.
     """
     try:
-        from database.group_db import title_key, store
-        key = title_key(file_name)
-        if not key:
+        from database.group_db import (
+            title_key, series_key, store, duration_seconds, episode_identity,
+            KIND_EPISODES, normal_kind,
+        )
+        quality_key = title_key(file_name)
+        incoming_episode = episode_identity(file_name)
+        series_group_key = series_key(file_name) if incoming_episode else ""
+        keys = list(dict.fromkeys(k for k in (quality_key, series_group_key) if k))
+        if not keys:
             return
-        for g in await store.by_keys([key]):
-            fid = str(file_id)
+        fid = str(file_id)
+        incoming_duration = duration_seconds(duration)
+        groups, seen = [], set()
+        for g in await store.by_keys(keys):
+            gid = str(g.get("_id") or "")
+            if gid and gid not in seen:
+                seen.add(gid)
+                groups.append(g)
+        for g in groups:
             if fid in {str(x) for x in (g.get("excluded") or [])}:
                 continue
             if fid in {str(x) for x in (g.get("members") or [])}:
                 return
+            kind = normal_kind(g.get("kind"))
+            if kind == KIND_EPISODES:
+                if not incoming_episode:
+                    continue
+                members = [str(x) for x in (g.get("members") or [])]
+                docs = await store.files_by_ids(members)
+                if len(docs) != len(members):
+                    continue
+                series = {series_key(d.get("file_name")) for d in docs}
+                if series != {series_group_key}:
+                    continue
+            else:
+                if not incoming_duration:
+                    continue
+                members = [str(x) for x in (g.get("members") or [])]
+                docs = await store.files_by_ids(members)
+                if len(docs) != len(members):
+                    continue
+                durations = {duration_seconds(d) for d in docs}
+                if durations != {incoming_duration}:
+                    continue
+                identities = {episode_identity(d.get("file_name")) for d in docs}
+                if incoming_episode or any(identities):
+                    if not incoming_episode or identities != {incoming_episode}:
+                        continue
             gid = str(g["_id"])
-            await store.add_members(gid, [(fid, file_name)], auto_keys=[key])
+            auto_key = series_group_key if kind == KIND_EPISODES else quality_key
+            await store.add_members(gid, [(fid, file_name)], auto_keys=[auto_key])
             await store.mark_files([fid], gid)
             return
     except Exception as e:
@@ -528,7 +566,7 @@ async def save_file(media) -> str:
         # Try insert (new file)
         try:
             collection.insert_one(doc)
-            await _auto_join_group(file_id, file_name)
+            await _auto_join_group(file_id, file_name, media_meta["duration"])
             return "suc"
 
         except DuplicateKeyError:
@@ -551,7 +589,7 @@ async def save_file(media) -> str:
                     }
                 }
             )
-            await _auto_join_group(file_id, file_name)
+            await _auto_join_group(file_id, file_name, media_meta["duration"])
             return "dup"
 
     except Exception as e:
