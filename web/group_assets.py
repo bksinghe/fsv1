@@ -329,6 +329,56 @@ GROUP_ADMIN_JS = r"""<script>
   function itemsFrom(g){
     return (g.variants||[]).map(function(v){return {id:v.file_id,name:v.name};});
   }
+  var EPISODE_MARKERS=[
+    /\bS\d{1,2}\s*[._ -]?\s*E\d{1,3}\b/i,
+    /\b\d{1,2}\s*x\s*\d{2,3}\b/i,
+    /\b(?:Ep|Episode|Part|Pt|Chapter|Ch)\s*[._ -]?\s*\d{1,3}\b/i,
+    /\bE(?:pisode)?\s*[._ -]?\s*\d{1,3}\b/i,
+    /\b\d{1,3}\s*(?:of|\/)\s*\d{1,3}\b/i
+  ];
+  function episodeMarker(name){
+    var best=null,text=String(name||'');
+    EPISODE_MARKERS.forEach(function(re){
+      var m=re.exec(text);if(m&&(!best||m.index<best.index))best=m;
+    });
+    return best;
+  }
+  function cleanSuggestedTitle(name){
+    var s=String(name||'').trim();
+    s=s.replace(/\.(?:mp4|mkv|avi|mov|webm|m4v|ts|wmv|flv|mpg|mpeg)$/i,'');
+    s=s.replace(/\b(?:240|360|480|540|576|720|1080|1440|2160|4320)\s*p\b|\b(?:4k|8k|uhd)\b/gi,' ');
+    s=s.replace(/\b(?:hdr10plus|hdr10|hdr|sdr|10bit|8bit|hevc|x264|x265|h264|h265|avc|xvid|divx|bl[u]?ray|brrip|bdrip|bdremux|remux|web[\s._-]?dl|webrip|hdtv|dvdrip|dvd|cam|hdcam|predvd|hdrip|dvdscr|r5)\b/gi,' ');
+    s=s.replace(/\[\s*\]|\(\s*\)/g,' ')
+      .replace(/[._-]+/g,' ').replace(/\s+/g,' ');
+    return s.replace(/^[\s|–]+|[\s|–]+$/g,'').trim().slice(0,200);
+  }
+  function seriesNameSuggestion(name){
+    var text=String(name||''),marker=episodeMarker(text),prefix='';
+    if(marker){
+      prefix=text.slice(0,marker.index);
+      [['[',']'],['(',')']].forEach(function(pair){
+        var open=prefix.lastIndexOf(pair[0]),close=prefix.lastIndexOf(pair[1]);
+        if(open>close)prefix=prefix.slice(0,open);
+      });
+      var title=cleanSuggestedTitle(prefix);if(title)return title;
+    }
+    var fallback=text.replace(/\[[^\]]*\]|\([^)]*\)/g,' ');
+    EPISODE_MARKERS.forEach(function(re){
+      fallback=fallback.replace(new RegExp(re.source,'gi'),' ');
+    });
+    return cleanSuggestedTitle(fallback);
+  }
+  function suggestGroupName(items){
+    var names=(items||[]).map(function(it){return String(it.name||'').trim();})
+      .filter(function(name){return !!name;});
+    if(!names.length)return '';
+    for(var i=0;i<names.length;i++){
+      if(episodeMarker(names[i])){
+        var series=seriesNameSuggestion(names[i]);if(series)return series;
+      }
+    }
+    return cleanSuggestedTitle(names[0]);
+  }
   function membersHtml(items,gid){
     return items.map(function(it){
       return '<div class="gmmem"><span>'+esc(it.name||it.id)+'</span>'+
@@ -581,7 +631,7 @@ GROUP_ADMIN_JS = r"""<script>
   window.gOpenSelected=function(){
     var items=Object.keys(SEL).map(function(k){return SEL[k];});
     if(items.length<2){toast('Select at least 2 files',true);return;}
-    var fake={group:true,manual:false,gid:'',num:'',name:'',count:items.length,
+    var fake={group:true,manual:false,gid:'',num:'',name:suggestGroupName(items),count:items.length,
       key:'sel:'+Date.now(),variants:items.map(function(it){
         return {file_id:it.id,name:it.name,thumb:'',size:'',quality:'',duration:''};
       }),chips:[],duration:'',size:''};
