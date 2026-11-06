@@ -7,7 +7,8 @@ Like `web/web_assets.py`, this is the **single source** for CSS, `GROUP_CARD_TEM
 Standing constraints stay in force:
   * `.vcard`/`.vgrid`/`vcardHTML()` is the shared single-source video card — every
     variant inside a group is exactly that card (via `window.cardHTML(v)`).
-  * The `FILTER_CSS`/`FILTER_JS` dropdown is unchanged; Group Mode has its own FAB.
+  * The shared `FILTER_CSS`/`FILTER_JS` dropdown owns the Group Scan action;
+    Group Mode keeps its separate FAB for selecting cards.
   * The Edit/Delete overlay inside the thumbnail (`.vadmin`) stays the same on file cards;
     a group card has its own `.gadmin` overlay inside that same poster.
   * No primary/cloud/archive/section pill and no new player tab.
@@ -552,7 +553,6 @@ GROUP_ADMIN_JS = r"""<script>
     var keys=Object.keys(SEL),n=keys.length;
     bar.innerHTML='<span>'+n+' selected</span>'+
       '<button onclick="gOpenSelected()"'+(n>=2?'':' disabled')+'>🗂️ Group</button>'+
-      '<button class="alt" onclick="gScanAll()">⚙️ Scan all</button>'+
       '<button class="alt" onclick="gSelectMode()">Cancel</button>';
   }
   window.gSelectMode=function(){
