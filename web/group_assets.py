@@ -329,6 +329,16 @@ GROUP_ADMIN_JS = r"""<script>
   function itemsFrom(g){
     return (g.variants||[]).map(function(v){return {id:v.file_id,name:v.name};});
   }
+  function thumbnailFromCard(card){
+    var img=card&&card.querySelector?card.querySelector('.vm-img'):null;
+    if(!img)return '';
+    return String(img.getAttribute('data-thumb')||img.getAttribute('data-src')||
+      img.getAttribute('src')||'');
+  }
+  function qualityFromCard(card){
+    var chip=card&&card.querySelector?card.querySelector('.vtag.blue'):null;
+    return chip?String(chip.textContent||'').trim():'';
+  }
   var EPISODE_MARKERS=[
     /\bS\d{1,2}\s*[._ -]?\s*E\d{1,3}\b/i,
     /\b\d{1,2}\s*x\s*\d{2,3}\b/i,
@@ -619,12 +629,14 @@ GROUP_ADMIN_JS = r"""<script>
     e.preventDefault();e.stopPropagation();
     var fid=c.dataset.fid;if(!fid)return;
     try{fid=decodeURIComponent(fid);}catch(x){}
-    if(SEL[fid])delete SEL[fid];else SEL[fid]={id:fid,name:c.dataset.name||fid};
+    if(SEL[fid])delete SEL[fid];else SEL[fid]={id:fid,name:c.dataset.name||fid,
+      thumb:thumbnailFromCard(c),quality:qualityFromCard(c)};
     c.classList.toggle('gsel',!!SEL[fid]);renderBar();
   },true);
   window.gSelectGroup=function(k){
     var g=window.groupGet(k);if(!g)return;
-    SEL={};(g.variants||[]).forEach(function(v){SEL[v.file_id]={id:v.file_id,name:v.name};});
+    SEL={};(g.variants||[]).forEach(function(v){SEL[v.file_id]={id:v.file_id,name:v.name,
+      thumb:v.thumb||'',quality:v.quality||v.ql||''};});
     selMode=true;var grid=q('#grid');if(grid)grid.classList.add('gsel-mode');
     renderBar();toast('☑️ '+Object.keys(SEL).length+' files selected — click cards to add more');
   };
@@ -633,7 +645,8 @@ GROUP_ADMIN_JS = r"""<script>
     if(items.length<2){toast('Select at least 2 files',true);return;}
     var fake={group:true,manual:false,gid:'',num:'',name:suggestGroupName(items),count:items.length,
       key:'sel:'+Date.now(),variants:items.map(function(it){
-        return {file_id:it.id,name:it.name,thumb:'',size:'',quality:'',duration:''};
+        return {file_id:it.id,name:it.name,thumb:it.thumb||'',size:'',
+          quality:it.quality||'',ql:it.quality||'',duration:''};
       }),chips:[],duration:'',size:''};
     window.groupHTML(fake,'');                 /* register it in GD */
     selMode=false;SEL={};var grid=q('#grid');if(grid)grid.classList.remove('gsel-mode');renderBar();
