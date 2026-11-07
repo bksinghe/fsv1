@@ -96,12 +96,29 @@ class TestCreateButtonPlacement(unittest.TestCase):
         self.assertIsNotNone(mobile, "the shared mobile filter-row block was not found")
         block = mobile.group(1)
         self.assertIn(".filters{flex:1 1 100%}", block)
-        self.assertIn(".qwrap,.cat-toolbar .cat-search{flex:1 1 100%}", block)
+        self.assertIn(".srow .qwrap,.cat-toolbar .cat-search{flex:1 1 100%}", block)
+        # APP_CSS is emitted after FILTER_CSS, so the search override must win by specificity.
+        self.assertIn(".qwrap{position:relative;flex:1 1 320px;min-width:0}", WEB_ASSETS)
+        self.assertIn(".srow .qwrap", block)
         self.assertIn(
             ".cat-toolbar.cat-toolbar .cat-create{flex:1 1 100%;width:100%}", block,
             "the create button does not take a full line below the filters on mobile")
         # (0,3,0) specificity — the later CATALOG_CSS in the body must not win
         self.assertIn(".cat-toolbar.cat-toolbar", block)
+
+
+class TestSharedFilterDropdown(unittest.TestCase):
+    """Search, Posts and Actors must use one filter component and no page override."""
+
+    def test_10_filter_css_js_and_markup_have_one_source(self):
+        self.assertEqual(len(re.findall(r"^FILTER_CSS\s*=", WEB_ASSETS, re.M)), 1)
+        self.assertEqual(len(re.findall(r"^FILTER_JS\s*=", WEB_ASSETS, re.M)), 1)
+        self.assertIn("SITE_CSS += FILTER_CSS", WEB_ASSETS)
+        self.assertIn('filter_buttons(search_filters)', WEB_ASSETS)
+        self.assertIn('filter_buttons(CATALOG_FILTERS', CATALOG)
+        css = re.search(r'^CATALOG_CSS = """(.*?)"""', CATALOG, re.S | re.M)
+        self.assertIsNotNone(css)
+        self.assertNotRegex(css.group(1), r"(?m)^\s*\.(?:fdd|filters)\b")
 
 
 class TestCategoryAllLabel(unittest.TestCase):

@@ -719,7 +719,9 @@ overflow:hidden!important}
 /* 📱 mobile: /search and /posts–/actors share **one rule** — the search bar on its own line,
    filter buttons directly below in the same `.filters` row, equally wide. */
 @media(max-width:760px){
-.qwrap,.cat-toolbar .cat-search{flex:1 1 100%}
+/* `.srow .qwrap` (specificity 0,2,0) beats the later APP_CSS `.qwrap` rule;
+   `.cat-toolbar .cat-search` does the same for catalog toolbars. */
+.srow .qwrap,.cat-toolbar .cat-search{flex:1 1 100%}
 .filters{flex:1 1 100%}
 .filters .fdd{flex:1 1 0;min-width:0}
 /* ✅ Like v5 `.search-box`: mobile keeps **one box** (card + border + padding)
