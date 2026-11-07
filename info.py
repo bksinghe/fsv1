@@ -104,7 +104,13 @@ MAX_BTN = int(environ.get('MAX_BTN', 8))
 
 # ================= FILE / STREAM SETTINGS =================
 
-PM_FILE_DELETE_TIME = int(environ.get('PM_FILE_DELETE_TIME', 3600))
+# Admin-editable limits are clamped here as well as in runtime_config so an
+# out-of-range environment value cannot prevent the bot from starting.
+PM_FILE_DELETE_TIME = max(
+    60, min(int(environ.get('PM_FILE_DELETE_TIME', 3600)), 7 * 24 * 60 * 60)
+)
+RESULTS_PER_PAGE_PM = max(1, min(int(environ.get('RESULTS_PER_PAGE_PM', 12)), 30))
+RESULTS_PER_PAGE_GROUP = max(1, min(int(environ.get('RESULTS_PER_PAGE_GROUP', 10)), 30))
 
 USE_CAPTION_FILTER = is_enabled('USE_CAPTION_FILTER', True)
 PROTECT_CONTENT = is_enabled('PROTECT_CONTENT', False)

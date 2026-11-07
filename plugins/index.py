@@ -5,7 +5,8 @@ from hydrogram import Client, filters, enums
 from hydrogram.errors import FloodWait
 from hydrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-from info import ADMINS, INDEX_LOG_CHANNEL
+from info import ADMINS
+from database.runtime_config import runtime_config
 from database.ia_filterdb import save_file, db as media_db
 from utils import get_readable_time, log_error
 
@@ -53,10 +54,8 @@ async def auto_delete(bot, chat_id, msg_id, delay=120):
 
 
 async def send_log(bot, text):
-    if not INDEX_LOG_CHANNEL:
-        return
     try:
-        await bot.send_message(INDEX_LOG_CHANNEL, text)
+        await bot.send_message(runtime_config.get("INDEX_LOG_CHANNEL"), text)
     except:
         pass
 

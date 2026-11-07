@@ -32,13 +32,9 @@ from urllib.parse import quote
 
 from aiohttp import web
 
-import info as _info
-from info import BIN_CHANNEL
 from utils import temp
 from database.ia_filterdb import get_search_results
-
-# Optional dedicated channel (defaults to BIN_CHANNEL in info.py).
-_STORAGE_CHANNEL = getattr(_info, "CATALOG_STORAGE_CHANNEL", BIN_CHANNEL)
+from database.runtime_config import runtime_config
 from web.web_assets import get_auth, vcard_meta
 from web.catalog import (
     CATALOGS,
@@ -210,7 +206,7 @@ async def api_upload(req):
     try:
         buf = io.BytesIO(raw)
         buf.name = "cover.jpg"
-        msg = await bot.send_photo(chat_id=_STORAGE_CHANNEL, photo=buf)
+        msg = await bot.send_photo(chat_id=runtime_config.get("CATALOG_STORAGE_CHANNEL"), photo=buf)
         photo = getattr(msg, "photo", None)
         if not photo:
             raise RuntimeError("Telegram did not return a photo")
@@ -417,7 +413,7 @@ async def api_gallery_upload(req):
         try:
             buf = io.BytesIO(raw)
             buf.name = f"gallery_{item_id}_{i}.jpg"
-            msg = await bot.send_photo(chat_id=_STORAGE_CHANNEL, photo=buf)
+            msg = await bot.send_photo(chat_id=runtime_config.get("CATALOG_STORAGE_CHANNEL"), photo=buf)
             photo = getattr(msg, "photo", None)
             sizes = getattr(photo, "sizes", None) if photo else None
             fid = sizes[-1].file_id if sizes else getattr(photo, "file_id", "")

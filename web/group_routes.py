@@ -26,9 +26,9 @@ from collections import defaultdict
 
 from aiohttp import web
 
-import info as _info
-from info import BIN_CHANNEL, THUMB_BROWSER_CACHE
+from info import THUMB_BROWSER_CACHE
 from utils import temp
+from database.runtime_config import runtime_config
 from database.group_db import (
     store, title_key, series_key, group_title, series_title, quality_label, episode_chips,
     episode_label, episode_identity, duration_seconds,
@@ -42,7 +42,6 @@ from web.image_validate import is_image_magic
 logger = logging.getLogger(__name__)
 group_routes = web.RouteTableDef()
 
-_STORAGE_CHANNEL = getattr(_info, "CATALOG_STORAGE_CHANNEL", BIN_CHANNEL)
 _MAX_UPLOAD = 5 * 1024 * 1024
 SCAN_MAX_GROUP = 30          # a larger quality bucket is a very common name — do not group it
 SCAN_MAX_SERIES = 500        # series may contain many episodes but should still be bounded
@@ -1044,7 +1043,7 @@ async def api_group_upload_thumb(req):
         import io
         buf = io.BytesIO(raw)
         buf.name = "group_poster.jpg"
-        msg = await bot.send_photo(chat_id=_STORAGE_CHANNEL, photo=buf)
+        msg = await bot.send_photo(chat_id=runtime_config.get("CATALOG_STORAGE_CHANNEL"), photo=buf)
         photo = getattr(msg, "photo", None)
         sizes = getattr(photo, "sizes", None) if photo else None
         tid = sizes[-1].file_id if sizes else getattr(photo, "file_id", "")

@@ -197,6 +197,14 @@ class TestIndexAndChannel(unittest.TestCase):
         """idx#cancel also matches `^idx#` — the start handler must ignore it."""
         self.assertIn("if data[1] != \"start\":", self.index)
 
+    def test_auto_index_reads_live_index_channels(self):
+        """Changing INDEX_CHANNELS does not require rebuilding a static filter."""
+        source = (ROOT / "plugins" / "channel.py").read_text(encoding="utf-8")
+        self.assertIn('runtime_config.get("INDEX_CHANNELS")', source)
+        self.assertIn("filters.channel & media_filter", source)
+        self.assertIn("if not _is_index_channel(message.chat):", source)
+        self.assertNotIn("filters.chat(INDEX_CHANNELS)", source)
+
     def test_no_second_mongo_client(self):
         """index.py shares ia_filterdb's connection instead of opening its own."""
         self.assertNotIn("MongoClient", self.index)

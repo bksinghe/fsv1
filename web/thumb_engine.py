@@ -42,7 +42,6 @@ import zlib
 
 import info as _info
 from info import (
-    BIN_CHANNEL,
     THUMB_FETCH_CONCURRENCY,
     THUMB_PROBE_GAP_MIN,
     THUMB_PROBE_GAP_MAX,
@@ -50,14 +49,13 @@ from info import (
     THUMB_FLOOD_EXTRA,
 )
 from utils import temp
+from database.runtime_config import runtime_config
 from database.ia_filterdb import collection, update_file_meta
 from media_probe import META_V, build_media_meta, probe_telegram_media
 from web.image_validate import validate_thumb
 
 logger = logging.getLogger(__name__)
 
-# v5's THUMBNAIL_STORAGE_CHANNEL is CATALOG_STORAGE_CHANNEL in fsv1 (defaults to BIN)
-_STORAGE_CHANNEL = getattr(_info, "CATALOG_STORAGE_CHANNEL", BIN_CHANNEL)
 _MIN_THUMB_BYTES = int(getattr(_info, "THUMB_MIN_BYTES", 512))
 _MIN_THUMB_DIM = int(getattr(_info, "THUMB_MIN_DIM", 48))
 _MIN_THUMB_STDDEV = float(getattr(_info, "THUMB_MIN_STDDEV", 6.0))
@@ -224,11 +222,14 @@ def _clear_flood_penalty():
         _GAP_PENALTY = 0.0
 
 
-async def _delete_later(message_id: int, delay: int = 5):
-    """Like v5's delete queue — remove the probe message from BIN_CHANNEL (non-blocking)."""
+async def _delete_later(message_id: int, delay: int = 5, chat_id=None):
+    """Remove a probe message from the channel it was sent to (non-blocking)."""
     await asyncio.sleep(delay)
     try:
-        await temp.BOT.delete_messages(BIN_CHANNEL, message_id)
+        await temp.BOT.delete_messages(
+            runtime_config.get("BIN_CHANNEL") if chat_id is None else chat_id,
+            message_id,
+        )
     except Exception:
         pass
 
@@ -306,7 +307,7 @@ async def _upload_thumb(data: bytes) -> str:
     try:
         buf = io.BytesIO(data)
         buf.name = "poster.png" if data.startswith(b"\x89PNG") else "poster.jpg"
-        msg = await bot.send_photo(chat_id=_STORAGE_CHANNEL, photo=buf)
+        msg = await bot.send_photo(chat_id=runtime_config.get("CATALOG_STORAGE_CHANNEL"), photo=buf)
         photo = getattr(msg, "photo", None)
         sizes = getattr(photo, "sizes", None) if photo else None
         tid = sizes[-1].file_id if sizes else getattr(photo, "file_id", "")
@@ -402,8 +403,9 @@ async def probe_file(fid: str, force: bool = False):
 
             for attempt in range(THUMB_PROBE_ATTEMPTS):
                 msg = None
+                probe_channel = runtime_config.get("BIN_CHANNEL")
                 try:
-                    msg = await bot.send_cached_media(chat_id=BIN_CHANNEL, file_id=fid)
+                    msg = await bot.send_cached_media(chat_id=probe_channel, file_id=fid)
                     probed = True
                 except Exception as e:
                     wait = flood_wait_seconds(e)
@@ -464,7 +466,9 @@ async def probe_file(fid: str, force: bool = False):
                     if "meta_v" in meta:
                         _STATS["meta"] += 1
 
-                asyncio.create_task(_delete_later(getattr(msg, "id", 0)))
+                asyncio.create_task(
+                    _delete_later(getattr(msg, "id", 0), chat_id=probe_channel)
+                )
 
                 if not need_thumb:
                     return None                    # this was a metadata-only backfill

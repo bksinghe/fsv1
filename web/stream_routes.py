@@ -42,17 +42,37 @@ async def root_route_handler(request):
 # ======================================================
 # 🔐 SIGNED LINK CHECK
 # ======================================================
+def _signed_channel_id(request):
+    raw = request.query.get("c")
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
 def _allowed(request, message_id: int) -> bool:
     e, s = request.query.get("e"), request.query.get("s")
-    if verify(message_id, e, s):
+    if "c" in request.query:
+        channel_id = _signed_channel_id(request)
+        if channel_id is not None and verify(message_id, e, s, chat_id=channel_id):
+            return True
+    elif verify(message_id, e, s):
         return True
-    # Opt-in switch for old unsigned links (issued before this deployment)
-    return ALLOW_UNSIGNED_LINKS and not e and not s
+    # Opt-in switch for old unsigned links (issued before this deployment).
+    # Never let an unsigned URL choose an arbitrary Telegram chat.
+    return ALLOW_UNSIGNED_LINKS and not e and not s and "c" not in request.query
 
 
 def _signed_query(request) -> str:
     e, s = request.query.get("e"), request.query.get("s")
-    return urlencode({"e": e, "s": s}) if e and s else ""
+    if not e or not s:
+        return ""
+    params = {"e": e, "s": s}
+    if "c" in request.query:
+        params["c"] = request.query.get("c")
+    return urlencode(params)
 
 
 # ======================================================
@@ -73,6 +93,7 @@ async def watch_handler(request):
                 message_id,
                 query=_signed_query(request),
                 poster=request.query.get("poster", ""),
+                chat_id=_signed_channel_id(request),
             ),
             content_type="text/html",
             charset="utf-8",
@@ -119,13 +140,13 @@ async def download_handler(request):
         return web.Response(status=400, text="Invalid Message ID")
     if not _allowed(request, message_id):
         return web.Response(status=403, text="Link expired or invalid")
-    return await media_download(request, message_id)
+    return await media_download(request, message_id, chat_id=_signed_channel_id(request))
 
 
-async def media_download(request, message_id: int):
+async def media_download(request, message_id: int, chat_id=None):
     # ── 1) SETUP (before the body starts, so errors can still return 4xx/5xx) ──
     try:
-        info = await get_media_info(message_id)
+        info = await get_media_info(message_id, chat_id=chat_id)
         if not info:
             return web.Response(status=404, text="Media Not Found")
 

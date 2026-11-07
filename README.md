@@ -103,7 +103,7 @@ The help menu (`/start` → 👨‍🚒 Help) is the **only** place commands are
 * **Web stats are live**: 🖥 server state and ⏱ web uptime come from `temp.WEB_START`, which `bot.py` sets the moment the aiohttp site starts; 🔓 Live Sessions counts `temp.USER_SESSIONS`, and the rest are the web app's own collections.
 * `database/stats_db.py` is the **single** counter module: the web *Database Stats* page, `/api/db_stats` and this command all read `snapshot()`, so the three can never disagree.
 
-`/admin` and `/dashboard` no longer exist — `/stats` is the only stats entry point (admin-only). Retired with the panel: **♻️ Restart** (restart from the host instead), **📹 delete-by-quality**, **🔍 check a user's premium** and the **⏰/📊 expiry reports**. `tests/test_admin_panel.py` guards that no panel builder or `admin_` / `del_` / `delq_` / `prm_` callback ever comes back, and `tests/test_commands.py` keeps `/admin` and `/dashboard` in `FORBIDDEN_COMMANDS`; the only callback left in `plugins/admin_tools.py` is the ❌ Cancel button of `/deleteall`.
+`/dashboard` remains retired; `/stats` is the only statistics entry point (admin-only). `/admin` is a separate private settings panel, not the old dashboard: it manages Telegram channels plus safe live controls for caption search, PM content protection, PM stream buttons, PM file auto-delete timing, bot search-page sizes, and web search result limits. Changes are confirmed, bounded where numeric, audited in MongoDB, and can be rolled back. Credentials, payment configuration, and security-sensitive link options stay out of the panel. The old premium/file/restart dashboard screens remain retired; `tests/test_admin_panel.py` guards the private-admin callback checks, the settings allowlist and audit/rollback behavior, while `tests/test_commands.py` keeps the command list in sync.
 
 ---
 
@@ -161,7 +161,13 @@ Variables that are actually used in code (`API_ID`, `API_HASH`, `BOT_TOKEN`, `AD
 
 | Var | Default | Meaning |
 |---|---|---|
-| `MAX_WEB_RESULTS` | `21` | Results per page (3×7 on desktop); configurable via env |
+| `MAX_WEB_RESULTS` | `21` | Web search results per page; environment default, live-editable in `/admin` (1–100) |
+| `RESULTS_PER_PAGE_PM` | `12` | Telegram PM search results per page; live-editable in `/admin` (1–30) |
+| `RESULTS_PER_PAGE_GROUP` | `10` | Telegram group search results per page; live-editable in `/admin` (1–30) |
+| `PM_FILE_DELETE_TIME` | `3600` | PM auto-delete timeout in seconds; live-editable in `/admin` for new deliveries (60–604800) |
+| `USE_CAPTION_FILTER` | `true` | Search captions as well as filenames; live-editable in `/admin` |
+| `PROTECT_CONTENT` | `false` | Protect newly delivered PM files from forwarding/saving; live-editable in `/admin` |
+| `IS_STREAM` | `true` | Show PM Watch / Download buttons; live-editable in `/admin` |
 | `WEB_SESSION_TTL` | `604800` | Login cookie lifetime in seconds (7 days) |
 | `WEB_STREAM_TTL` | `21600` | Web stream link lifetime (6 hours) |
 | `CATALOG_STORAGE_CHANNEL` | `BIN_CHANNEL` | Telegram channel for Post/Actor cover images. If `BIN_CHANNEL` is also in `INDEX_CHANNELS`, use a separate private channel so covers do not appear in file search |

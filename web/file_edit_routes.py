@@ -30,9 +30,8 @@ from urllib.parse import quote
 
 from aiohttp import web
 
-import info as _info
-from info import BIN_CHANNEL
 from utils import temp, get_size
+from database.runtime_config import runtime_config
 from database import ia_filterdb as ia
 from database.group_db import (
     store as group_store, title_key, series_key, normal_kind, KIND_EPISODES,
@@ -43,7 +42,6 @@ from web.thumb_engine import thumb_version, invalidate_thumb, enqueue_probe
 logger = logging.getLogger(__name__)
 file_edit_routes = web.RouteTableDef()
 
-_STORAGE_CHANNEL = getattr(_info, "CATALOG_STORAGE_CHANNEL", BIN_CHANNEL)
 _MAX_UPLOAD = 5 * 1024 * 1024
 _QUALITY_RE = re.compile(r"^[A-Za-z0-9 +.\-]{0,16}$")
 _RES_RE = re.compile(r"^(\d{1,5})[x×](\d{1,5})$", re.I)
@@ -365,7 +363,7 @@ async def api_file_thumb(req):
     try:
         buf = io.BytesIO(raw)
         buf.name = "poster.jpg"
-        msg = await bot.send_photo(chat_id=_STORAGE_CHANNEL, photo=buf)
+        msg = await bot.send_photo(chat_id=runtime_config.get("CATALOG_STORAGE_CHANNEL"), photo=buf)
         photo = getattr(msg, "photo", None)
         sizes = getattr(photo, "sizes", None) if photo else None
         thumb_fid = sizes[-1].file_id if sizes else getattr(photo, "file_id", "")

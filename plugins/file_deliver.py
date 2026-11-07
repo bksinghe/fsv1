@@ -5,7 +5,7 @@ import logging
 from hydrogram import Client, filters, enums
 from hydrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 
-from info import IS_STREAM, PM_FILE_DELETE_TIME, PROTECT_CONTENT
+from database.runtime_config import runtime_config
 from database.ia_filterdb import get_file_details
 from utils import temp, is_premium, premium_required_text, premium_buy_markup
 
@@ -161,24 +161,27 @@ async def start_file_delivery(client: Client, message):
 # ======================================================
 # SCHEDULE FILE DELETION
 # ======================================================
-async def schedule_file_deletion(client, sent_msg, uid, file_id):
-    """Schedule auto-deletion of file message"""
+async def schedule_file_deletion(client, sent_msg, uid, file_id, delete_after=None):
+    """Schedule deletion using the timeout captured for this delivery."""
     msg_id = sent_msg.id
+    if delete_after is None:
+        delete_after = runtime_config.get("PM_FILE_DELETE_TIME")
     
     # Check if temp.FILES exists
     if not hasattr(temp, 'FILES'):
         temp.FILES = {}
     
-    # Track in temp storage
+    # Track in temp storage. A later admin change affects future deliveries;
+    # this message keeps the timeout captured when its deletion task starts.
     temp.FILES[msg_id] = {
         "owner": uid,
         "file_id": file_id,
-        "expire": int(time.time()) + PM_FILE_DELETE_TIME
+        "expire": int(time.time()) + delete_after
     }
     
     try:
         # Wait for expiry
-        await asyncio.sleep(PM_FILE_DELETE_TIME)
+        await asyncio.sleep(delete_after)
         
         # Remove from tracking
         data = temp.FILES.pop(msg_id, None)
@@ -252,9 +255,15 @@ async def deliver_file(client, uid, grp_id, file_id):
         else:
             caption = f"{file_name}\n\n{file_caption}"
 
+        # Capture live operational settings once for this delivery. Later edits
+        # apply to the next delivered file, not an in-flight send/deletion task.
+        stream_enabled = runtime_config.get("IS_STREAM")
+        protect_content = runtime_config.get("PROTECT_CONTENT")
+        delete_after = runtime_config.get("PM_FILE_DELETE_TIME")
+
         # Build buttons
         buttons = []
-        if IS_STREAM:
+        if stream_enabled:
             buttons.append([
                 InlineKeyboardButton(
                     "▶️ Watch / Download",
@@ -272,13 +281,13 @@ async def deliver_file(client, uid, grp_id, file_id):
             chat_id=uid,
             file_id=file_id,
             caption=caption,
-            protect_content=PROTECT_CONTENT,
+            protect_content=protect_content,
             reply_markup=markup
         )
 
         # Schedule deletion
         deletion_task = asyncio.create_task(
-            schedule_file_deletion(client, sent, uid, file_id)
+            schedule_file_deletion(client, sent, uid, file_id, delete_after=delete_after)
         )
         
         # Track deletion task

@@ -72,8 +72,8 @@ border-radius:8px;text-decoration:none;font-weight:800}}</style></head>
 <a href="{src}" download>⬇ Direct Download</a></div></body></html>"""
 
 
-async def media_watch(message_id: int, query: str = "", poster: str = ""):
-    info = await get_media_info(message_id)
+async def media_watch(message_id: int, query: str = "", poster: str = "", chat_id=None):
+    info = await get_media_info(message_id, chat_id=chat_id)
     if not info:
         return "<h2 style='color:#fff;text-align:center;padding:60px'>❌ File Not Found</h2>"
 

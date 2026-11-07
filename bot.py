@@ -28,7 +28,8 @@ from hydrogram import Client, filters
 from aiohttp import web
 
 from web import web_app
-from info import API_ID, API_HASH, BOT_TOKEN, PORT, LOG_CHANNEL, ADMINS
+from info import API_ID, API_HASH, BOT_TOKEN, PORT, ADMINS
+from database.runtime_config import runtime_config
 
 from utils import (
     temp,
@@ -145,6 +146,11 @@ class Bot(Client):
         )
 
     async def start(self):
+        # Load persisted channel/feature overrides before plugins handle updates.
+        try:
+            await runtime_config.load()
+        except Exception:
+            logger.exception("Runtime settings could not be loaded; environment defaults remain active")
         await super().start()
 
         # ---- runtime globals ----
@@ -212,7 +218,7 @@ class Bot(Client):
         # ---- log channel ----
         try:
             await self.send_message(
-                LOG_CHANNEL,
+                runtime_config.get("LOG_CHANNEL"),
                 f"🤖 <b>@{me.username} started successfully</b>\n"
                 f"🕒 {ist_time()}\n"
                 "⭐ Premium auto-remove: Active"

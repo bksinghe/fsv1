@@ -5,7 +5,7 @@ from hydrogram.errors import (
     ReactionInvalid
 )
 
-from info import INDEX_CHANNELS, LOG_CHANNEL
+from database.runtime_config import runtime_config
 from database.ia_filterdb import (
     save_file,
     update_file_caption,
@@ -25,6 +25,26 @@ except ImportError:
 # MEDIA FILTER
 # ─────────────────────────────────────────────
 media_filter = (filters.video | filters.document)
+
+
+def _is_index_channel(chat):
+    """Check the live INDEX_CHANNELS setting (including legacy @usernames)."""
+    chat_id = getattr(chat, "id", None)
+    username = (getattr(chat, "username", None) or "").lstrip("@").casefold()
+    for configured in runtime_config.get("INDEX_CHANNELS"):
+        if isinstance(configured, int) and configured == chat_id:
+            return True
+        raw = str(configured).strip()
+        if raw.lstrip("-").isdigit():
+            try:
+                if int(raw) == chat_id:
+                    return True
+            except ValueError:
+                pass
+        elif username and raw.lstrip("@").casefold() == username:
+            return True
+    return False
+
 
 # ─────────────────────────────────────────────
 # HELPERS
@@ -48,15 +68,16 @@ async def safe_react(message, emoji: str):
 
 
 async def safe_log(client, text: str):
-    if not LOG_CHANNEL:
+    log_channel = runtime_config.get("LOG_CHANNEL")
+    if not log_channel:
         return False
     try:
-        await client.send_message(LOG_CHANNEL, text)
+        await client.send_message(log_channel, text)
         return True
     except FloodWait as e:
         await asyncio.sleep(e.value)
         try:
-            await client.send_message(LOG_CHANNEL, text)
+            await client.send_message(log_channel, text)
             return True
         except:
             return False
@@ -77,8 +98,11 @@ def get_media_info(message):
 # 📥 AUTO INDEX (LIVE POSTS ONLY)
 # ─────────────────────────────────────────────
 
-@Client.on_message(filters.chat(INDEX_CHANNELS) & media_filter, group=10)
+@Client.on_message(filters.channel & media_filter, group=10)
 async def index_new_file(bot, message):
+    if not _is_index_channel(message.chat):
+        return
+
     # 🛑 Skip while the manual indexer is running for this channel
     if message.chat.id in ACTIVE_INDEXES:
         return
@@ -123,8 +147,10 @@ async def index_new_file(bot, message):
 # ✏️ CAPTION EDIT
 # ─────────────────────────────────────────────
 
-@Client.on_edited_message(filters.chat(INDEX_CHANNELS) & media_filter, group=11)
+@Client.on_edited_message(filters.channel & media_filter, group=11)
 async def update_caption(bot, message):
+    if not _is_index_channel(message.chat):
+        return
     if message.chat.id in ACTIVE_INDEXES:
         return
 
@@ -149,8 +175,10 @@ async def update_caption(bot, message):
 # 🗑️ DELETE LOG
 # ─────────────────────────────────────────────
 
-@Client.on_deleted_messages(filters.chat(INDEX_CHANNELS), group=12)
+@Client.on_deleted_messages(filters.channel, group=12)
 async def handle_deleted_files(bot, messages):
+    if not messages or not _is_index_channel(messages[0].chat):
+        return
     try:
         await safe_log(
             bot,

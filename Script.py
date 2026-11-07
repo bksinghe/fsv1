@@ -70,8 +70,9 @@ class script(object):
         "<b>🛡️ ADMIN COMMANDS</b>\n\n"
 
         "📊 <b>Stats</b>\n"
-        "• /stats – Users, groups, files, premium,\n"
-        "  index speed, DB size &amp; uptime\n\n"
+        "• /stats – Users, groups, files, premium, DB size &amp; uptime\n\n"
+
+        "🛠️ /admin – live channels, features &amp; limits, audit &amp; undo\n\n"
 
         "📁 <b>Indexing</b> <i>(PM · no command)</i>\n"
         "• Forward a channel post or a t.me link\n\n"

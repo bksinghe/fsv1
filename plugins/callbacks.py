@@ -16,7 +16,8 @@ from hydrogram.errors import (
     BadRequest
 )
 
-from info import ADMINS, PICS, URL, BIN_CHANNEL
+from info import ADMINS, PICS, URL
+from database.runtime_config import runtime_config
 from Script import script
 
 from utils import is_premium, temp  # ✅ REMOVED: get_wish
@@ -234,6 +235,9 @@ async def cb_handler(client: Client, query: CallbackQuery):
     try:
         data = query.data
         uid = query.from_user.id
+        # The private channel-settings UI is handled by plugins/admin_panel.py.
+        if data and data.startswith("admincfg:"):
+            return
 
         # --------------------------------------------------
         # ❗ PAGINATION (filter.py handles)
@@ -287,6 +291,13 @@ async def cb_handler(client: Client, query: CallbackQuery):
         # ▶️ STREAM (OWNER + PREMIUM)
         # ==================================================
         if data.startswith("stream#"):
+            if not runtime_config.get("IS_STREAM"):
+                await safe_answer_query(
+                    query,
+                    "Streaming buttons are currently disabled by the bot admin.",
+                    show_alert=True,
+                )
+                return
             try:
                 file_id = data.split("#", 1)[1]
             except IndexError:
@@ -325,13 +336,14 @@ async def cb_handler(client: Client, query: CallbackQuery):
 
             # Generate stream links
             try:
+                bin_channel = runtime_config.get("BIN_CHANNEL")
                 msg = await client.send_cached_media(
-                    chat_id=BIN_CHANNEL,
+                    chat_id=bin_channel,
                     file_id=file_id
                 )
 
-                # 🔐 Signed stream links (the same links the web search page creates)
-                signed = sign_params(msg.id, USER_LINK_TTL)
+                # Bind the signed URL to this channel so old links survive a BIN change.
+                signed = sign_params(msg.id, USER_LINK_TTL, chat_id=bin_channel)
                 watch = f"{URL}watch/{msg.id}?{signed}"
                 download = f"{URL}download/{msg.id}?{signed}"
 

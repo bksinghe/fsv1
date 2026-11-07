@@ -5,7 +5,8 @@ from hydrogram import Client, filters, enums
 from hydrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
 from hydrogram.errors import MessageNotModified, MessageIdInvalid, BadRequest, ListenerTimeout
 
-from info import ADMINS, LOG_CHANNEL
+from info import ADMINS
+from database.runtime_config import runtime_config
 from database.ia_filterdb import (
     db_count_documents,
     delete_files,
@@ -130,7 +131,7 @@ async def delete_cmd(bot, message):
         # Log to channel
         try:
             await bot.send_message(
-                LOG_CHANNEL,
+                runtime_config.get("LOG_CHANNEL"),
                 f"🗑 <b>Files Deleted</b>\n\n"
                 f"👤 Admin: {message.from_user.mention}\n"
                 f"🔍 Keyword: <code>{key}</code>\n"
@@ -181,7 +182,7 @@ async def delete_all_cmd(bot, message):
             # Log to channel
             try:
                 await bot.send_message(
-                    LOG_CHANNEL,
+                    runtime_config.get("LOG_CHANNEL"),
                     f"🗑 <b>ALL FILES DELETED</b>\n\n"
                     f"👤 Admin: {message.from_user.mention}\n"
                     f"🗑 Deleted: <code>{count}</code> files\n"

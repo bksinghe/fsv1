@@ -10,6 +10,7 @@ from hydrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from info import ADMINS
 from database.users_chats_db import db
 from database.ia_filterdb import get_search_results
+from database.runtime_config import runtime_config
 from utils import (
     get_size,
     is_premium,
@@ -22,8 +23,6 @@ from utils import (
 )
 
 # Configuration
-RESULTS_PER_PAGE_PM = 12      # 12 results in private messages
-RESULTS_PER_PAGE_GROUP = 10   # 10 results in groups
 RESULT_EXPIRE_TIME = 300      # 5 minutes
 EXPIRE_DELETE_DELAY = 60      # delete after 1 min
 RATE_LIMIT = 5                # searches per minute
@@ -402,8 +401,9 @@ def build_nav(search, offset, next_offset, results_per_page, source_chat_id, own
     nav = []
 
     if offset > 0:
+        previous_offset = max(0, offset - results_per_page)
         callback_key = make_callback_key(
-            search, offset - results_per_page, source_chat_id, owner, is_pm
+            search, previous_offset, source_chat_id, owner, is_pm
         )
         nav.append(InlineKeyboardButton("◀️ Prev", callback_data=f"page#{callback_key}"))
 
@@ -429,8 +429,12 @@ async def send_results(
     premium=None
 ):
     try:
-        # Determine results per page based on PM or Group
-        results_per_page = RESULTS_PER_PAGE_PM if is_pm else RESULTS_PER_PAGE_GROUP
+        offset = max(0, int(offset))
+        # Admin changes apply to the next search/page fetch without restart.
+        if is_pm:
+            results_per_page = runtime_config.get("RESULTS_PER_PAGE_PM")
+        else:
+            results_per_page = runtime_config.get("RESULTS_PER_PAGE_GROUP")
         
         files, next_offset, total = await get_search_results(
             search,

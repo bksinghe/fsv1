@@ -13,18 +13,14 @@ from urllib.parse import quote
 
 from aiohttp import web
 
-from info import (
-    BIN_CHANNEL,
-    MAX_WEB_RESULTS,
-    WEB_STREAM_TTL,
-    THUMB_BROWSER_CACHE,
-)
+from info import WEB_STREAM_TTL, THUMB_BROWSER_CACHE
 from utils import temp, get_size
 from database.ia_filterdb import (
     get_search_results,
     get_recent_files,
     get_file_details,
 )
+from database.runtime_config import runtime_config
 from database.group_db import duration_seconds
 from web.group_routes import group_cards, filter_group_cards
 from stream_security import sign_params
@@ -34,8 +30,8 @@ from web.thumb_engine import get_thumb, image_content_type, thumb_version, thumb
 logger = logging.getLogger(__name__)
 search_routes = web.RouteTableDef()
 
-# file_id -> (BIN_CHANNEL message_id, expiry). Repeated clicks on the same file
-# Clicking re-signs the existing link instead of sending a new message.
+# (BIN_CHANNEL, file_id) -> (message_id, expiry). A channel change gets a fresh
+# message while repeat clicks within the same channel reuse its cached message.
 _STREAM_CACHE = {}
 
 # ── Group / UnGroup filter ─────────────────────────────────────────
@@ -111,10 +107,11 @@ async def api_search(req):
         offset = max(0, int(req.query.get("offset", "0")))
     except ValueError:
         offset = 0
+    max_web_results = runtime_config.get("MAX_WEB_RESULTS")
     try:
-        limit = max(1, min(int(req.query.get("limit", MAX_WEB_RESULTS)), MAX_WEB_RESULTS))
+        limit = max(1, min(int(req.query.get("limit", max_web_results)), max_web_results))
     except ValueError:
-        limit = MAX_WEB_RESULTS
+        limit = max_web_results
 
     group_mode = (req.query.get("group") or "all").strip().lower()
     if group_mode not in ("all", "group", "ungroup"):
@@ -199,23 +196,25 @@ def _prune_stream_cache():
 
 
 async def _tunnel_stream(fid: str, doc: dict) -> dict:
-    """Send the file to BIN_CHANNEL and build signed watch/download URLs."""
+    """Send the file to the active BIN channel and build signed stream URLs."""
     now = time.time()
-    hit = _STREAM_CACHE.get(fid)
+    bin_channel = runtime_config.get("BIN_CHANNEL")
+    cache_key = (bin_channel, fid)
+    hit = _STREAM_CACHE.get(cache_key)
     if hit and hit[1] > now + 60:
         msg_id, expiry = hit
     else:
         bot = getattr(temp, "BOT", None)
         if bot is None:
             raise RuntimeError("Bot is still starting, please retry in a moment")
-        msg = await bot.send_cached_media(chat_id=BIN_CHANNEL, file_id=fid)
+        msg = await bot.send_cached_media(chat_id=bin_channel, file_id=fid)
         msg_id = int(msg.id)
         expiry = now + WEB_STREAM_TTL
-        _STREAM_CACHE[fid] = (msg_id, expiry)
+        _STREAM_CACHE[cache_key] = (msg_id, expiry)
         _prune_stream_cache()
 
     ttl = max(60, int(expiry - now))
-    signed = sign_params(msg_id, ttl)
+    signed = sign_params(msg_id, ttl, chat_id=bin_channel)
     poster = _thumb_url(doc)
     watch = f"/watch/{msg_id}?{signed}&poster={quote(poster, safe='')}"
     download = f"/download/{msg_id}?{signed}"

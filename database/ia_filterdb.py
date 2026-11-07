@@ -16,8 +16,8 @@ from info import (
     DATABASE_NAME,
     COLLECTION_NAME,
     MAX_BTN,
-    USE_CAPTION_FILTER
 )
+from database.runtime_config import runtime_config
 
 logger = logging.getLogger(__name__)
 
@@ -183,9 +183,11 @@ async def get_search_results(
         return [], "", 0
     
     q_lower = q.lower()
+    use_caption_filter = runtime_config.get("USE_CAPTION_FILTER")
     
-    # Check the cache (the limit is part of the key — web pagination may ask for a different one)
-    cache_key = f"{q_lower}:{offset}:{max_results}"
+    # Include the caption policy in the key so a live toggle cannot serve a
+    # cached result produced under the previous search policy.
+    cache_key = f"{q_lower}:{offset}:{max_results}:caption={int(use_caption_filter)}"
     cached = cache_get(cache_key)
     if cached:
         return cached
@@ -193,32 +195,32 @@ async def get_search_results(
     files = []
     total = 0
 
-    # ===============================================
-    # METHOD 1: TEXT SEARCH (FAST & RELEVANT)
-    # ===============================================
-    text_filter = {"$text": {"$search": q}}
+    # Mongo's text index includes both file_name and caption. Skip it entirely
+    # when captions are disabled; otherwise a caption-only hit would leak
+    # through even though the regex fallback is filename-only.
+    if use_caption_filter:
+        text_filter = {"$text": {"$search": q}}
+        try:
+            cursor = collection.find(
+                text_filter,
+                {
+                    "file_name": 1,
+                    "file_size": 1,
+                    "caption": 1,
+                    "quality": 1,
+                    **WEB_EXTRA_FIELDS,
+                    "score": {"$meta": "textScore"},
+                }
+            ).sort([("score", {"$meta": "textScore"})]).skip(offset).limit(max_results)
 
-    try:
-        cursor = collection.find(
-            text_filter,
-            {
-                "file_name": 1,
-                "file_size": 1,
-                "caption": 1,
-                "quality": 1,
-                **WEB_EXTRA_FIELDS,
-                "score": {"$meta": "textScore"},
-            }
-        ).sort([("score", {"$meta": "textScore"})]).skip(offset).limit(max_results)
+            files = list(cursor)
 
-        files = list(cursor)
-        
-        if files:
-            # Count with limit for performance
-            total = collection.count_documents(text_filter, limit=10000)
+            if files:
+                # Count with limit for performance
+                total = collection.count_documents(text_filter, limit=10000)
 
-    except Exception as e:
-        logger.error(f"Text search error: {e}")
+        except Exception as e:
+            logger.error(f"Text search error: {e}")
 
     # ===============================================
     # METHOD 2: REGEX FALLBACK (SLOWER BUT ACCURATE)
@@ -230,7 +232,7 @@ async def get_search_results(
             regex = re.compile(escaped_query, re.IGNORECASE)
             
             # Build filter based on caption setting
-            if USE_CAPTION_FILTER:
+            if use_caption_filter:
                 rg_filter = {"$or": [{"file_name": regex}, {"caption": regex}]}
             else:
                 rg_filter = {"file_name": regex}

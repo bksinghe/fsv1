@@ -33,7 +33,8 @@ CALLBACKS = (ROOT / "plugins" / "callbacks.py").read_text(encoding="utf-8")
 
 # `/word` tokens that are not Telegram commands (URLs, file paths, …)
 ALLOWED_REFERENCES = {
-    "start",  # "https://t.me/<bot>?start=file_…" deep links
+    "start",   # "https://t.me/<bot>?start=file_…" deep links
+    "cancel",  # consumed by the active /admin settings listener, not a command handler
 }
 
 # Commands the PM help menu must keep advertising (they are the bot's features)
@@ -45,7 +46,7 @@ EXPECTED_USER_COMMANDS = {
 }
 
 EXPECTED_ADMIN_COMMANDS = {
-    "stats",
+    "stats", "admin",
     "addpremium", "extendpremium", "removepremium",
     "delete", "deleteall",
     "warmup_thumbs",
@@ -66,7 +67,7 @@ FORBIDDEN_COMMANDS = {
     "addblacklist", "removeblacklist", "blacklist", "blacklistwarn",
     "dlink", "removedlink", "dlinklist",
     "commands", "ping", "botinfo",
-    "admin", "dashboard",
+    "dashboard",
 }
 
 
@@ -200,7 +201,7 @@ class TestCommandLists(unittest.TestCase):
 
     def test_admin_list_advertises_the_admin_features(self):
         listed = listed_commands("ADMIN_COMMAND_TXT")
-        for cmd in ("stats", "delete", "deleteall", "warmup_thumbs",
+        for cmd in ("stats", "admin", "delete", "deleteall", "warmup_thumbs",
                     "addpremium", "extendpremium", "removepremium"):
             with self.subTest(command=cmd):
                 self.assertIn(cmd, listed, f"/{cmd} is missing from the admin list")
