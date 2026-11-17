@@ -30,12 +30,19 @@ header{{display:flex;align-items:center;gap:10px;padding:14px 5%;border-bottom:1
 .wrap{{max-width:1000px;margin:22px auto;padding:0 16px 40px}}
 .player{{background:#000;border:1px solid var(--line);border-radius:12px;overflow:hidden}}
 video{{display:block;width:100%;aspect-ratio:16/9;background:#000}}
-.choices{{margin-top:14px;padding:14px;background:var(--card);border:1px solid var(--line);border-radius:10px}}
-.choices[hidden]{{display:none}} .choices h2{{font-size:13px;color:var(--mut);margin-bottom:10px}}
-.choices-list{{display:flex;flex-wrap:wrap;gap:8px;max-height:180px;overflow:auto}}
-.choices button{{background:#242430;color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:9px 12px;cursor:pointer}}
-.choices button.active{{background:var(--red);border-color:var(--red)}}
-.choices .choice-meta{{display:block;margin-top:4px;font-size:11px;opacity:.8}}
+ .choices{{margin-top:14px;padding:16px;background:linear-gradient(180deg,#1d1d27,var(--card));border:1px solid var(--line);border-radius:12px}}
+.choices[hidden]{{display:none}}.choices-head{{display:flex;align-items:center;gap:10px;margin-bottom:12px}}
+.choices-icon{{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:rgba(229,9,20,.13);color:#ff5260;font-size:16px;flex:none}}
+.choices h2{{font-size:13px;color:var(--txt)}}.choices-sub{{font-size:11px;color:var(--mut);margin-top:2px}}
+.choices-list{{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px;max-height:220px;overflow-y:auto;overscroll-behavior:contain;padding:2px}}
+.choices button{{min-width:0;background:#242430;color:var(--txt);border:1px solid var(--line);border-radius:10px;padding:10px 11px;cursor:pointer;text-align:left;font:inherit;transition:border-color .16s,background .16s}}
+.choices button:hover{{border-color:#a74c55;background:#292731}}.choices button:focus-visible{{outline:2px solid #ff6670;outline-offset:2px}}
+.choices button.active{{border-color:#e50914;background:linear-gradient(135deg,rgba(229,9,20,.18),rgba(229,9,20,.04));box-shadow:inset 3px 0 #e50914}}
+.choices .choice-top{{display:flex;align-items:center;gap:6px;min-width:0}}.choices .choice-label{{font-size:12px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
+.choices .choice-state{{margin-left:auto;flex:none;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#ff7b84}}
+.choices .choice-name{{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--mut);font-size:11px;margin-top:5px}}
+.choices .choice-meta{{display:block;margin-top:5px;color:var(--mut);font-size:11px}}
+@media(max-width:480px){{.choices{{padding:12px}}.choices-list{{grid-template-columns:repeat(2,minmax(0,1fr));max-height:190px}}.choices button{{padding:9px}}}}
 .info{{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:16px}}
 .name{{font-size:17px;font-weight:700;flex:1;min-width:200px;word-break:break-word}}
 .btn{{display:inline-block;background:var(--red);color:#fff;font-weight:800;font-size:13px;
@@ -53,7 +60,7 @@ padding:11px 20px;border-radius:8px;text-decoration:none}}
       Your browser does not support HTML5 video.
     </video>
   </div>
-  <section class="choices" id="choices" data-file-id="{file_id}" hidden aria-label="Episodes and qualities"><h2>Episodes &amp; qualities</h2><div class="choices-list"></div></section>
+  <section class="choices" id="choices" data-file-id="{file_id}" hidden aria-label="Episodes and qualities"><div class="choices-head"><span class="choices-icon" aria-hidden="true">▤</span><div><h2>Episodes &amp; qualities</h2><div class="choices-sub">Choose a version to play</div></div></div><div class="choices-list"></div></section>
   <div class="info">
     <div class="name" id="name">{file_name}</div>
     <a class="btn" id="download" href="{src}" download>⬇ Download</a>
@@ -70,7 +77,12 @@ function render(){{
   list.replaceChildren(); box.hidden=items.length<2;
   items.forEach(item=>{{
     const b=document.createElement('button'); b.type='button';
-    b.textContent=[item.episode,item.quality].filter(Boolean).join(' · ') || item.name;
+    const top=document.createElement('span');top.className='choice-top';
+    const label=document.createElement('span');label.className='choice-label';
+    label.textContent=[item.episode,item.quality].filter(Boolean).join(' · ') || 'Video';top.appendChild(label);
+    if(item.file_id===fid){{const state=document.createElement('span');state.className='choice-state';state.textContent='Selected';top.appendChild(state)}}
+    b.appendChild(top);
+    const name=document.createElement('span');name.className='choice-name';name.textContent=item.name;b.appendChild(name);
     const meta=[item.duration ? '⏱ '+item.duration : '', item.size && !/^0(?:\.0+)?\s*B$/i.test(item.size) ? item.size : ''].filter(Boolean);
     if(meta.length){{const detail=document.createElement('span');detail.className='choice-meta';detail.textContent=meta.join(' · ');b.appendChild(detail)}}
     b.title=item.name; b.className=item.file_id===fid?'active':'';

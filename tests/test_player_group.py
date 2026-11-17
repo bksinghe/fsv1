@@ -67,6 +67,16 @@ class PlayerGroupTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('currentWatch=location.origin+d.watch', js)
         self.assertIn('clip.writeText(currentWatch)', js)
 
+    def test_choice_cards_show_current_item_and_metadata_accessibly(self):
+        assets = (ROOT / 'web/web_assets.py').read_text()
+        watch = (ROOT / 'web/utils/render_template.py').read_text()
+        for content in (assets, watch):
+            for part in ('choice-label', 'choice-name', 'choice-meta', 'choice-state',
+                         "state.textContent='Selected'", "setAttribute('aria-pressed'",
+                         'focus-visible', 'grid-template-columns:repeat(2,minmax(0,1fr))'):
+                self.assertIn(part, content)
+            self.assertIn('name.textContent=item.name', content)
+
     def test_player_race_guards_and_watch_page(self):
         assets = (ROOT / 'web/web_assets.py').read_text()
         watch = (ROOT / 'web/utils/render_template.py').read_text()

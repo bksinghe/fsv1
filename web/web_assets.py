@@ -1014,12 +1014,19 @@ text-overflow:ellipsis;white-space:nowrap}
 line-height:1}
 .video-wrap{background:#000;aspect-ratio:16/9}
 video{width:100%;height:100%;display:block;background:#000}
-.pchoices{padding:12px 16px;border-top:1px solid var(--line)}
-.pchoices[hidden]{display:none}.pchoices-title{font-size:12px;font-weight:800;color:var(--mut);margin-bottom:8px}
-.pchoices-list{display:flex;gap:8px;flex-wrap:wrap;max-height:145px;overflow-y:auto}
-.pchoices button{background:var(--bg3);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:8px 11px;cursor:pointer;text-align:left;font:inherit;font-size:12px}
-.pchoices button.active{border-color:var(--red);background:var(--red);color:white}
-.pchoices .choice-meta{display:block;margin-top:4px;font-size:11px;opacity:.8}
+ .pchoices{padding:16px;border-top:1px solid var(--line);background:linear-gradient(180deg,rgba(255,255,255,.025),transparent)}
+.pchoices[hidden]{display:none}.pchoices-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.pchoices-icon{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:rgba(229,9,20,.13);color:#ff5260;font-size:16px;flex:none}
+.pchoices-title{font-size:13px;font-weight:800;color:var(--txt)}.pchoices-sub{font-size:11px;color:var(--mut);margin-top:2px}
+.pchoices-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px;max-height:200px;overflow-y:auto;overscroll-behavior:contain;padding:2px}
+.pchoices button{position:relative;min-width:0;background:var(--bg3);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:10px 11px;cursor:pointer;text-align:left;font:inherit;transition:border-color .16s,background .16s,transform .16s}
+.pchoices button:hover{border-color:#a74c55;background:#25232b}.pchoices button:focus-visible{outline:2px solid #ff6670;outline-offset:2px}
+.pchoices button.active{border-color:#e50914;background:linear-gradient(135deg,rgba(229,9,20,.18),rgba(229,9,20,.04));box-shadow:inset 3px 0 #e50914}
+.pchoices .choice-top{display:flex;align-items:center;gap:6px;min-width:0}.pchoices .choice-label{font-size:12px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pchoices .choice-state{margin-left:auto;flex:none;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#ff7b84}
+.pchoices .choice-name{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--mut);font-size:11px;margin-top:5px}
+.pchoices .choice-meta{display:block;margin-top:5px;color:var(--mut);font-size:11px}
+@media(max-width:480px){.pchoices{padding:12px}.pchoices-list{grid-template-columns:repeat(2,minmax(0,1fr));max-height:190px}.pchoices button{padding:9px}}
 .mactions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:13px 16px}
 .mactions a,.mactions button{background:var(--bg3);border:1px solid var(--line);
 color:var(--txt);border-radius:7px;padding:9px 14px;font-size:12px;font-weight:800;
@@ -1317,7 +1324,7 @@ PLAYER_MODAL_HTML = """<div class="modal" id="modal" onclick="if(event.target===
     <div class="mhead"><div class="mtitle" id="pTitle">Loading stream…</div>
       <button class="xbtn" onclick="closePlayer()">✕</button></div>
     <div class="video-wrap"><video id="player" controls playsinline></video></div>
-    <section class="pchoices" id="pChoices" hidden aria-label="Episodes and qualities"><div class="pchoices-title">Episodes &amp; qualities</div><div class="pchoices-list" id="pChoicesList"></div></section>
+    <section class="pchoices" id="pChoices" hidden aria-label="Episodes and qualities"><div class="pchoices-head"><span class="pchoices-icon" aria-hidden="true">▤</span><div><div class="pchoices-title">Episodes &amp; qualities</div><div class="pchoices-sub">Choose a version to play</div></div></div><div class="pchoices-list" id="pChoicesList"></div></section>
     <div class="mactions">
       <a id="pDl" href="#">⬇ Download</a>
       <button onclick="copyLink()">🔗 Copy link</button>
@@ -1338,7 +1345,12 @@ PLAYER_JS = r"""<script>
       const b=document.createElement('button'); b.type='button';
       b.className=item.file_id===fid?'active':'';
       b.setAttribute('aria-pressed', item.file_id===fid?'true':'false');
-      b.textContent=[item.episode,item.quality].filter(Boolean).join(' · ') || item.name;
+      const top=document.createElement('span');top.className='choice-top';
+      const label=document.createElement('span');label.className='choice-label';
+      label.textContent=[item.episode,item.quality].filter(Boolean).join(' · ') || 'Video';top.appendChild(label);
+      if(item.file_id===fid){const state=document.createElement('span');state.className='choice-state';state.textContent='Selected';top.appendChild(state)}
+      b.appendChild(top);
+      const name=document.createElement('span');name.className='choice-name';name.textContent=item.name; b.appendChild(name);
       const meta=[item.duration ? '⏱ '+item.duration : '', item.size && !/^0(?:\.0+)?\s*B$/i.test(item.size) ? item.size : ''].filter(Boolean);
       if(meta.length){const detail=document.createElement('span');detail.className='choice-meta';detail.textContent=meta.join(' · ');b.appendChild(detail)}
       b.title=item.name; b.addEventListener('click',()=>window.play(item.file_id,item.name,items));
