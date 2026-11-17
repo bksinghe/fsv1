@@ -73,6 +73,7 @@ async def watch_handler(request):
                 message_id,
                 query=_signed_query(request),
                 poster=request.query.get("poster", ""),
+                file_id=request.query.get("file_id", ""),
             ),
             content_type="text/html",
             charset="utf-8",

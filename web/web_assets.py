@@ -402,6 +402,7 @@ box-shadow:0 12px 34px rgba(0,0,0,.55);transition:transform .3s,opacity .3s;max-
         <label class="wide">🗂️ Group ID<input id="feGroupId" type="text" maxlength="512"
           inputmode="numeric" autocomplete="off" placeholder="Enter an existing group ID"></label>
         <div class="fegroup-hint" id="feGroupHint">Loading current group…</div>
+        <div class="gpreview" id="feGroupPreview" hidden aria-live="polite"></div>
       </div>
       <div class="festatus" id="feStatus">…</div>
     </div>
@@ -418,7 +419,7 @@ FILE_EDIT_JS = r"""<script>
 (function(){
   const q = s => document.querySelector(s);
   const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  let current=null, crop=null, busy=false, toastTimer=null;
+  let current=null, crop=null, busy=false, toastTimer=null, originalGroup="", groupPreview=null;
   function toast(msg, err){
     const t=q('#feToast'); if(!t) return;
     t.textContent=msg; t.classList.toggle('err',!!err); t.classList.add('show');
@@ -456,6 +457,8 @@ FILE_EDIT_JS = r"""<script>
   function setGroupInfo(f){
     const input=q('#feGroupId'), hint=q('#feGroupHint');
     if(input) input.value=String(f.group_id||'');
+    originalGroup=String(f.group_id||'');
+    if(groupPreview) groupPreview.update();
     if(!hint) return;
     if(f.group_id){
       const groupNo=f.group_num||f.group_id;
@@ -500,7 +503,7 @@ FILE_EDIT_JS = r"""<script>
     current=String(fid); crop=null; busy=false;
     q('#feModal').classList.add('open');
     q('#feStatus').textContent='Loading…';
-    q('#feGroupId').value=''; q('#feGroupHint').textContent='Loading current group…';
+    q('#feGroupId').value=''; originalGroup=''; if(groupPreview)groupPreview.update(); q('#feGroupHint').textContent='Loading current group…';
     q('#feFile').value=''; q('#feZoom').value=1;
     fetch('/api/file/meta?id='+encodeURIComponent(current),{credentials:'same-origin'})
       .then(r=>r.json()).then(d=>{
@@ -530,6 +533,12 @@ FILE_EDIT_JS = r"""<script>
     const payload={file_id:current,name:q('#feName').value,caption:q('#feCaption').value,
       quality:q('#feQuality').value,duration:q('#feDuration').value,
       res:q('#feRes').value,group_id:q('#feGroupId').value.trim()};
+    const target=payload.group_id.replace(/^#/, '').trim();
+    if(target && target!==originalGroup){
+      const dest=groupPreview && groupPreview.get();
+      if(!dest || dest.id!==target){toast('Please wait for a valid destination group preview',true);return;}
+      if(!confirm('Move this file to group #'+dest.num+' — '+dest.name+'?'))return;
+    }
     setBusy(true);
     try{
       const r=await fetch('/api/file/edit',{method:'POST',credentials:'same-origin',
@@ -642,6 +651,7 @@ FILE_EDIT_JS = r"""<script>
     if(!isOpen()) return;
     if((e.ctrlKey||e.metaKey)&&String(e.key).toLowerCase()==='s'){ e.preventDefault(); save(); }
   });
+  groupPreview=window.GroupPreview(q('#feGroupId'),q('#feGroupPreview'));
   q('#feSave').addEventListener('click',save);
   q('#feReset').addEventListener('click',resetThumb);
   q('#feDelete').addEventListener('click',remove);
@@ -1005,7 +1015,7 @@ cursor:pointer;font-family:inherit}
 display:none;align-items:center;justify-content:center;padding:16px}
 .modal.open{display:flex}
 .mcard{background:var(--bg2);border:1px solid var(--line);border-radius:14px;
-width:100%;max-width:940px;overflow:hidden;box-shadow:0 20px 70px rgba(0,0,0,.7)}
+width:100%;max-width:940px;max-height:95vh;overflow-y:auto;box-shadow:0 20px 70px rgba(0,0,0,.7)}
 .mhead{display:flex;align-items:center;gap:10px;padding:12px 16px;
 border-bottom:1px solid var(--line)}
 .mtitle{flex:1;font-weight:800;font-size:14px;overflow:hidden;
@@ -1014,11 +1024,24 @@ text-overflow:ellipsis;white-space:nowrap}
 line-height:1}
 .video-wrap{background:#000;aspect-ratio:16/9}
 video{width:100%;height:100%;display:block;background:#000}
-.mactions{display:flex;gap:8px;flex-wrap:wrap;padding:13px 16px}
+ .pchoices{padding:16px;border-top:1px solid var(--line);background:linear-gradient(180deg,rgba(255,255,255,.025),transparent)}
+.pchoices[hidden]{display:none}.pchoices-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.pchoices-icon{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:rgba(229,9,20,.13);color:#ff5260;font-size:16px;flex:none}
+.pchoices-title{font-size:13px;font-weight:800;color:var(--txt)}.pchoices-sub{font-size:11px;color:var(--mut);margin-top:2px}
+.pchoices-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px;max-height:200px;overflow-y:auto;overscroll-behavior:contain;padding:2px}
+.pchoices button{position:relative;min-width:0;background:var(--bg3);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:10px 11px;cursor:pointer;text-align:left;font:inherit;transition:border-color .16s,background .16s,transform .16s}
+.pchoices button:hover{border-color:#a74c55;background:#25232b}.pchoices button:focus-visible{outline:2px solid #ff6670;outline-offset:2px}
+.pchoices button.active{border-color:#e50914;background:linear-gradient(135deg,rgba(229,9,20,.18),rgba(229,9,20,.04));box-shadow:inset 3px 0 #e50914}
+.pchoices .choice-top{display:flex;align-items:center;gap:6px;min-width:0}.pchoices .choice-label{font-size:12px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pchoices .choice-state{margin-left:auto;flex:none;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#ff7b84}
+.pchoices .choice-name{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--mut);font-size:11px;margin-top:5px}
+.pchoices .choice-meta{display:block;margin-top:5px;color:var(--mut);font-size:11px}
+@media(max-width:480px){.pchoices{padding:12px}.pchoices-list{grid-template-columns:repeat(2,minmax(0,1fr));max-height:190px}.pchoices button{padding:9px}}
+.mactions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:13px 16px}
 .mactions a,.mactions button{background:var(--bg3);border:1px solid var(--line);
 color:var(--txt);border-radius:7px;padding:9px 14px;font-size:12px;font-weight:800;
-cursor:pointer;font-family:inherit}
-.mactions a.red{background:var(--red);border-color:var(--red);color:#fff}
+cursor:pointer;font-family:inherit;text-align:center;white-space:nowrap;min-width:0}
+@media(max-width:400px){.mactions{gap:5px;padding:12px 10px}.mactions a,.mactions button{padding:9px 3px;font-size:11px}}
 .mnote{padding:0 16px 15px;font-size:11px;color:var(--mut)}
 /* ── auth form base (guest composition lives in web/welcome_assets.py) ── */
 .auth-wrap{min-height:calc(100vh - 62px);display:flex;align-items:center;
@@ -1311,10 +1334,10 @@ PLAYER_MODAL_HTML = """<div class="modal" id="modal" onclick="if(event.target===
     <div class="mhead"><div class="mtitle" id="pTitle">Loading stream…</div>
       <button class="xbtn" onclick="closePlayer()">✕</button></div>
     <div class="video-wrap"><video id="player" controls playsinline></video></div>
+    <section class="pchoices" id="pChoices" hidden aria-label="Episodes and qualities"><div class="pchoices-head"><span class="pchoices-icon" aria-hidden="true">▤</span><div><div class="pchoices-title">Episodes &amp; qualities</div><div class="pchoices-sub">Choose a version to play</div></div></div><div class="pchoices-list" id="pChoicesList"></div></section>
     <div class="mactions">
-      <a class="red" id="pWatch" href="#" target="_blank" rel="noopener">▶ Player page</a>
       <a id="pDl" href="#">⬇ Download</a>
-      <button onclick="copyLink()">🔗 Copy stream link</button>
+      <button onclick="copyLink()">🔗 Copy link</button>
       <button onclick="closePlayer()">Close</button>
     </div>
     <div class="mnote" id="pNote">Signed streaming link — valid for a limited time.</div>
@@ -1324,34 +1347,64 @@ PLAYER_MODAL_HTML = """<div class="modal" id="modal" onclick="if(event.target===
 PLAYER_JS = r"""<script>
 (function(){
   const q = s => document.querySelector(s);
-  let currentWatch = '';
-  window.play = async function(fid, name){
+  let currentWatch = '', seq = 0, items = [];
+  function renderChoices(fid){
+    const box=q('#pChoices'), list=q('#pChoicesList');
+    list.replaceChildren(); box.hidden=items.length<2;
+    items.forEach(item=>{
+      const b=document.createElement('button'); b.type='button';
+      b.className=item.file_id===fid?'active':'';
+      b.setAttribute('aria-pressed', item.file_id===fid?'true':'false');
+      const top=document.createElement('span');top.className='choice-top';
+      const label=document.createElement('span');label.className='choice-label';
+      label.textContent=[item.episode,item.quality].filter(Boolean).join(' · ') || 'Video';top.appendChild(label);
+      if(item.file_id===fid){const state=document.createElement('span');state.className='choice-state';state.textContent='Selected';top.appendChild(state)}
+      b.appendChild(top);
+      const name=document.createElement('span');name.className='choice-name';name.textContent=item.name; b.appendChild(name);
+      const meta=[item.duration ? '⏱ '+item.duration : '', item.size && !/^0(?:\.0+)?\s*B$/i.test(item.size) ? item.size : ''].filter(Boolean);
+      if(meta.length){const detail=document.createElement('span');detail.className='choice-meta';detail.textContent=meta.join(' · ');b.appendChild(detail)}
+      b.title=item.name; b.addEventListener('click',()=>window.play(item.file_id,item.name,items));
+      list.appendChild(b);
+    });
+  }
+  window.play = async function(fid, name, context){
     const modal=q('#modal'), v=q('#player');
     if(!modal || !v) return;
+    const request=++seq;
+    items=Array.isArray(context)?context:[]; renderChoices(fid);
+    currentWatch=''; q('#pDl').removeAttribute('href');
     q('#pTitle').textContent='⏳ '+name;
     q('#pNote').textContent='Preparing the streaming link…';
     modal.classList.add('open');
-    v.pause(); v.removeAttribute('src');
+    v.pause(); v.removeAttribute('src'); v.load();
+    if(!items.length){
+      fetch('/api/player/group?file_id='+encodeURIComponent(fid),{credentials:'same-origin'})
+        .then(r=>r.ok?r.json():null).then(d=>{
+          if(request===seq && d && Array.isArray(d.items)){items=d.items;renderChoices(fid)}
+        }).catch(()=>{});
+    }
     try{
       const r=await fetch('/api/stream',{method:'POST',credentials:'same-origin',
         headers:{'Content-Type':'application/json'},body:JSON.stringify({file_id:fid})});
+      if(request!==seq) return;
       if(r.status===401){location.href='/login?err='+encodeURIComponent('Session expired. Please sign in again.');return}
       const d=await r.json();
+      if(request!==seq) return;
       if(!d.stream){q('#pTitle').textContent='❌ '+(d.error||'Stream unavailable');
         q('#pNote').textContent='This file could not be streamed right now.';return}
       currentWatch=location.origin+d.watch;
       q('#pTitle').textContent='▶ '+name;
       q('#pNote').textContent='Signed link · '+(d.expires_in||0)+' seconds valid · Range/seek supported';
-      q('#pWatch').href=d.watch;
       q('#pDl').href=d.download;
       v.poster=d.poster||'';
       v.src=d.stream;
       v.load();
       const pr=v.play(); if(pr && typeof pr.catch==='function') pr.catch(()=>{});
-    }catch(e){q('#pTitle').textContent='❌ Stream error';
+    }catch(e){if(request!==seq)return;q('#pTitle').textContent='❌ Stream error';
       q('#pNote').textContent=String(e.message||e)}
   };
   window.closePlayer = function(){
+    ++seq; items=[]; currentWatch='';
     const v=q('#player'); if(!v) return;
     v.pause(); v.removeAttribute('src'); v.load();
     const m=q('#modal'); if(m) m.classList.remove('open');
@@ -1511,16 +1564,21 @@ async function load(reset){
     if(seq===searchSeq){loading=false;$('#srow').classList.remove('loading')}
   }
 }
+function playerGroupContext(el){
+  const card=el.closest('.gcard'), g=card && window.groupGet && window.groupGet(card.dataset.gkey);
+  if(!g || !Array.isArray(g.variants)) return null;
+  return g.variants.map(v=>({file_id:v.file_id,name:v.name,episode:g.kind==='episodes'?(v.el||''):'',quality:v.ql==='?'?'':(v.ql||''),duration:v.duration||'',size:v.size||''}));
+}
 $('#grid').addEventListener('click',e=>{
   const el=e.target.closest('.vcard[data-fid]');if(!el)return;
-  play(decodeURIComponent(el.dataset.fid),el.dataset.name);
+  play(decodeURIComponent(el.dataset.fid),el.dataset.name,playerGroupContext(el));
 });
 document.addEventListener('keydown',e=>{
   if(e.key!=='Enter'&&e.key!==' ')return;
   const a=document.activeElement;
   const el=a&&a.closest?a.closest('.vcard[data-fid]'):null;
   if(!el)return;
-  e.preventDefault();play(decodeURIComponent(el.dataset.fid),el.dataset.name);
+  e.preventDefault();play(decodeURIComponent(el.dataset.fid),el.dataset.name,playerGroupContext(el));
 });
 
 ViewMode.apply();
