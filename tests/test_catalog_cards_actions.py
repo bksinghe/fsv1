@@ -22,13 +22,11 @@ class CatalogCardsTests(unittest.TestCase):
         self.assertIn('.vm-grid.mode-text .cat-meta-main{display:block}', MODE)
         self.assertIn("e.target===card && (e.key==='Enter'||e.key===' ')", CATALOG)
 
-    def test_name_tap_animation_and_navigation(self):
-        self.assertIn('.cat-card.cat-opening .cat-name,.cat-card.cat-opening .cat-meta-main{animation:catNameTap', CATALOG)
+    def test_name_tap_animation_and_immediate_navigation(self):
+        self.assertIn('.cat-card:active .cat-name,.cat-card:active .cat-meta-main{animation:catNameTap', CATALOG)
         self.assertIn('color:#e50914', CATALOG)
-        self.assertIn("card.classList.add('cat-opening')", CATALOG)
-        self.assertIn('encodeURIComponent(card.dataset.id)', CATALOG)
-        self.assertIn("prefers-reduced-motion: reduce", CATALOG)
-        self.assertIn("delete card.dataset.opening;card.classList.remove('cat-opening')", CATALOG)
+        self.assertIn('function openDetail(card){ location.href = CFG.detail + encodeURIComponent(card.dataset.id); }', CATALOG)
+        self.assertIn('@media(prefers-reduced-motion:reduce){.cat-card:active', CATALOG)
 
     def test_detail_actions_admin_only_and_available_above_tabs(self):
         tree = ast.parse(CATALOG)
