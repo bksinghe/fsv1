@@ -402,6 +402,7 @@ box-shadow:0 12px 34px rgba(0,0,0,.55);transition:transform .3s,opacity .3s;max-
         <label class="wide">🗂️ Group ID<input id="feGroupId" type="text" maxlength="512"
           inputmode="numeric" autocomplete="off" placeholder="Enter an existing group ID"></label>
         <div class="fegroup-hint" id="feGroupHint">Loading current group…</div>
+        <div class="gpreview" id="feGroupPreview" hidden aria-live="polite"></div>
       </div>
       <div class="festatus" id="feStatus">…</div>
     </div>
@@ -418,7 +419,7 @@ FILE_EDIT_JS = r"""<script>
 (function(){
   const q = s => document.querySelector(s);
   const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  let current=null, crop=null, busy=false, toastTimer=null;
+  let current=null, crop=null, busy=false, toastTimer=null, originalGroup="", groupPreview=null;
   function toast(msg, err){
     const t=q('#feToast'); if(!t) return;
     t.textContent=msg; t.classList.toggle('err',!!err); t.classList.add('show');
@@ -456,6 +457,8 @@ FILE_EDIT_JS = r"""<script>
   function setGroupInfo(f){
     const input=q('#feGroupId'), hint=q('#feGroupHint');
     if(input) input.value=String(f.group_id||'');
+    originalGroup=String(f.group_id||'');
+    if(groupPreview) groupPreview.update();
     if(!hint) return;
     if(f.group_id){
       const groupNo=f.group_num||f.group_id;
@@ -500,7 +503,7 @@ FILE_EDIT_JS = r"""<script>
     current=String(fid); crop=null; busy=false;
     q('#feModal').classList.add('open');
     q('#feStatus').textContent='Loading…';
-    q('#feGroupId').value=''; q('#feGroupHint').textContent='Loading current group…';
+    q('#feGroupId').value=''; originalGroup=''; if(groupPreview)groupPreview.update(); q('#feGroupHint').textContent='Loading current group…';
     q('#feFile').value=''; q('#feZoom').value=1;
     fetch('/api/file/meta?id='+encodeURIComponent(current),{credentials:'same-origin'})
       .then(r=>r.json()).then(d=>{
@@ -530,6 +533,12 @@ FILE_EDIT_JS = r"""<script>
     const payload={file_id:current,name:q('#feName').value,caption:q('#feCaption').value,
       quality:q('#feQuality').value,duration:q('#feDuration').value,
       res:q('#feRes').value,group_id:q('#feGroupId').value.trim()};
+    const target=payload.group_id.replace(/^#/, '').trim();
+    if(target && target!==originalGroup){
+      const dest=groupPreview && groupPreview.get();
+      if(!dest || dest.id!==target){toast('Please wait for a valid destination group preview',true);return;}
+      if(!confirm('Move this file to group #'+dest.num+' — '+dest.name+'?'))return;
+    }
     setBusy(true);
     try{
       const r=await fetch('/api/file/edit',{method:'POST',credentials:'same-origin',
@@ -642,6 +651,7 @@ FILE_EDIT_JS = r"""<script>
     if(!isOpen()) return;
     if((e.ctrlKey||e.metaKey)&&String(e.key).toLowerCase()==='s'){ e.preventDefault(); save(); }
   });
+  groupPreview=window.GroupPreview(q('#feGroupId'),q('#feGroupPreview'));
   q('#feSave').addEventListener('click',save);
   q('#feReset').addEventListener('click',resetThumb);
   q('#feDelete').addEventListener('click',remove);

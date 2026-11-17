@@ -142,6 +142,15 @@ html.light .gcard.open .gposter .gqchip{background:#e8f5ff;color:#075985;border-
 html.light .gcard.open .gposter .gqchip.ep{background:#f3e8ff;color:#6b21a8;border-color:#d5b9ee}
 html.light .gcard.open .gposter .gqchip.more{background:#f1f3f6;color:#475569;border-color:#d7dce3}
 html.light .gcard.open .gposter .gqchip i{color:inherit}
+/* Shared destination preview in file and group editors. */
+.gpreview{display:flex;align-items:center;gap:11px;padding:10px;margin-top:9px;
+background:var(--bg3);border:1px solid var(--line);border-radius:10px;min-width:0}
+.gpreview[hidden]{display:none}.gpreview-img{width:86px;aspect-ratio:16/9;object-fit:cover;
+flex:none;border-radius:6px;background:var(--bg);color:var(--mut);font-size:10px}
+.gpreview-info{min-width:0;display:flex;flex-direction:column;gap:3px}.gpreview-caption{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);font-weight:800}
+.gpreview-name{font-size:13px;color:var(--txt);font-weight:800;overflow-wrap:anywhere}.gpreview-meta{font-size:11px;color:var(--mut)}
+.gpreview-message{font-size:12px;color:var(--mut);line-height:1.4}.gpreview.error .gpreview-message{color:var(--red)}
+.fegrid .gpreview{grid-column:1/-1;margin-top:0}
 /* ☑️ Group Mode: select files → permanent group */
 .gfab{position:fixed;right:16px;bottom:18px;z-index:140;background:var(--red);color:#fff;
 border:0;border-radius:999px;padding:11px 16px;font-size:12px;font-weight:800;
@@ -335,6 +344,36 @@ _GROUP_JS_TPL = r"""/* 🗂️ SHARED GROUP CARD — template from web/group_ass
       ADMIN:adm, VARIANTS:variants
     });
   }
+  // One exact-ID preview implementation for all transfer/merge surfaces.
+  window.GroupPreview=function(input,box,onChange){
+    var seq=0,timer=null,resolved=null;
+    function message(text,error){box.replaceChildren();box.hidden=false;box.classList.toggle('error',!!error);
+      var el=document.createElement('span');el.className='gpreview-message';el.textContent=text;box.appendChild(el);}
+    function update(){
+      var id=String(input.value||'').trim().replace(/^#/, '').trim(), request=++seq;
+      clearTimeout(timer);resolved=null;if(onChange)onChange(null);
+      box.classList.remove('error');
+      if(!id){box.hidden=true;box.replaceChildren();return;}
+      message('Checking group…',false);
+      timer=setTimeout(function(){
+        fetch('/api/group/preview?id='+encodeURIComponent(id),{credentials:'same-origin'})
+          .then(function(r){return r.json().then(function(d){if(!r.ok||!d.ok)throw new Error(d.error||'Group not found');return d.group;});})
+          .then(function(g){if(request!==seq)return;resolved=g;box.replaceChildren();box.classList.remove('error');box.hidden=false;
+            var img=document.createElement('img');img.className='gpreview-img';img.alt='Group thumbnail';
+            if(g.thumb)img.src=g.thumb;else img.alt='No thumbnail';
+            img.onerror=function(){img.removeAttribute('src');img.alt='No thumbnail';};
+            var info=document.createElement('div');info.className='gpreview-info';
+            var caption=document.createElement('span');caption.className='gpreview-caption';caption.textContent='Destination group';
+            var name=document.createElement('strong');name.className='gpreview-name';name.textContent=g.name;
+            var meta=document.createElement('span');meta.className='gpreview-meta';meta.textContent='#'+g.num+' · '+g.count+' files';
+            info.appendChild(caption);info.appendChild(name);info.appendChild(meta);box.appendChild(img);box.appendChild(info);
+            if(onChange)onChange(g);
+          }).catch(function(e){if(request!==seq)return;message(e.message||'Could not check group',true);});
+      },250);
+    }
+    input.addEventListener('input',update);
+    return {update:update,get:function(){return resolved;},dispose:function(){++seq;clearTimeout(timer);input.removeEventListener('input',update);}};
+  };
   window.groupHTML=html;
   window.gJs=js1;
   window.groupGet=function(k){return GD[String(k)];};
@@ -386,7 +425,7 @@ GROUP_ADMIN_JS = r"""<script>
 /* 🛠️ ADMIN GROUP ACTIONS — permanent groups, merge, scan, master thumbnail */
 (function(){
   var SEL={}, selMode=false, mode='save', current=null, targetGid='',
-      thumbFid='', currentKind='qualities', scanTimer=null;
+      thumbFid='', currentKind='qualities', scanTimer=null, targetPreview=null, mergeSearchSeq=0;
   function q(s){return document.querySelector(s);}
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){
     return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
@@ -402,10 +441,11 @@ GROUP_ADMIN_JS = r"""<script>
           throw new Error(d.error||('HTTP '+r.status));return d;});});
   }
   function refresh(){if(window.load)window.load(true);}
-  function open(title,body){q('#gmTitle').textContent=title;q('#gmBody').innerHTML=body;
+  function open(title,body){if(targetPreview)targetPreview.dispose();targetPreview=null;
+    q('#gmTitle').textContent=title;q('#gmBody').innerHTML=body;
     q('#gmModal .gmcard').classList.toggle('is-edit',!!q('#gmBody .gmedit'));
     q('#gmModal').classList.add('open');}
-  window.gClose=function(){var m=q('#gmModal');if(m)m.classList.remove('open');
+  window.gClose=function(){if(targetPreview)targetPreview.dispose();targetPreview=null;var m=q('#gmModal');if(m)m.classList.remove('open');
     current=null;targetGid='';thumbFid='';};
   function itemsFrom(g){
     return (g.variants||[]).map(function(v){return {id:v.file_id,name:v.name};});
@@ -554,11 +594,15 @@ GROUP_ADMIN_JS = r"""<script>
       '<label class="gmlabel" for="gmFind">SEARCH BY NAME OR #NUMBER</label>'+
       '<input class="gminput" id="gmFind" placeholder="Search… e.g. #12 or a name" oninput="gFind(this.value)">'+
       '<div class="gmresults" id="gmResults"></div>'+
-      '<div class="gmchosen" id="gmChosen">'+(targetGid?'✓ Group #'+esc(g.num):'')+'</div></details>'+
+      '<div class="gpreview" id="gmChosen" hidden aria-live="polite"></div></details>'+
       '<div class="gmedit-actions"><button class="gmbtn" id="gmSave" onclick="gSave()">'+
         (g.manual?'💾 Save Changes':'💾 Save Group')+'</button>'+
       (g.manual?'<button class="gmbtn danger" onclick="gUngroup(\''+jse(g.gid)+'\')">🗑️ Ungroup</button>':'')+
       '<button class="gmbtn alt" onclick="gClose()">Cancel</button></div></div>');
+    targetPreview=window.GroupPreview(q('#gmFind'),q('#gmChosen'),function(dest){
+      var value=q('#gmFind').value.trim();
+      targetGid=dest?dest.id:(!value&&g.manual?String(g.gid):'');
+    });
     if(targetGid)gFind('#'+targetGid);
   };
   window.gFind=function(v){
@@ -574,9 +618,7 @@ GROUP_ADMIN_JS = r"""<script>
   };
   window.gChoose=function(gid){
     targetGid=String(gid);
-    var item=LIST.filter(function(x){return String(x.id)===targetGid;})[0]||{};
-    var c=q('#gmChosen');if(c)c.textContent='✓ Group #'+(item.num||gid)+' — '+(item.name||'')+' will receive the files';
-    var n=q('#gmName');if(n&&item.name)n.value=item.name;   /* .value is safe, no HTML involved */
+    q('#gmFind').value=targetGid;targetPreview.update();
     gFind('#'+gid);
   };
   window.gPickThumb=function(fid){thumbFid=String(fid||'');
@@ -599,14 +641,22 @@ GROUP_ADMIN_JS = r"""<script>
   };
   window.gSave=function(){
     var g=current;if(!g)return;
+    if(q('#gmFind').value.trim() && !(targetPreview&&targetPreview.get())){toast('Select a valid destination group first',true);return;}
     var name=String((q('#gmName')||{}).value||'').trim();
     if(!targetGid&&!name){toast('Enter a group name',true);return;}
+    if(targetGid && (!g.manual || targetGid!==String(g.gid))){
+      var dest=targetPreview&&targetPreview.get();
+      if(!dest||dest.id!==targetGid){toast('Please wait for a valid destination group preview',true);return;}
+      if(!confirm('Add these files to group #'+dest.num+' — '+dest.name+'?'))return;
+    }
     var btn=q('#gmSave');if(btn)btn.disabled=true;
     var emap=collectEpisodes();
-    var body={items:itemsFrom(g),name:name,kind:currentKind,episode_map:emap};
+    var transferring=!!targetGid&&(!g.manual||targetGid!==String(g.gid));
+    var body=transferring?{items:itemsFrom(g)}:{items:itemsFrom(g),name:name,kind:currentKind,episode_map:emap};
     if(targetGid)body.group_id=targetGid;
     post('/api/group/save',body).then(function(d){
       var gid=d.group_id||targetGid||'';
+      if(transferring)return d; // Never overwrite the destination group's name/type/thumbnail.
       /* ✏️ Renaming is separate from saving members — send it explicitly to
          `/api/group/update` (along with the master thumbnail in the same call). */
       var upd={group_id:gid,kind:currentKind,episode_map:emap};
@@ -658,26 +708,34 @@ GROUP_ADMIN_JS = r"""<script>
       '<input class="gminput" id="gmTarget" placeholder="e.g. 12 or #12" oninput="gFindMerge(this.value)">'+
       '<div class="gmnote">Source group #'+esc(g.num)+'  — all its files and auto_keys will move into the target '+
       'group, and the source group will be deleted. No files are deleted.</div>'+
+      '<div class="gpreview" id="gmMergePreview" hidden aria-live="polite"></div>'+
       '<div class="gmresults" id="gmMergeResults"></div>'+
       '<div class="gmlabel">FILES ('+(g.variants||[]).length+')</div>'+membersHtml(itemsFrom(g),'')+
       '<div class="gmrow"><button class="gmbtn" onclick="gDoMerge()">🔀 Merge</button>'+
       '<button class="gmbtn alt" onclick="gClose()">Cancel</button></div>');
+    targetPreview=window.GroupPreview(q('#gmTarget'),q('#gmMergePreview'));
     gFindMerge('');
   };
   window.gFindMerge=function(v){
     var box=q('#gmMergeResults');if(!box)return;
+    var request=++mergeSearchSeq, source=current;
     fetch('/api/group/list?q='+encodeURIComponent(v||''),{credentials:'same-origin'})
       .then(function(r){return r.json();}).then(function(d){
-        box.innerHTML=(d.groups||[]).filter(function(x){return String(x.id)!==String(current.gid);})
+        if(request!==mergeSearchSeq||current!==source||q('#gmMergeResults')!==box)return;
+        box.innerHTML=(d.groups||[]).filter(function(x){return String(x.id)!==String(source.gid);})
           .map(function(x){return '<div class="gmres" onclick="gPickMerge(\''+jse(x.id)+'\')">'+
             '<b>#'+esc(x.num)+'</b><span>'+esc(x.name)+' · '+groupMetric(x)+'</span></div>';}).join('')||
           '<div class="gmres" style="color:var(--mut)">No other groups found</div>';
       }).catch(function(){});
   };
-  window.gPickMerge=function(gid){var t=q('#gmTarget');if(t)t.value=String(gid);};
+  window.gPickMerge=function(gid){var t=q('#gmTarget');if(t){t.value=String(gid);targetPreview.update();}};
   window.gDoMerge=function(){
     var t=(q('#gmTarget')||{}).value||'';
     if(!t.trim()){toast('Enter the target group number',true);return;}
+    var dest=targetPreview&&targetPreview.get();
+    if(!dest||dest.id!==t.trim().replace(/^#/,'').trim()){toast('Please wait for a valid destination group preview',true);return;}
+    if(dest.id===String(current.gid)){toast('Cannot merge a group into itself',true);return;}
+    if(!confirm('Merge group #'+current.num+' into group #'+dest.num+' — '+dest.name+'?'))return;
     post('/api/group/merge',{source:String(current.gid),target:t.trim()})
       .then(function(d){toast('🔀 Group #'+d.num+' — merged');window.gClose();refresh();})
       .catch(function(e){toast(e.message,true);});
