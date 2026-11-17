@@ -1010,6 +1010,8 @@ border-radius:50%;animation:spin .6s linear infinite}
 background:var(--bg3);border:1px solid var(--line);color:var(--txt);font-weight:800;
 cursor:pointer;font-family:inherit}
 .more.show{display:block}
+.more:disabled{opacity:.55;cursor:wait}
+.search-status:not(:empty){text-align:center;margin:16px auto 0;color:var(--mut);font-size:13px;font-weight:700;overflow-wrap:anywhere}
 /* ── player modal ── */
 .modal{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.88);
 display:none;align-items:center;justify-content:center;padding:16px}
@@ -1429,7 +1431,7 @@ SEARCH_BODY = """<div class="search-zone">
   <div class="sbox" role="search">
     <div class="srow" id="srow">
       <div class="qwrap">
-        <input class="sinput" id="q" type="search" placeholder="Search movies, series or file names..." autocomplete="off">
+        <input class="sinput" id="q" type="search" aria-label="Search files" placeholder="Search movies, series or file names..." autocomplete="off">
         <div class="spin"></div>
       </div>
       __FILTER_BUTTONS__
@@ -1439,6 +1441,7 @@ SEARCH_BODY = """<div class="search-zone">
 
 <div class="main">
   <div class="vgrid vm-grid" id="grid"></div>
+  <div class="search-status" id="searchStatus" role="status" aria-live="polite"></div>
   <button class="more" id="more" onclick="load(false)">Show more ⬇</button>
 </div>
 
@@ -1531,10 +1534,12 @@ async function load(reset){
     if(searchController)searchController.abort();
     searchController=new AbortController();searchSeq++;loading=false;
     offset=0;hasMore=false;seenGroups={};$('#grid').innerHTML=skeletons();
+    $('#more').classList.remove('show');
   }else if(loading||!hasMore)return;
   const seq=searchSeq,controller=searchController||new AbortController();
   const requestedOffset=offset,query=curQ,mode=groupMode;
   loading=true;$('#srow').classList.add('loading');
+  $('#more').disabled=true;$('#searchStatus').textContent='';
   try{
     const r=await fetch(`/api/search?q=${encodeURIComponent(query)}&offset=${requestedOffset}&group=${mode}`,{
       credentials:'same-origin',signal:controller.signal
@@ -1559,9 +1564,10 @@ async function load(reset){
       $('#grid').innerHTML=`<div class="state">🔍 No files found.<br>Try another name or keyword.</div>`;
   }catch(e){
     if(e.name==='AbortError'||seq!==searchSeq)return;
-    $('#grid').innerHTML=`<div class="state">⚠️ Search could not be loaded.<br>${esc(e.message||e)}</div>`;
+    if(reset)$('#grid').innerHTML=`<div class="state">⚠️ Search could not be loaded.<br>${esc(e.message||e)}</div>`;
+    else $('#searchStatus').textContent='Could not load more files. Please try again.';
   }finally{
-    if(seq===searchSeq){loading=false;$('#srow').classList.remove('loading')}
+    if(seq===searchSeq){loading=false;$('#srow').classList.remove('loading');$('#more').disabled=false}
   }
 }
 function playerGroupContext(el){

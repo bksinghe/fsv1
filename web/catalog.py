@@ -498,6 +498,7 @@ margin:22px 0 20px;position:relative}
 .cat-tab{background:none;border:0;color:var(--mut);font-family:inherit;font-weight:800;font-size:13px;
 padding:12px 16px;cursor:pointer;position:relative;white-space:nowrap;transition:color .18s,transform .18s}
 .cat-tab:hover{color:var(--txt);transform:translateY(-2px)}
+.cat-tab:focus-visible{outline:2px solid var(--red);outline-offset:-3px;border-radius:6px}
 .cat-tab.active{color:var(--red)}
 .cat-tab::after{content:'';position:absolute;left:12px;right:12px;bottom:-2px;height:2px;
 background:var(--red);transform:scaleX(0);transition:transform .28s cubic-bezier(.34,1.4,.64,1)}
@@ -702,13 +703,15 @@ function updatePg(){
   $('#catPage').textContent = 'Page ' + state.page;
 }
 async function load(reset){
-  if(reset){ state.offset = 0; state.page = 1; }
+  if(reset){ state.offset = 0; state.page = 1; state.hasNext = false; updatePg(); }
   const my = ++state.req, grid = $('#catGrid'), search = $('#catSearch');
   search.classList.add('loading');
   if(reset) grid.innerHTML = skeletons();
   try{
     const r = await fetch(`/api/catalog/${CFG.kind}?q=${encodeURIComponent(state.q)}&category=${encodeURIComponent(state.cat)}&offset=${state.offset}&limit=${LIMIT}`);
+    if(my !== state.req) return;
     if(r.status === 401){ location.href='/login'; return; }
+    if(!r.ok) throw new Error('HTTP '+r.status);
     const d = await r.json();
     if(my !== state.req) return;
     state.items = {};
@@ -718,7 +721,7 @@ async function load(reset){
     state.hasNext = !!d.has_next;
     $('#catCount').textContent = (d.total||0) + ' entries';
     bump(); updatePg(); RevealCards.reveal(grid); flashSaved(grid);
-  }catch(e){ grid.innerHTML = '<div class="cat-empty">⚠️ Could not load results. '+esc(e.message||e)+'</div>'; }
+  }catch(e){ if(my === state.req) grid.innerHTML = '<div class="cat-empty">⚠️ Could not load results. '+esc(e.message||e)+'</div>'; }
   finally{ if(my === state.req) search.classList.remove('loading'); }
 }
 function openDetail(card){ location.href = CFG.detail + encodeURIComponent(card.dataset.id); }
@@ -1122,7 +1125,10 @@ function toast(msg,type){
 function switchTab(name, init){
   if(name===D.tabAlias) name='gallery';
   if(!['overview','videos','gallery'].includes(name)) name='overview';
-  document.querySelectorAll('.cat-tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===name));
+  document.querySelectorAll('.cat-tab').forEach(t=>{
+    const active=t.dataset.tab===name;
+    t.classList.toggle('active',active);t.setAttribute('aria-selected',String(active));t.tabIndex=active?0:-1;
+  });
   document.querySelectorAll('.cat-panel').forEach(p=>p.classList.toggle('active',p.id==='cp-'+name));
   if(name==='videos'){ RevealCards.stagger('#catVideos .vcard'); if(D.tagMedia && !mediaLoaded) loadMedia(0); }
   if(name==='gallery') RevealCards.stagger('#catGallery .cat-galitem');
@@ -1287,12 +1293,16 @@ document.addEventListener('keydown',e=>{
   }
   const tag=focused.tagName;
   if(tag==='INPUT'||tag==='TEXTAREA') return;
-  if(e.key==='ArrowLeft'||e.key==='ArrowRight'){
+  if(focused.classList && focused.classList.contains('cat-tab') &&
+     ['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){
+    e.preventDefault();
     const names=['overview','videos','gallery'];
-    const cur=document.querySelector('.cat-tab.active');
-    let i=names.indexOf(cur?cur.dataset.tab:'overview');
-    i=(i+(e.key==='ArrowRight'?1:names.length-1))%names.length;
+    let i=names.indexOf(focused.dataset.tab);
+    if(e.key==='Home')i=0;
+    else if(e.key==='End')i=names.length-1;
+    else i=(i+(e.key==='ArrowRight'?1:names.length-1))%names.length;
     switchTab(names[i]);
+    document.querySelector('.cat-tab[data-tab="'+names[i]+'"]').focus();
   }
 });
 document.addEventListener('pointerdown',e=>{
@@ -1357,12 +1367,12 @@ def _listing_body(kind: str, role: str) -> str:
     return f"""<div class="main"><div class="cat-wrap">
   <div class="cat-toolbar cat-box" role="search">
     <div class="cat-search" id="catSearch">
-      <input type="search" id="catQ" placeholder="{html.escape(cfg['placeholder'])}" autocomplete="off">
+      <input type="search" id="catQ" aria-label="{html.escape(cfg['placeholder'], quote=True)}" placeholder="{html.escape(cfg['placeholder'])}" autocomplete="off">
       <div class="cat-spin"></div>
     </div>
     {filters_html}
     {create_btn}
-    <span class="cat-count" id="catCount">…</span>
+    <span class="cat-count" id="catCount" aria-live="polite">…</span>
   </div>
   <div class="cat-grid vm-grid" id="catGrid"></div>
   <div class="cat-pg" id="catPg">
@@ -1513,13 +1523,13 @@ def _detail_body(kind: str, role: str, item: dict) -> str:
     return f"""<div class="main"><div class="cat-wrap">
   <div class="cat-detail-toolbar"><a class="cat-btn ghost cat-back" href="{cfg['base']}">← Back</a>{admin_bar}</div>
   <div class="cat-tabs" role="tablist">
-    <button class="cat-tab active" data-tab="overview" onclick="switchTab('overview')">ℹ️ Overview</button>
-    <button class="cat-tab" data-tab="videos" onclick="switchTab('videos')">🎬 Videos <span class="cat-tab-n">{len(videos)}</span></button>
-    <button class="cat-tab" data-tab="gallery" onclick="switchTab('gallery')">{gallery_tab} <span class="cat-tab-n">{len(gallery)}</span></button>
+    <button class="cat-tab active" id="tab-overview" role="tab" aria-selected="true" aria-controls="cp-overview" tabindex="0" data-tab="overview" onclick="switchTab('overview')">ℹ️ Overview</button>
+    <button class="cat-tab" id="tab-videos" role="tab" aria-selected="false" aria-controls="cp-videos" tabindex="-1" data-tab="videos" onclick="switchTab('videos')">🎬 Videos <span class="cat-tab-n">{len(videos)}</span></button>
+    <button class="cat-tab" id="tab-gallery" role="tab" aria-selected="false" aria-controls="cp-gallery" tabindex="-1" data-tab="gallery" onclick="switchTab('gallery')">{gallery_tab} <span class="cat-tab-n">{len(gallery)}</span></button>
     <span class="cat-tabspace"></span>{add_videos_btn}
   </div>
 
-  <section class="cat-panel active" id="cp-overview">
+  <section class="cat-panel active" id="cp-overview" role="tabpanel" aria-labelledby="tab-overview">
     <div class="cat-hero">
       {hero_img}
       <div class="cat-hero-info">
@@ -1535,13 +1545,13 @@ def _detail_body(kind: str, role: str, item: dict) -> str:
     </div>
   </section>
 
-  <section class="cat-panel" id="cp-videos">
+  <section class="cat-panel" id="cp-videos" role="tabpanel" aria-labelledby="tab-videos">
     <div class="cat-subhead"><h3>{videos_heading}</h3><span class="cat-hint">Added in the editor · {len(videos)}</span></div>
     <div class="cat-vgrid vgrid" id="catVideos">{vids_html}</div>
     {tag_section}
   </section>
 
-  <section class="cat-panel" id="cp-gallery">
+  <section class="cat-panel" id="cp-gallery" role="tabpanel" aria-labelledby="tab-gallery">
     {upload_bar}
     <div class="cat-galgrid" id="catGallery">{gal_html}</div>
   </section>
