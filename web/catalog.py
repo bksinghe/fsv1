@@ -303,10 +303,9 @@ font-weight:800;font-size:13px;cursor:pointer;font-family:inherit;transition:tra
 .cat-btn:active{transform:scale(.96)}
 .cat-btn.ghost{background:var(--bg3);border:1px solid var(--line);color:var(--txt)}
 .cat-btn.ghost:hover{background:var(--bg2);border-color:var(--red);box-shadow:none}
-/* Back navigation stays still; only a pressed/clicked state gets a red glow. */
-.cat-btn.ghost.cat-back,.cat-btn.ghost.cat-back:hover{transform:none;box-shadow:none;animation:none}
-.cat-btn.ghost.cat-back:active,.cat-btn.ghost.cat-back.is-pressed{transform:none;background:var(--red);
-border-color:var(--red);color:#fff;box-shadow:0 0 0 2px rgba(229,9,20,.24),0 0 22px rgba(229,9,20,.62)}
+/* Back navigation stays still; its touch ripple is red, not a solid glow. */
+.cat-btn.ghost.cat-back,.cat-btn.ghost.cat-back:hover{display:inline-flex;align-items:center;transform:none;box-shadow:none;animation:none}
+.cat-btn.ghost.cat-back:active{transform:none}
 .cat-btn.ghost.cat-back:focus-visible{outline:2px solid var(--red);outline-offset:3px}
 
 /* 🧩 Like the GitHub reference (v5 `.search-box`): **one card-box** holding the search bar,
@@ -441,7 +440,9 @@ font:800 11px inherit;font-family:inherit;cursor:pointer}
 .cat-ripple{position:relative;overflow:hidden}
 .cat-ripple i{position:absolute;border-radius:50%;background:rgba(255,255,255,.42);
 transform:scale(0);animation:catRipple .5s ease-out forwards;pointer-events:none}
+.cat-back.cat-ripple i{background:rgba(229,9,20,.5);animation:catRipple .42s ease-out forwards}
 @keyframes catRipple{to{transform:scale(2.8);opacity:0}}
+@media(prefers-reduced-motion:reduce){.cat-back.cat-ripple i{display:none;animation:none}}
 /* ── detail page ── */
 .cat-hero{display:flex;gap:26px;flex-wrap:wrap;background:var(--card);border:1px solid var(--line);
 border-radius:16px;padding:24px;margin-bottom:24px;animation:catFade .5s ease both}
@@ -1260,22 +1261,24 @@ document.addEventListener('keydown',e=>{
   }
 });
 document.addEventListener('pointerdown',e=>{
-  const b=e.target.closest('.cat-btn'); if(!b||b.classList.contains('cat-back'))return;
+  const b=e.target.closest('.cat-btn'); if(!b)return;
+  if(b.classList.contains('cat-back') && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
   const r=b.getBoundingClientRect(),i=document.createElement('i'),d=Math.max(r.width,r.height);
   i.style.cssText=`width:${d}px;height:${d}px;left:${e.clientX-r.left-d/2}px;top:${e.clientY-r.top-d/2}px`;
   b.classList.add('cat-ripple'); b.appendChild(i); setTimeout(()=>i.remove(),520);
 });
-// Keep links native for modified/middle clicks; briefly show the glow on normal activation.
+// Keep native modified/keyboard clicks; briefly show the touch ripple on normal clicks.
 document.addEventListener('click',e=>{
   const link=e.target.closest('.cat-back');
-  if(!link || e.defaultPrevented || e.button!==0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey ||
+  if(!link || e.defaultPrevented || e.button!==0 || e.detail===0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey ||
      link.hasAttribute('download') || (link.target && link.target!=='_self'))return;
   if(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
   e.preventDefault();
-  if(link.classList.contains('is-pressed'))return;
-  link.classList.add('is-pressed');
-  setTimeout(()=>location.assign(link.href),140);
+  if(link.dataset.backNavigating)return;
+  link.dataset.backNavigating='1';
+  setTimeout(()=>location.assign(link.href),220);
 });
+window.addEventListener('pageshow',()=>{document.querySelectorAll('.cat-back').forEach(link=>delete link.dataset.backNavigating);});
 const mq=document.getElementById('catMediaQ');
 if(mq){
   let t;
