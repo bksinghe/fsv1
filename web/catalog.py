@@ -1473,7 +1473,7 @@ def _detail_body(kind: str, role: str, item: dict) -> str:
     )
 
     return f"""<div class="main"><div class="cat-wrap">
-  <div style="margin-bottom:16px"><a class="cat-btn ghost cat-back" href="{cfg['base']}">← Back to {esc(cfg['label'])}</a></div>
+  <div style="margin-bottom:16px"><a class="cat-btn ghost cat-back" href="{cfg['base']}">← Back</a></div>
   <div class="cat-tabs" role="tablist">
     <button class="cat-tab active" data-tab="overview" onclick="switchTab('overview')">ℹ️ Overview</button>
     <button class="cat-tab" data-tab="videos" onclick="switchTab('videos')">🎬 Videos <span class="cat-tab-n">{len(videos)}</span></button>

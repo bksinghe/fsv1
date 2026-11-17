@@ -10,7 +10,7 @@ SOURCE = (ROOT / 'web/catalog.py').read_text()
 
 class BackButtonTests(unittest.TestCase):
     def test_both_detail_pages_share_static_back_button(self):
-        self.assertIn('class="cat-btn ghost cat-back" href="{cfg[\'base\']}"', SOURCE)
+        self.assertIn('class="cat-btn ghost cat-back" href="{cfg[\'base\']}">← Back</a>', SOURCE)
         self.assertIn('.cat-btn.ghost.cat-back,.cat-btn.ghost.cat-back:hover{display:inline-flex', SOURCE)
         self.assertIn('.cat-back.cat-ripple i{background:rgba(229,9,20,.5)', SOURCE)
         self.assertNotIn('cat-back.is-pressed', SOURCE)
