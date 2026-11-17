@@ -246,6 +246,23 @@ python3 -m venv .venv
 Unit and offline smoke tests do not replace testing against the deployed Telegram bot
 and MongoDB. Deployment uses Linux; `uvloop` is not supported on Windows.
 
+### Docker image
+
+The Dockerfile uses a multi-stage build: the compiler is present only in the builder,
+while the runtime keeps the same Python 3.11 slim base and installed dependencies.
+`.dockerignore` excludes local environments, Git history, secrets and session files.
+The optional `ffprobe` fallback remains unavailable in the default image, as before;
+the built-in media parsers still work. A smaller image can reduce transfer time, but
+does not by itself make Telegram, MongoDB or media processing faster.
+
+```bash
+docker build -t fsv1 .
+docker run --env-file /path/to/runtime.env -p 8080:8080 fsv1
+```
+
+Set `PORT=8080` in the runtime env file for the port mapping above. Never copy that
+file into the image; supply the required bot and database settings at runtime.
+
 ### ✅ Single-source regression test
 
 A stdlib-only regression test keeps Poster/Text code from splitting across files again (no MongoDB / Telegram / aiohttp required):
