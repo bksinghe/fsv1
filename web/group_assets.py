@@ -94,18 +94,67 @@ transition:max-height .24s ease,opacity .16s ease,transform .2s ease,padding .2s
 @media(min-width:620px){.gcard.open .gvariants-inner{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(min-width:1024px){.gcard.open .gvariants-inner{grid-template-columns:repeat(3,minmax(0,1fr))}}
 .gvariants .vcard:hover{transform:none}
-.gadmin{position:absolute;left:0;right:0;bottom:0;z-index:6;display:flex;gap:5px;
-flex-wrap:wrap;padding:8px;background:rgba(0,0,0,.86);opacity:0;visibility:hidden;
-transform:translateY(8px);transition:opacity .18s,transform .18s,visibility .18s;pointer-events:none}
+/* Admin controls: a light, distinct toolbar instead of a black poster overlay. */
+.gadmin{position:absolute;left:8px;right:8px;bottom:8px;z-index:6;display:flex;gap:6px;
+flex-wrap:wrap;padding:8px;border:1px solid rgba(255,255,255,.18);border-radius:12px;
+background:rgba(38,39,51,.94);box-shadow:0 8px 24px rgba(0,0,0,.32);
+opacity:0;visibility:hidden;transform:translateY(8px);
+transition:opacity .18s,transform .18s,visibility .18s;pointer-events:none}
 .gcard.gactive .gadmin{opacity:1;visibility:visible;transform:translateY(0);pointer-events:all}
-.gcard.gactive .gbottom{display:none}
-.gadmin button{flex:1 1 42%;min-width:90px;padding:8px 6px;border-radius:6px;
-font-size:11px;font-weight:800;color:#fff;border:1px solid var(--line);
-background:rgba(42,42,48,.92);cursor:pointer;font-family:inherit}
-.gadmin button:hover{background:var(--red);border-color:var(--red)}
-.gadmin .ga-del:hover{background:#a00808;border-color:var(--red)}
-.gadmin button:active{transform:scale(.95)}
-.gcard.gactive .gposter::after{content:'';position:absolute;inset:0;z-index:5;background:rgba(0,0,0,.35)}
+.gcard.gactive:not(.open) .gbottom{display:none}
+.gadmin button{flex:1 1 42%;min-width:0;padding:9px 10px;border-radius:8px;
+font-size:11px;font-weight:800;line-height:1.3;color:#f5f6ff;border:1px solid rgba(255,255,255,.15);
+background:#45495c;cursor:pointer;font-family:inherit;transition:background .15s,border-color .15s,transform .15s}
+.gadmin button:hover{background:#5b6078;border-color:rgba(255,255,255,.35)}
+.gadmin button:focus-visible{outline:2px solid #a5b4fc;outline-offset:2px}
+.gadmin .ga-edit{background:#394e80;border-color:#5774b2}
+.gadmin .ga-edit:hover{background:#48639f}
+.gadmin .ga-merge{background:#51466f;border-color:#76669b}
+.gadmin .ga-merge:hover{background:#695a8d}
+.gadmin .ga-del{background:#693940;border-color:#a65b63;color:#fff1f2}
+.gadmin .ga-del:hover{background:#98434c;border-color:#d2707b}
+.gadmin button:active{transform:scale(.97)}
+/* Expanded groups have no poster: never paint an overlay over the whole card. */
+.gcard.open.gactive .gposter::after{display:none}
+.gcard.open .gposter .gadmin{flex:1 1 100%;width:100%;margin-top:4px;
+box-shadow:none;border:0;border-radius:0}
+.gcard.open .gadmin button{flex:0 1 auto;min-width:0}
+@media(max-width:520px){.gcard.open .gadmin button{flex:1 1 calc(50% - 6px)}}
+/* Light theme: legible toolbar and chips on both opened and text-mode cards. */
+html.light .gcard.open{box-shadow:0 8px 26px rgba(31,41,55,.12)}
+html.light .gadmin{background:rgba(255,255,255,.96);border-color:#d8dce6;
+box-shadow:0 8px 24px rgba(31,41,55,.2)}
+html.light .gadmin button{background:#f1f3f8;color:#273144;border-color:#d5dbe6}
+html.light .gadmin button:hover{background:#e2e7f1;border-color:#aab6cb}
+html.light .gadmin .ga-edit{background:#e7efff;color:#244b87;border-color:#b8ccef}
+html.light .gadmin .ga-edit:hover{background:#d4e3ff}
+html.light .gadmin .ga-merge{background:#f0eafa;color:#62428b;border-color:#d7c8eb}
+html.light .gadmin .ga-merge:hover{background:#e4d9f5}
+html.light .gadmin .ga-del{background:#fff0f1;color:#a82838;border-color:#f0c4c9}
+html.light .gadmin .ga-del:hover{background:#ffdee1}
+html.light .gcard.open .gposter .gadmin{background:none;box-shadow:none}
+html.light .gcard.open .gposter .vtag{background:#f0f2f7;color:#334155;border-color:#d5dbe6;backdrop-filter:none}
+html.light .gcard.open .gposter .vtag.blue{background:#e8f0ff;color:#24589c;border-color:#c1d4f4}
+html.light .gcard.open .gposter .vtag.gold{background:#fff4d8;color:#805400;border-color:#edd9a4}
+html.light .gcard.open .gposter .vtag.gdur{background:#e6f6ec;color:#17663a;border-color:#bee2ca}
+html.light .gcard.open .gposter .gkind{background:#f2edfb;color:#61448e;border-color:#d8cbea;backdrop-filter:none}
+html.light .gcard.open .gposter .gqchip{background:#e8f5ff;color:#075985;border-color:#9bd1ef}
+html.light .gcard.open .gposter .gqchip.ep{background:#f3e8ff;color:#6b21a8;border-color:#d5b9ee}
+html.light .gcard.open .gposter .gqchip.more{background:#f1f3f6;color:#475569;border-color:#d7dce3}
+html.light .gcard.open .gposter .gqchip i{color:inherit}
+/* Shared destination preview in file and group editors. */
+.gpreview{display:flex;align-items:center;gap:11px;padding:10px;margin-top:9px;
+background:var(--bg3);border:1px solid var(--line);border-radius:10px;min-width:0}
+.gpreview[hidden]{display:none}.gpreview-poster{position:relative;width:108px;aspect-ratio:16/9;flex:none;
+overflow:hidden;border-radius:7px;background:var(--bg);border:1px solid var(--line)}
+.gpreview-placeholder{position:absolute;inset:0;display:grid;place-items:center;padding:4px;
+text-align:center;color:var(--mut);font-size:10px;line-height:1.2}
+.gpreview-img{position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:cover}
+.gpreview-img[hidden],.gpreview-placeholder[hidden]{display:none}
+.gpreview-info{min-width:0;display:flex;flex-direction:column;gap:3px}.gpreview-caption{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);font-weight:800}
+.gpreview-name{font-size:13px;color:var(--txt);font-weight:800;overflow-wrap:anywhere}.gpreview-meta{font-size:11px;color:var(--mut)}
+.gpreview-message{font-size:12px;color:var(--mut);line-height:1.4}.gpreview.error .gpreview-message{color:var(--red)}
+.fegrid .gpreview{grid-column:1/-1;margin-top:0}
 /* ☑️ Group Mode: select files → permanent group */
 .gfab{position:fixed;right:16px;bottom:18px;z-index:140;background:var(--red);color:#fff;
 border:0;border-radius:999px;padding:11px 16px;font-size:12px;font-weight:800;
@@ -167,6 +216,50 @@ color:#fff;background:var(--red);font-family:inherit}
 .gmbtn.danger{background:#a00808}
 .gmbtn:disabled{opacity:.5}
 .gmnote{font-size:11px;color:var(--mut);line-height:1.5;margin-top:10px}
+/* Group editor: structured, responsive sections without changing other modals. */
+.gmcard.is-edit{--gm-surface:var(--bg2);--gm-section:rgba(255,255,255,.025);
+--gm-section-border:rgba(255,255,255,.08);--gm-input:rgba(8,9,15,.48);
+--gm-label:#c6c8d4;--gm-muted-action:#ff9fa5;--gm-shadow:rgba(0,0,0,.55);
+padding:0;max-width:620px;border-color:var(--line);
+background:var(--gm-surface);box-shadow:0 24px 70px var(--gm-shadow)}
+html.light .gmcard.is-edit{--gm-surface:#fff;--gm-section:#f7f8fb;
+--gm-section-border:#e3e6ee;--gm-input:#fff;--gm-label:#50596a;
+--gm-muted-action:#b42332;--gm-shadow:rgba(32,39,57,.2)}
+.gmcard.is-edit .gmhead{position:sticky;top:0;z-index:4;margin:0;padding:18px 20px;
+background:var(--gm-surface);border-bottom:1px solid var(--line)}
+.gmcard.is-edit .gmclose{display:grid;place-items:center;width:34px;height:34px;
+border-radius:9px;background:var(--bg3);border:1px solid var(--line);font-size:18px}
+.gmcard.is-edit .gmclose:hover{color:var(--txt);border-color:#73798a}
+.gmedit{padding:16px 20px 0}.gmedit-section{background:var(--gm-section);
+border:1px solid var(--gm-section-border);border-radius:12px;padding:14px;margin-bottom:12px}
+.gmedit .gmlabel{display:block;margin:0 0 9px;font-size:11px;letter-spacing:.06em;color:var(--gm-label)}
+.gmedit .gminput{background:var(--gm-input);border-radius:9px;padding:11px 12px}
+.gmedit .gminput:focus,.gmedit .gmep:focus{outline:2px solid rgba(229,9,20,.3);outline-offset:1px}
+.gmedit #gmEpisodes{margin-top:16px}.gmedit .gmkind{gap:10px}.gmedit .gmkind button{padding:12px 8px;border-radius:10px;background:var(--bg3)}
+.gmedit .gmkind button.on{background:rgba(229,9,20,.15);box-shadow:inset 0 0 0 1px rgba(229,9,20,.25)}
+.gmedit .gmkind button:focus-visible,.gmedit button:focus-visible,.gmedit summary:focus-visible{outline:2px solid #ff737c;outline-offset:2px}
+.gmedit .gmresults{background:var(--gm-input)}.gmedit .gmchosen:empty{display:none}
+.gmedit .gmth{border-radius:9px}.gmedit .gmth.on{border-color:#4ade80;box-shadow:0 0 0 2px rgba(74,222,128,.18)}
+.gmedit .gmrow{margin-top:12px}.gmedit .gmmem,.gmedit .gmeprow{padding:9px 2px}
+.gmedit .gmmem button{width:30px;height:30px;border-radius:7px;background:rgba(229,9,20,.1);color:var(--gm-muted-action)}
+.gmedit .gmmem button:hover{background:rgba(229,9,20,.2);color:var(--gm-muted-action)}
+.gmedit .gmlist{max-height:210px;overflow-y:auto;overscroll-behavior:contain}
+.gmedit details summary{cursor:pointer;color:var(--txt);font-size:12px;font-weight:800;list-style:none}
+.gmedit details summary::-webkit-details-marker{display:none}.gmedit details summary::after{content:'+';float:right;color:var(--mut);font-size:17px;line-height:1}
+.gmedit details[open] summary::after{content:'−'}.gmedit details[open] summary{margin-bottom:12px}
+.gmedit-actions{position:sticky;bottom:0;z-index:3;display:flex;gap:8px;flex-wrap:wrap;
+margin:4px -20px 0;padding:14px 20px;background:var(--gm-surface);border-top:1px solid var(--line)}
+.gmedit-actions .gmbtn{min-height:40px}.gmedit-actions .gmbtn:first-child{flex:1}
+.gmedit-actions .danger{background:#693940;border:1px solid #a65b63}
+html.light .gmodal{background:rgba(28,34,47,.46)}
+html.light .gmedit-actions .danger{background:#fff0f1;color:#a82838;border-color:#f0c4c9}
+html.light .gmedit-actions .danger:hover{background:#ffdee1}
+html.light .gmedit .gmchosen{color:#15803d}
+html.light .gmedit .gmcount{color:#6941a1}
+@media(max-width:520px){.gmodal{padding:8px}.gmcard.is-edit{max-height:94vh}
+.gmcard.is-edit .gmhead{padding:14px}.gmedit{padding:12px 12px 0}
+.gmedit-section{padding:12px}.gmedit-actions{margin:4px -12px 0;padding:12px}
+.gmedit-actions .gmbtn{padding:9px 10px}.gmedit-actions .gmbtn:first-child{flex:1 1 100%}}
 .gmtoast{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:400;
 background:var(--bg2);border:1.5px solid var(--line);border-radius:10px;padding:10px 16px;
 font-size:12px;font-weight:800;color:var(--txt);opacity:0;pointer-events:none;
@@ -175,7 +268,7 @@ transition:opacity .2s;box-shadow:0 8px 24px rgba(0,0,0,.5)}
 .gmtoast.err{border-color:var(--red);color:#fca5a5}
 .gmprogress{font-size:11px;color:var(--mut);margin-top:8px;line-height:1.5}
 @media(max-width:520px){.gselbar{left:8px;right:8px;transform:none;justify-content:center;flex-wrap:wrap}
-.gfab{right:10px;bottom:76px}.gadmin button{flex:1 1 100%}}
+.gfab{right:10px;bottom:76px}}
 """
 
 # Group card markup — from the JS `GROUP_CARD_TEMPLATE`, just like VCARD_TEMPLATE.
@@ -237,10 +330,10 @@ _GROUP_JS_TPL = r"""/* 🗂️ SHARED GROUP CARD — template from web/group_ass
     if(window.IS_GROUP_ADMIN){
       var k=js1(g.key), gd=js1(g.gid||'');
       adm='<div class="gadmin vm-actions">'+
-        '<button onclick="event.stopPropagation();gEdit(\''+k+'\')">'+
+        '<button class="ga-edit" onclick="event.stopPropagation();gEdit(\''+k+'\')">'+
           (g.manual?'✏️ Edit Group #'+esc(g.num):'💾 Save as Group')+'</button>'+
         '<button onclick="event.stopPropagation();gSelectGroup(\''+k+'\')">☑️ Select files</button>'+
-        (g.manual?'<button onclick="event.stopPropagation();gMerge(\''+k+'\')">🔀 Merge</button>'+
+        (g.manual?'<button class="ga-merge" onclick="event.stopPropagation();gMerge(\''+k+'\')">🔀 Merge</button>'+
                   '<button class="ga-del" onclick="event.stopPropagation();gUngroup(\''+gd+'\')">🗑️ Ungroup</button>':'')+
       '</div>';
     }
@@ -255,6 +348,50 @@ _GROUP_JS_TPL = r"""/* 🗂️ SHARED GROUP CARD — template from web/group_ass
       ADMIN:adm, VARIANTS:variants
     });
   }
+  // One exact-ID preview implementation for all transfer/merge surfaces.
+  window.GroupPreview=function(input,box,onChange){
+    var seq=0,timer=null,resolved=null;
+    function message(text,error){box.replaceChildren();box.hidden=false;box.classList.toggle('error',!!error);
+      var el=document.createElement('span');el.className='gpreview-message';el.textContent=text;box.appendChild(el);}
+    function update(){
+      var id=String(input.value||'').trim().replace(/^#/, '').trim(), request=++seq;
+      clearTimeout(timer);resolved=null;if(onChange)onChange(null);
+      box.classList.remove('error');
+      if(!id){box.hidden=true;box.replaceChildren();return;}
+      message('Checking group…',false);
+      timer=setTimeout(function(){
+        fetch('/api/group/preview?id='+encodeURIComponent(id),{credentials:'same-origin'})
+          .then(function(r){return r.json().then(function(d){if(!r.ok||!d.ok)throw new Error(d.error||'Group not found');return d.group;});})
+          .then(function(g){if(request!==seq)return;resolved=g;box.replaceChildren();box.classList.remove('error');box.hidden=false;
+            var poster=document.createElement('div');poster.className='gpreview-poster';
+            var placeholder=document.createElement('span');placeholder.className='gpreview-placeholder';
+            placeholder.textContent=g.thumb?'Loading thumbnail…':'Thumbnail unavailable';poster.appendChild(placeholder);
+            var img=document.createElement('img');img.className='gpreview-img';img.alt='Group thumbnail';img.hidden=true;
+            var delays=[1500,2500,4000,6000,9000,12000,16000,20000],attempt=0;
+            img.onload=function(){if(request!==seq)return;img.hidden=false;placeholder.hidden=true;};
+            img.onerror=function(){
+              if(request!==seq)return;
+              img.hidden=true;
+              if(attempt>=delays.length){placeholder.textContent='Thumbnail unavailable';return;}
+              var delay=delays[attempt++];
+              setTimeout(function(){
+                if(request!==seq||!img.isConnected)return;
+                img.src=g.thumb+(g.thumb.indexOf('?')>=0?'&':'?')+'retry=true&t='+Date.now();
+              },delay);
+            };
+            poster.appendChild(img);if(g.thumb)img.src=g.thumb;
+            var info=document.createElement('div');info.className='gpreview-info';
+            var caption=document.createElement('span');caption.className='gpreview-caption';caption.textContent='Destination group';
+            var name=document.createElement('strong');name.className='gpreview-name';name.textContent=g.name;
+            var meta=document.createElement('span');meta.className='gpreview-meta';meta.textContent='#'+g.num+' · '+g.count+' files';
+            info.appendChild(caption);info.appendChild(name);info.appendChild(meta);box.appendChild(poster);box.appendChild(info);
+            if(onChange)onChange(g);
+          }).catch(function(e){if(request!==seq)return;message(e.message||'Could not check group',true);});
+      },250);
+    }
+    input.addEventListener('input',update);
+    return {update:update,get:function(){return resolved;},dispose:function(){++seq;clearTimeout(timer);input.removeEventListener('input',update);}};
+  };
   window.groupHTML=html;
   window.gJs=js1;
   window.groupGet=function(k){return GD[String(k)];};
@@ -306,7 +443,7 @@ GROUP_ADMIN_JS = r"""<script>
 /* 🛠️ ADMIN GROUP ACTIONS — permanent groups, merge, scan, master thumbnail */
 (function(){
   var SEL={}, selMode=false, mode='save', current=null, targetGid='',
-      thumbFid='', currentKind='qualities', scanTimer=null;
+      thumbFid='', currentKind='qualities', scanTimer=null, targetPreview=null, mergeSearchSeq=0;
   function q(s){return document.querySelector(s);}
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){
     return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
@@ -322,9 +459,11 @@ GROUP_ADMIN_JS = r"""<script>
           throw new Error(d.error||('HTTP '+r.status));return d;});});
   }
   function refresh(){if(window.load)window.load(true);}
-  function open(title,body){q('#gmTitle').textContent=title;q('#gmBody').innerHTML=body;
+  function open(title,body){if(targetPreview)targetPreview.dispose();targetPreview=null;
+    q('#gmTitle').textContent=title;q('#gmBody').innerHTML=body;
+    q('#gmModal .gmcard').classList.toggle('is-edit',!!q('#gmBody .gmedit'));
     q('#gmModal').classList.add('open');}
-  window.gClose=function(){var m=q('#gmModal');if(m)m.classList.remove('open');
+  window.gClose=function(){if(targetPreview)targetPreview.dispose();targetPreview=null;var m=q('#gmModal');if(m)m.classList.remove('open');
     current=null;targetGid='';thumbFid='';};
   function itemsFrom(g){
     return (g.variants||[]).map(function(v){return {id:v.file_id,name:v.name};});
@@ -398,13 +537,13 @@ GROUP_ADMIN_JS = r"""<script>
   }
   function kindHtml(g){
     var isQ=currentKind!=='episodes';
-    return '<div class="gmlabel">GROUP TYPE — does this group hold qualities or episodes?</div>'+
+    return '<div class="gmlabel">GROUP TYPE</div>'+
       '<div class="gmkind">'+
         '<button type="button" data-kind="qualities" class="'+(isQ?'on':'')+'" '+
-          'onclick="gPickKind(\'qualities\')">🎞️ Qualities'+
+          'aria-pressed="'+(isQ?'true':'false')+'" onclick="gPickKind(\'qualities\')">🎞️ Qualities'+
           '<small>Different qualities of one file / movie</small></button>'+
         '<button type="button" data-kind="episodes" class="'+(isQ?'':'on')+'" '+
-          'onclick="gPickKind(\'episodes\')">📺 Episodes'+
+          'aria-pressed="'+(isQ?'false':'true')+'" onclick="gPickKind(\'episodes\')">📺 Episodes'+
           '<small>Different episodes of a series</small></button>'+
       '</div>';
   }
@@ -415,14 +554,15 @@ GROUP_ADMIN_JS = r"""<script>
         'value="'+esc(v.el||'')+'" aria-label="Episode label" title="Change episode label"></div>';
     }).join('');
     return '<div id="gmEpisodes" style="display:'+(currentKind==='episodes'?'block':'none')+'">'+
-      '<div class="gmlabel">📺 EPISODE LABELS — optionally change the episode number of any file</div>'+
-      rows+'<div class="gmcount">This group has '+(g.episodes||(g.variants||[]).length)+
+      '<div class="gmlabel">EPISODE LABELS</div>'+
+      '<div class="gmlist">'+rows+'</div><div class="gmcount">This group has '+(g.episodes||(g.variants||[]).length)+
       ' episodes / '+(g.variants||[]).length+' files</div></div>';
   }
   window.gPickKind=function(k){
     currentKind=(k==='episodes')?'episodes':'qualities';
     Array.prototype.forEach.call(document.querySelectorAll('.gmkind button'),function(b){
-      b.classList.toggle('on',b.getAttribute('data-kind')===currentKind);});
+      var selected=b.getAttribute('data-kind')===currentKind;
+      b.classList.toggle('on',selected);b.setAttribute('aria-pressed',selected?'true':'false');});
     var ep=q('#gmEpisodes');if(ep)ep.style.display=(currentKind==='episodes'?'block':'none');
   };
   function groupMetric(x){
@@ -459,26 +599,28 @@ GROUP_ADMIN_JS = r"""<script>
     currentKind=(g.kind==='episodes')?'episodes':'qualities';
     var items=itemsFrom(g);
     open(g.manual?'✏️ Edit Group #'+g.num:'💾 Save as Permanent Group',
-      '<div class="gmlabel">GROUP NAME</div>'+
-      '<input class="gminput" id="gmName" value="'+esc(g.name)+'" placeholder="Movie / series name">'+
-      '<div class="gmlabel">ADD TO AN EXISTING GROUP (name or #number)</div>'+
+      '<div class="gmedit">'+
+      '<section class="gmedit-section"><label class="gmlabel" for="gmName">GROUP NAME</label>'+
+      '<input class="gminput" id="gmName" value="'+esc(g.name)+'" placeholder="Movie / series name"></section>'+
+      '<section class="gmedit-section">'+kindHtml(g)+episodesHtml(g)+'</section>'+
+      '<section class="gmedit-section"><div class="gmlabel">MASTER THUMBNAIL</div><div class="gmthumbs" id="gmThumbs">'+thumbsHtml(g)+'</div>'+
+      '<div class="gmrow"><button type="button" class="gmbtn alt" onclick="document.getElementById(\'gmFile\').click()">📸 Custom upload</button>'+
+      '<input type="file" accept="image/*" id="gmFile" hidden onchange="gUpload(this)">'+
+      (g.manual?'<button class="gmbtn alt" onclick="gClearCustom()">↩️ Remove custom</button>':'')+'</div></section>'+
+      '<section class="gmedit-section"><div class="gmlabel">FILES ('+items.length+')</div><div class="gmlist">'+membersHtml(items,g.manual?String(g.gid):'')+'</div></section>'+
+      '<details class="gmedit-section"><summary>Add to an existing group</summary>'+
+      '<label class="gmlabel" for="gmFind">SEARCH BY NAME OR #NUMBER</label>'+
       '<input class="gminput" id="gmFind" placeholder="Search… e.g. #12 or a name" oninput="gFind(this.value)">'+
       '<div class="gmresults" id="gmResults"></div>'+
-      '<div class="gmchosen" id="gmChosen">'+(targetGid?'✓ Group #'+esc(targetGid):'')+'</div>'+
-      kindHtml(g)+episodesHtml(g)+
-      '<div class="gmlabel">MASTER THUMBNAIL</div><div class="gmthumbs" id="gmThumbs">'+thumbsHtml(g)+'</div>'+
-      '<div class="gmrow"><label class="gmbtn alt" style="cursor:pointer">📸 Custom upload'+
-      '<input type="file" accept="image/*" id="gmFile" style="display:none" onchange="gUpload(this)"></label>'+
-      (g.manual?'<button class="gmbtn alt" onclick="gClearCustom()">↩️ Remove custom</button>':'')+'</div>'+
-      '<div class="gmlabel">FILES ('+items.length+')</div>'+membersHtml(items,g.manual?String(g.gid):'')+
-      '<div class="gmrow"><button class="gmbtn" id="gmSave" onclick="gSave()">'+
-        (g.manual?'💾 Save Changes (name / type / thumbnail / files)':'💾 Save Group')+'</button>'+
+      '<div class="gpreview" id="gmChosen" hidden aria-live="polite"></div></details>'+
+      '<div class="gmedit-actions"><button class="gmbtn" id="gmSave" onclick="gSave()">'+
+        (g.manual?'💾 Save Changes':'💾 Save Group')+'</button>'+
       (g.manual?'<button class="gmbtn danger" onclick="gUngroup(\''+jse(g.gid)+'\')">🗑️ Ungroup</button>':'')+
-      '<button class="gmbtn alt" onclick="gClose()">Cancel</button></div>'+
-      '<div class="gmnote">Saving a changed <b>GROUP NAME</b> updates the group name in the database '+
-      '(its #number stays the same). Use <b>GROUP TYPE</b> to say whether it holds qualities of one file or '+
-      'episodes of a series — the card shows <i>3 QUALITIES</i> or <i>12 EPISODES</i> accordingly, and no individual '+
-      'size or duration appears on the group. A new quality with the same title joins automatically via auto_keys.</div>');
+      '<button class="gmbtn alt" onclick="gClose()">Cancel</button></div></div>');
+    targetPreview=window.GroupPreview(q('#gmFind'),q('#gmChosen'),function(dest){
+      var value=q('#gmFind').value.trim();
+      targetGid=dest?dest.id:(!value&&g.manual?String(g.gid):'');
+    });
     if(targetGid)gFind('#'+targetGid);
   };
   window.gFind=function(v){
@@ -494,9 +636,7 @@ GROUP_ADMIN_JS = r"""<script>
   };
   window.gChoose=function(gid){
     targetGid=String(gid);
-    var item=LIST.filter(function(x){return String(x.id)===targetGid;})[0]||{};
-    var c=q('#gmChosen');if(c)c.textContent='✓ Group #'+(item.num||gid)+' — '+(item.name||'')+' will receive the files';
-    var n=q('#gmName');if(n&&item.name)n.value=item.name;   /* .value is safe, no HTML involved */
+    q('#gmFind').value=targetGid;targetPreview.update();
     gFind('#'+gid);
   };
   window.gPickThumb=function(fid){thumbFid=String(fid||'');
@@ -519,14 +659,22 @@ GROUP_ADMIN_JS = r"""<script>
   };
   window.gSave=function(){
     var g=current;if(!g)return;
+    if(q('#gmFind').value.trim() && !(targetPreview&&targetPreview.get())){toast('Select a valid destination group first',true);return;}
     var name=String((q('#gmName')||{}).value||'').trim();
     if(!targetGid&&!name){toast('Enter a group name',true);return;}
+    if(targetGid && (!g.manual || targetGid!==String(g.gid))){
+      var dest=targetPreview&&targetPreview.get();
+      if(!dest||dest.id!==targetGid){toast('Please wait for a valid destination group preview',true);return;}
+      if(!confirm('Add these files to group #'+dest.num+' — '+dest.name+'?'))return;
+    }
     var btn=q('#gmSave');if(btn)btn.disabled=true;
     var emap=collectEpisodes();
-    var body={items:itemsFrom(g),name:name,kind:currentKind,episode_map:emap};
+    var transferring=!!targetGid&&(!g.manual||targetGid!==String(g.gid));
+    var body=transferring?{items:itemsFrom(g)}:{items:itemsFrom(g),name:name,kind:currentKind,episode_map:emap};
     if(targetGid)body.group_id=targetGid;
     post('/api/group/save',body).then(function(d){
       var gid=d.group_id||targetGid||'';
+      if(transferring)return d; // Never overwrite the destination group's name/type/thumbnail.
       /* ✏️ Renaming is separate from saving members — send it explicitly to
          `/api/group/update` (along with the master thumbnail in the same call). */
       var upd={group_id:gid,kind:currentKind,episode_map:emap};
@@ -578,26 +726,34 @@ GROUP_ADMIN_JS = r"""<script>
       '<input class="gminput" id="gmTarget" placeholder="e.g. 12 or #12" oninput="gFindMerge(this.value)">'+
       '<div class="gmnote">Source group #'+esc(g.num)+'  — all its files and auto_keys will move into the target '+
       'group, and the source group will be deleted. No files are deleted.</div>'+
+      '<div class="gpreview" id="gmMergePreview" hidden aria-live="polite"></div>'+
       '<div class="gmresults" id="gmMergeResults"></div>'+
       '<div class="gmlabel">FILES ('+(g.variants||[]).length+')</div>'+membersHtml(itemsFrom(g),'')+
       '<div class="gmrow"><button class="gmbtn" onclick="gDoMerge()">🔀 Merge</button>'+
       '<button class="gmbtn alt" onclick="gClose()">Cancel</button></div>');
+    targetPreview=window.GroupPreview(q('#gmTarget'),q('#gmMergePreview'));
     gFindMerge('');
   };
   window.gFindMerge=function(v){
     var box=q('#gmMergeResults');if(!box)return;
+    var request=++mergeSearchSeq, source=current;
     fetch('/api/group/list?q='+encodeURIComponent(v||''),{credentials:'same-origin'})
       .then(function(r){return r.json();}).then(function(d){
-        box.innerHTML=(d.groups||[]).filter(function(x){return String(x.id)!==String(current.gid);})
+        if(request!==mergeSearchSeq||current!==source||q('#gmMergeResults')!==box)return;
+        box.innerHTML=(d.groups||[]).filter(function(x){return String(x.id)!==String(source.gid);})
           .map(function(x){return '<div class="gmres" onclick="gPickMerge(\''+jse(x.id)+'\')">'+
             '<b>#'+esc(x.num)+'</b><span>'+esc(x.name)+' · '+groupMetric(x)+'</span></div>';}).join('')||
           '<div class="gmres" style="color:var(--mut)">No other groups found</div>';
       }).catch(function(){});
   };
-  window.gPickMerge=function(gid){var t=q('#gmTarget');if(t)t.value=String(gid);};
+  window.gPickMerge=function(gid){var t=q('#gmTarget');if(t){t.value=String(gid);targetPreview.update();}};
   window.gDoMerge=function(){
     var t=(q('#gmTarget')||{}).value||'';
     if(!t.trim()){toast('Enter the target group number',true);return;}
+    var dest=targetPreview&&targetPreview.get();
+    if(!dest||dest.id!==t.trim().replace(/^#/,'').trim()){toast('Please wait for a valid destination group preview',true);return;}
+    if(dest.id===String(current.gid)){toast('Cannot merge a group into itself',true);return;}
+    if(!confirm('Merge group #'+current.num+' into group #'+dest.num+' — '+dest.name+'?'))return;
     post('/api/group/merge',{source:String(current.gid),target:t.trim()})
       .then(function(d){toast('🔀 Group #'+d.num+' — merged');window.gClose();refresh();})
       .catch(function(e){toast(e.message,true);});
