@@ -82,7 +82,7 @@ class script(object):
         "• /removepremium &lt;user_id&gt;\n\n"
 
         "🗑 <b>Delete Files</b>\n"
-        "• /delete &lt;keyword&gt; – matching files\n"
+        "• /delete – Reply to file or use keyword (archive first)\n"
         "• /deleteall – ALL files (confirmation)\n\n"
 
         "🖼 /warmup_thumbs – posters + metadata\n\n"

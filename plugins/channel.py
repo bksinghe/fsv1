@@ -5,7 +5,7 @@ from hydrogram.errors import (
     ReactionInvalid
 )
 
-from info import INDEX_CHANNELS, LOG_CHANNEL
+from info import INDEX_CHANNELS, LOG_CHANNEL, DELETE_ARCHIVE_CHANNEL
 from database.ia_filterdb import (
     save_file,
     update_file_caption,
@@ -71,6 +71,8 @@ def get_media_info(message):
 
 @Client.on_message(filters.chat(INDEX_CHANNELS) & media_filter, group=10)
 async def index_new_file(bot, message):
+    if message.chat.id == DELETE_ARCHIVE_CHANNEL:
+        return
     # Keep processing live posts during a manual scan. The scan only covers
     # up to the forwarded message, so skipping newer posts creates gaps.
     media = get_media_info(message)
@@ -115,6 +117,8 @@ async def index_new_file(bot, message):
 
 @Client.on_edited_message(filters.chat(INDEX_CHANNELS) & media_filter, group=11)
 async def update_caption(bot, message):
+    if message.chat.id == DELETE_ARCHIVE_CHANNEL:
+        return
     media = get_media_info(message)
     if not media:
         return

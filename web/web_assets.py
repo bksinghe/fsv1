@@ -586,7 +586,7 @@ FILE_EDIT_JS = r"""<script>
   }
   async function deleteById(fid){
     if(!fid||busy) return;
-    if(!confirm('Permanently delete this file from the database?')) return;
+    if(!confirm('Archive this file to the configured channel, then delete it from the database?')) return;
     setBusy(true);
     try{
       const r=await fetch('/api/file/delete',{method:'POST',credentials:'same-origin',
@@ -594,7 +594,7 @@ FILE_EDIT_JS = r"""<script>
       const d=await r.json();
       if(!d.ok){ toast(d.error||'Delete failed',true); return; }
       cards(fid).forEach(c=>c.remove());
-      toast('🗑️ File deleted');
+      toast('🗑️ File archived and deleted');
       if(current===fid) close();
     }catch(e){ toast('Network error: '+String(e.message||e),true); }
     finally{ setBusy(false); }

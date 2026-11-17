@@ -364,6 +364,17 @@ async def delete_file_by_id(file_id: str) -> bool:
         return False
 
 
+async def find_delete_batch(query: str, after_id: str = "", limit: int = 100):
+    """Fetch a bounded page of matching IDs for archive-before-delete."""
+    pattern = re.compile(re.escape(query.strip()), re.IGNORECASE)
+    spec = {"file_name": pattern}
+    if after_id:
+        spec["_id"] = {"$gt": after_id}
+    def _read():
+        return list(collection.find(spec, {"_id": 1}).sort("_id", 1).limit(limit))
+    return await asyncio.to_thread(_read)
+
+
 # =====================================================
 # 🗑 DELETE FILES BY QUERY
 # =====================================================
