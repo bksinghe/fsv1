@@ -51,6 +51,22 @@ class PlayerGroupTests(unittest.IsolatedAsyncioTestCase):
         self.store.by_members.return_value = []
         self.assertEqual(await self.handler(SimpleNamespace(query={'file_id': 'a'})), ({'items': []}, 200))
 
+    def test_modal_actions_share_one_row_and_keep_signed_copy_link(self):
+        tree = ast.parse((ROOT / 'web/web_assets.py').read_text())
+        values = {n.targets[0].id: ast.literal_eval(n.value) for n in tree.body
+                  if isinstance(n, ast.Assign) and len(n.targets) == 1
+                  and isinstance(n.targets[0], ast.Name)
+                  and n.targets[0].id in ('PLAYER_MODAL_HTML', 'PLAYER_JS', 'SITE_CSS')}
+        modal, js, css = values['PLAYER_MODAL_HTML'], values['PLAYER_JS'], values['SITE_CSS']
+        self.assertNotIn('pWatch', modal + js)
+        self.assertNotIn('Copy stream link', modal)
+        self.assertIn('Copy link', modal)
+        self.assertIn('id="pDl"', modal)
+        self.assertIn('closePlayer()', modal)
+        self.assertIn('grid-template-columns:repeat(3,minmax(0,1fr))', css)
+        self.assertIn('currentWatch=location.origin+d.watch', js)
+        self.assertIn('clip.writeText(currentWatch)', js)
+
     def test_player_race_guards_and_watch_page(self):
         assets = (ROOT / 'web/web_assets.py').read_text()
         watch = (ROOT / 'web/utils/render_template.py').read_text()

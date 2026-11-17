@@ -1020,11 +1020,11 @@ video{width:100%;height:100%;display:block;background:#000}
 .pchoices button{background:var(--bg3);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:8px 11px;cursor:pointer;text-align:left;font:inherit;font-size:12px}
 .pchoices button.active{border-color:var(--red);background:var(--red);color:white}
 .pchoices .choice-meta{display:block;margin-top:4px;font-size:11px;opacity:.8}
-.mactions{display:flex;gap:8px;flex-wrap:wrap;padding:13px 16px}
+.mactions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:13px 16px}
 .mactions a,.mactions button{background:var(--bg3);border:1px solid var(--line);
 color:var(--txt);border-radius:7px;padding:9px 14px;font-size:12px;font-weight:800;
-cursor:pointer;font-family:inherit}
-.mactions a.red{background:var(--red);border-color:var(--red);color:#fff}
+cursor:pointer;font-family:inherit;text-align:center;white-space:nowrap;min-width:0}
+@media(max-width:400px){.mactions{gap:5px;padding:12px 10px}.mactions a,.mactions button{padding:9px 3px;font-size:11px}}
 .mnote{padding:0 16px 15px;font-size:11px;color:var(--mut)}
 /* ── auth form base (guest composition lives in web/welcome_assets.py) ── */
 .auth-wrap{min-height:calc(100vh - 62px);display:flex;align-items:center;
@@ -1319,9 +1319,8 @@ PLAYER_MODAL_HTML = """<div class="modal" id="modal" onclick="if(event.target===
     <div class="video-wrap"><video id="player" controls playsinline></video></div>
     <section class="pchoices" id="pChoices" hidden aria-label="Episodes and qualities"><div class="pchoices-title">Episodes &amp; qualities</div><div class="pchoices-list" id="pChoicesList"></div></section>
     <div class="mactions">
-      <a class="red" id="pWatch" href="#" target="_blank" rel="noopener">▶ Player page</a>
       <a id="pDl" href="#">⬇ Download</a>
-      <button onclick="copyLink()">🔗 Copy stream link</button>
+      <button onclick="copyLink()">🔗 Copy link</button>
       <button onclick="closePlayer()">Close</button>
     </div>
     <div class="mnote" id="pNote">Signed streaming link — valid for a limited time.</div>
@@ -1351,7 +1350,7 @@ PLAYER_JS = r"""<script>
     if(!modal || !v) return;
     const request=++seq;
     items=Array.isArray(context)?context:[]; renderChoices(fid);
-    currentWatch=''; q('#pWatch').removeAttribute('href'); q('#pDl').removeAttribute('href');
+    currentWatch=''; q('#pDl').removeAttribute('href');
     q('#pTitle').textContent='⏳ '+name;
     q('#pNote').textContent='Preparing the streaming link…';
     modal.classList.add('open');
@@ -1374,7 +1373,6 @@ PLAYER_JS = r"""<script>
       currentWatch=location.origin+d.watch;
       q('#pTitle').textContent='▶ '+name;
       q('#pNote').textContent='Signed link · '+(d.expires_in||0)+' seconds valid · Range/seek supported';
-      q('#pWatch').href=d.watch;
       q('#pDl').href=d.download;
       v.poster=d.poster||'';
       v.src=d.stream;
