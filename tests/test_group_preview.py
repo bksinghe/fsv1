@@ -63,3 +63,14 @@ class PreviewUITests(unittest.TestCase):
         for part in ("GroupPreview(q('#feGroupId'),q('#feGroupPreview'))",
                      'dest.id!==target', "confirm('Move this file to group #"):
             self.assertIn(part, ASSETS)
+
+class MergeModalTests(unittest.TestCase):
+    def test_merge_does_not_load_or_search_group_lists(self):
+        merge = GROUP.split('window.gMerge=function(k)', 1)[1].split('/* ── ☑️ Group Mode', 1)[0]
+        self.assertNotIn('/api/group/list', merge)
+        self.assertNotIn('gmMergeResults', merge)
+        self.assertNotIn('gFindMerge', GROUP)
+        self.assertNotIn('gPickMerge', GROUP)
+        self.assertIn("GroupPreview(q('#gmTarget'),q('#gmMergePreview'))", merge)
+        self.assertIn("confirm('Merge group #", merge)
+        self.assertIn("post('/api/group/merge'", merge)

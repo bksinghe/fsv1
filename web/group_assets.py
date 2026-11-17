@@ -443,7 +443,7 @@ GROUP_ADMIN_JS = r"""<script>
 /* 🛠️ ADMIN GROUP ACTIONS — permanent groups, merge, scan, master thumbnail */
 (function(){
   var SEL={}, selMode=false, mode='save', current=null, targetGid='',
-      thumbFid='', currentKind='qualities', scanTimer=null, targetPreview=null, mergeSearchSeq=0;
+      thumbFid='', currentKind='qualities', scanTimer=null, targetPreview=null;
   function q(s){return document.querySelector(s);}
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){
     return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
@@ -723,30 +723,15 @@ GROUP_ADMIN_JS = r"""<script>
     current=g;
     open('🔀 Merge Group #'+g.num,
       '<div class="gmlabel">TARGET GROUP NUMBER</div>'+
-      '<input class="gminput" id="gmTarget" placeholder="e.g. 12 or #12" oninput="gFindMerge(this.value)">'+
+      '<input class="gminput" id="gmTarget" placeholder="e.g. 12 or #12" autocomplete="off">'+
       '<div class="gmnote">Source group #'+esc(g.num)+'  — all its files and auto_keys will move into the target '+
       'group, and the source group will be deleted. No files are deleted.</div>'+
       '<div class="gpreview" id="gmMergePreview" hidden aria-live="polite"></div>'+
-      '<div class="gmresults" id="gmMergeResults"></div>'+
       '<div class="gmlabel">FILES ('+(g.variants||[]).length+')</div>'+membersHtml(itemsFrom(g),'')+
       '<div class="gmrow"><button class="gmbtn" onclick="gDoMerge()">🔀 Merge</button>'+
       '<button class="gmbtn alt" onclick="gClose()">Cancel</button></div>');
     targetPreview=window.GroupPreview(q('#gmTarget'),q('#gmMergePreview'));
-    gFindMerge('');
   };
-  window.gFindMerge=function(v){
-    var box=q('#gmMergeResults');if(!box)return;
-    var request=++mergeSearchSeq, source=current;
-    fetch('/api/group/list?q='+encodeURIComponent(v||''),{credentials:'same-origin'})
-      .then(function(r){return r.json();}).then(function(d){
-        if(request!==mergeSearchSeq||current!==source||q('#gmMergeResults')!==box)return;
-        box.innerHTML=(d.groups||[]).filter(function(x){return String(x.id)!==String(source.gid);})
-          .map(function(x){return '<div class="gmres" onclick="gPickMerge(\''+jse(x.id)+'\')">'+
-            '<b>#'+esc(x.num)+'</b><span>'+esc(x.name)+' · '+groupMetric(x)+'</span></div>';}).join('')||
-          '<div class="gmres" style="color:var(--mut)">No other groups found</div>';
-      }).catch(function(){});
-  };
-  window.gPickMerge=function(gid){var t=q('#gmTarget');if(t){t.value=String(gid);targetPreview.update();}};
   window.gDoMerge=function(){
     var t=(q('#gmTarget')||{}).value||'';
     if(!t.trim()){toast('Enter the target group number',true);return;}
