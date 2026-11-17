@@ -366,7 +366,7 @@ letter-spacing:.4px;backdrop-filter:blur(6px);box-shadow:0 2px 10px rgba(0,0,0,.
 background:linear-gradient(to top,rgba(0,0,0,.95),rgba(0,0,0,.6) 45%,transparent)}
 .cat-name{color:#fff;font-size:13px;font-weight:900;white-space:nowrap;overflow:hidden;
 text-overflow:ellipsis;text-shadow:0 2px 8px rgba(0,0,0,.9)}
-.cat-meta{padding:8px 10px 9px;display:flex;flex-direction:column;gap:4px}
+.cat-meta{padding:8px 10px 9px;display:none;flex-direction:column;gap:4px}
 .cat-meta-main{display:none;font-size:13px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cat-meta-sub{font-size:11px;color:var(--mut);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cat-skel{aspect-ratio:2/3;border-radius:12px;border:1px solid var(--line);
