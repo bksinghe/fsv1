@@ -127,8 +127,7 @@ class TestSingleSource(unittest.TestCase):
              ("vm-card", "vm-master", "vm-poster", "vm-img", "vm-details",
               "vm-actions", "vm-body", "vm-title")),
             ("catalog.py", cat,
-             ("vm-card", "vm-poster", "vm-img", "vm-chip", "vm-actions",
-              "vm-always", "vm-body", "vm-title")),
+             ("vm-card", "vm-poster", "vm-img", "vm-chip", "vm-body", "vm-title")),
         ):
             for cls in required:
                 self.assertIn(cls, src, f"{name}: {cls} contract missing")

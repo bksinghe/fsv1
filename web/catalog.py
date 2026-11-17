@@ -307,6 +307,11 @@ font-weight:800;font-size:13px;cursor:pointer;font-family:inherit;transition:tra
 .cat-btn.ghost.cat-back,.cat-btn.ghost.cat-back:hover{display:inline-flex;align-items:center;transform:none;box-shadow:none;animation:none}
 .cat-btn.ghost.cat-back:active{transform:none}
 .cat-btn.ghost.cat-back:focus-visible{outline:2px solid var(--red);outline-offset:3px}
+.cat-detail-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.cat-detail-toolbar .cat-detail-actions{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
+.cat-detail-toolbar .cat-detail-actions .cat-btn{display:inline-flex;align-items:center;justify-content:center}
+@media(max-width:480px){.cat-detail-toolbar .cat-detail-actions{margin-left:auto}}
+.cat-card:focus-visible{outline:2px solid var(--red);outline-offset:3px}
 
 /* 🧩 Like the GitHub reference (v5 `.search-box`): **one card-box** holding the search bar,
    filter buttons, ✨ New Post/Profile and the count — on desktop and mobile alike.
@@ -362,16 +367,8 @@ background:linear-gradient(to top,rgba(0,0,0,.95),rgba(0,0,0,.6) 45%,transparent
 .cat-name{color:#fff;font-size:13px;font-weight:900;white-space:nowrap;overflow:hidden;
 text-overflow:ellipsis;text-shadow:0 2px 8px rgba(0,0,0,.9)}
 .cat-meta{padding:8px 10px 9px;display:flex;flex-direction:column;gap:4px}
-.cat-meta-main{font-size:13px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cat-meta-main{display:none;font-size:13px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cat-meta-sub{font-size:11px;color:var(--mut);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.cat-actions{position:absolute;bottom:0;left:0;right:0;z-index:3;display:flex;gap:6px;padding:8px;
-opacity:0;transform:translateY(10px);transition:opacity .22s,transform .22s;pointer-events:none}
-.cat-card:hover .cat-actions,.cat-card:focus-within .cat-actions{opacity:1;transform:translateY(0);pointer-events:all}
-.cat-edit,.cat-del{flex:1;border:1px solid rgba(255,255,255,.2);border-radius:7px;padding:7px 4px;
-font:800 11px inherit;font-family:inherit;cursor:pointer;backdrop-filter:blur(10px);transition:background .14s,transform .1s}
-.cat-edit{background:rgba(30,30,40,.9);color:#fff}.cat-edit:hover{background:rgba(70,70,85,.95)}
-.cat-del{background:rgba(160,8,8,.85);color:#fff}.cat-del:hover{background:rgba(229,9,20,.95)}
-.cat-edit:active,.cat-del:active{transform:scale(.94)}
 .cat-skel{aspect-ratio:2/3;border-radius:12px;border:1px solid var(--line);
 background:linear-gradient(90deg,var(--bg3) 0,#2b2b3a 50%,var(--bg3) 100%);
 background-size:200% 100%;animation:catShimmer 1.5s infinite linear}
@@ -644,21 +641,16 @@ function catLabel(v){
 function cardHTML(it){
   const id = esc(it.id), src = imgSrc(it.image);
   const tags = (it.tags||[]).slice(0,2).map(t=>'#'+t).join(' ');
-  /* ⚠️ user data never goes into an inline JS string — only data-id attributes */
-  const admin = ADMIN ? `<div class="cat-actions vm-actions vm-always">
-      <button class="cat-edit" onclick="event.stopPropagation();openEditor(this.closest('.cat-card').dataset.id)">✏️ Edit</button>
-      <button class="cat-del" onclick="event.stopPropagation();removeItem(this.closest('.cat-card').dataset.id)">🗑 Delete</button>
-    </div>` : '';
-  /* Post covers also load in text view; other images follow ViewMode. */
+  /* Catalog covers stay visible and clickable in text view. */
   const img = src
     ? `<img class="cat-poster vm-img" onload="this.classList.add('on')" onerror="catPosterFail(this)"
-          ${ViewMode.imgAttrs(esc(src),CFG.kind==='posts')} alt="" loading="lazy">`
+          ${ViewMode.imgAttrs(esc(src),true)} alt="" loading="lazy">`
     : '';
-  return `<div class="cat-card rv-enter vm-card ${CFG.kind==='posts'?'vm-show-cover':''}" data-id="${id}" onclick="openDetail(this.dataset.id)">
+  return `<div class="cat-card rv-enter vm-card vm-show-cover" data-id="${id}" role="link" tabindex="0" aria-label="Open ${esc(it.title)}" onclick="openDetail(this.dataset.id)">
     <div class="cat-poster-wrap vm-poster">
       <div class="cat-ph vm-ph vm-overlay" aria-hidden="true">🖼️</div>${img}
       <div class="cat-badge vm-chip">${esc(catLabel(it.category))}</div>
-      <div class="cat-grad vm-overlay"><div class="cat-name">${esc(it.title)}</div></div>${admin}
+      <div class="cat-grad vm-overlay"><div class="cat-name">${esc(it.title)}</div></div>
     </div>
     <div class="cat-meta vm-body"><span class="cat-meta-main vm-title">${esc(it.title)}</span>
       <span class="cat-meta-sub">${esc(catLabel(it.category))} · ${esc(tags || 'No tags')}</span></div>
@@ -710,6 +702,12 @@ async function load(reset){
   finally{ if(my === state.req) search.classList.remove('loading'); }
 }
 function openDetail(id){ location.href = CFG.detail + encodeURIComponent(id); }
+document.addEventListener('keydown',e=>{
+  const card=e.target.closest && e.target.closest('.cat-card[data-id]');
+  if(card && e.target===card && (e.key==='Enter'||e.key===' ')){
+    e.preventDefault();openDetail(card.dataset.id);
+  }
+});
 
 /* ── toast (with Undo) ── */
 let toastTimer = null;
@@ -1457,7 +1455,7 @@ def _detail_body(kind: str, role: str, item: dict) -> str:
     admin_bar = ""
     if admin:
         admin_bar = (
-            '<div style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap">'
+            '<div class="cat-detail-actions">'
             f'<a class="cat-btn" href="{cfg["base"]}?edit={item_id}">✏️ Edit</a>'
             f'<button class="cat-btn ghost" data-id="{item_id}" '
             'onclick="deleteDetail(this.dataset.id)">🗑 Delete</button></div>'
@@ -1473,7 +1471,7 @@ def _detail_body(kind: str, role: str, item: dict) -> str:
     )
 
     return f"""<div class="main"><div class="cat-wrap">
-  <div style="margin-bottom:16px"><a class="cat-btn ghost cat-back" href="{cfg['base']}">← Back</a></div>
+  <div class="cat-detail-toolbar"><a class="cat-btn ghost cat-back" href="{cfg['base']}">← Back</a>{admin_bar}</div>
   <div class="cat-tabs" role="tablist">
     <button class="cat-tab active" data-tab="overview" onclick="switchTab('overview')">ℹ️ Overview</button>
     <button class="cat-tab" data-tab="videos" onclick="switchTab('videos')">🎬 Videos <span class="cat-tab-n">{len(videos)}</span></button>
@@ -1489,7 +1487,6 @@ def _detail_body(kind: str, role: str, item: dict) -> str:
         <div class="cat-chips"><span class="cat-chip red">{esc(cat_label)}</span>{chips}</div>
         <div class="cat-body-txt">{body or '<span style="color:var(--mut)">No description available.</span>'}</div>
         <div class="cat-links">{links_html or '<span style="color:var(--mut);font-size:12px">🔗 No external links.</span>'}</div>
-        {admin_bar}
       </div>
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px">

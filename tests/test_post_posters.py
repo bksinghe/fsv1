@@ -18,8 +18,8 @@ def constant(path, name):
 
 class PostPosterTests(unittest.TestCase):
     def test_posts_load_cover_in_text_and_poster_modes(self):
-        self.assertIn("ViewMode.imgAttrs(esc(src),CFG.kind==='posts')", CATALOG)
-        self.assertIn("CFG.kind==='posts'?'vm-show-cover':''", CATALOG)
+        self.assertIn("ViewMode.imgAttrs(esc(src),true)", CATALOG)
+        self.assertIn("cat-card rv-enter vm-card vm-show-cover", CATALOG)
         self.assertIn('.vm-grid.mode-text .vm-show-cover .vm-img{display:block!important', MODE)
         self.assertIn("isText()&&!arguments[1]", MODE)
         self.assertIn("onerror=\"catPosterFail(this)\"", CATALOG)

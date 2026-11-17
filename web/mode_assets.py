@@ -72,11 +72,13 @@ align-items:stretch;gap:6px;padding:0}
 align-items:stretch;gap:3px;padding:0;flex:0 0 auto;width:100%;min-width:0}
 .vm-grid.mode-text .vm-title{display:block;flex:1;min-width:0;white-space:nowrap;
 overflow:hidden;text-overflow:ellipsis;-webkit-line-clamp:1}
+/* In poster view the title is on the poster; text view still needs its title. */
+.vm-grid.mode-text .cat-meta-main{display:block}
 /* ⚠️ In Text mode only these are hidden — things tied to the thumbnail */
 .vm-grid.mode-text .vm-img,
 .vm-grid.mode-text .vm-ph,
 .vm-grid.mode-text .vm-overlay{display:none!important}
-/* Post covers remain visible in text view too; other library images stay hidden. */
+/* Catalog covers remain visible in text view too; library images stay hidden. */
 .vm-grid.mode-text .vm-show-cover .vm-img{display:block!important;position:static;width:64px;height:96px;
 object-fit:cover;border-radius:7px;flex:none}
 /* poster box → compact inline details strip (chips/size live inside it) */
