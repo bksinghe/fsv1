@@ -94,18 +94,32 @@ transition:max-height .24s ease,opacity .16s ease,transform .2s ease,padding .2s
 @media(min-width:620px){.gcard.open .gvariants-inner{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(min-width:1024px){.gcard.open .gvariants-inner{grid-template-columns:repeat(3,minmax(0,1fr))}}
 .gvariants .vcard:hover{transform:none}
-.gadmin{position:absolute;left:0;right:0;bottom:0;z-index:6;display:flex;gap:5px;
-flex-wrap:wrap;padding:8px;background:rgba(0,0,0,.86);opacity:0;visibility:hidden;
-transform:translateY(8px);transition:opacity .18s,transform .18s,visibility .18s;pointer-events:none}
+/* Admin controls: a light, distinct toolbar instead of a black poster overlay. */
+.gadmin{position:absolute;left:8px;right:8px;bottom:8px;z-index:6;display:flex;gap:6px;
+flex-wrap:wrap;padding:8px;border:1px solid rgba(255,255,255,.18);border-radius:12px;
+background:rgba(38,39,51,.94);box-shadow:0 8px 24px rgba(0,0,0,.32);
+opacity:0;visibility:hidden;transform:translateY(8px);
+transition:opacity .18s,transform .18s,visibility .18s;pointer-events:none}
 .gcard.gactive .gadmin{opacity:1;visibility:visible;transform:translateY(0);pointer-events:all}
-.gcard.gactive .gbottom{display:none}
-.gadmin button{flex:1 1 42%;min-width:90px;padding:8px 6px;border-radius:6px;
-font-size:11px;font-weight:800;color:#fff;border:1px solid var(--line);
-background:rgba(42,42,48,.92);cursor:pointer;font-family:inherit}
-.gadmin button:hover{background:var(--red);border-color:var(--red)}
-.gadmin .ga-del:hover{background:#a00808;border-color:var(--red)}
-.gadmin button:active{transform:scale(.95)}
-.gcard.gactive .gposter::after{content:'';position:absolute;inset:0;z-index:5;background:rgba(0,0,0,.35)}
+.gcard.gactive:not(.open) .gbottom{display:none}
+.gadmin button{flex:1 1 42%;min-width:0;padding:9px 10px;border-radius:8px;
+font-size:11px;font-weight:800;line-height:1.3;color:#f5f6ff;border:1px solid rgba(255,255,255,.15);
+background:#45495c;cursor:pointer;font-family:inherit;transition:background .15s,border-color .15s,transform .15s}
+.gadmin button:hover{background:#5b6078;border-color:rgba(255,255,255,.35)}
+.gadmin button:focus-visible{outline:2px solid #a5b4fc;outline-offset:2px}
+.gadmin .ga-edit{background:#394e80;border-color:#5774b2}
+.gadmin .ga-edit:hover{background:#48639f}
+.gadmin .ga-merge{background:#51466f;border-color:#76669b}
+.gadmin .ga-merge:hover{background:#695a8d}
+.gadmin .ga-del{background:#693940;border-color:#a65b63;color:#fff1f2}
+.gadmin .ga-del:hover{background:#98434c;border-color:#d2707b}
+.gadmin button:active{transform:scale(.97)}
+/* Expanded groups have no poster: never paint an overlay over the whole card. */
+.gcard.open.gactive .gposter::after{display:none}
+.gcard.open .gposter .gadmin{flex:1 1 100%;width:100%;margin-top:4px;
+box-shadow:none;border:0;border-radius:0}
+.gcard.open .gadmin button{flex:0 1 auto;min-width:0}
+@media(max-width:520px){.gcard.open .gadmin button{flex:1 1 calc(50% - 6px)}}
 /* ☑️ Group Mode: select files → permanent group */
 .gfab{position:fixed;right:16px;bottom:18px;z-index:140;background:var(--red);color:#fff;
 border:0;border-radius:999px;padding:11px 16px;font-size:12px;font-weight:800;
@@ -175,7 +189,7 @@ transition:opacity .2s;box-shadow:0 8px 24px rgba(0,0,0,.5)}
 .gmtoast.err{border-color:var(--red);color:#fca5a5}
 .gmprogress{font-size:11px;color:var(--mut);margin-top:8px;line-height:1.5}
 @media(max-width:520px){.gselbar{left:8px;right:8px;transform:none;justify-content:center;flex-wrap:wrap}
-.gfab{right:10px;bottom:76px}.gadmin button{flex:1 1 100%}}
+.gfab{right:10px;bottom:76px}}
 """
 
 # Group card markup — from the JS `GROUP_CARD_TEMPLATE`, just like VCARD_TEMPLATE.
@@ -237,10 +251,10 @@ _GROUP_JS_TPL = r"""/* 🗂️ SHARED GROUP CARD — template from web/group_ass
     if(window.IS_GROUP_ADMIN){
       var k=js1(g.key), gd=js1(g.gid||'');
       adm='<div class="gadmin vm-actions">'+
-        '<button onclick="event.stopPropagation();gEdit(\''+k+'\')">'+
+        '<button class="ga-edit" onclick="event.stopPropagation();gEdit(\''+k+'\')">'+
           (g.manual?'✏️ Edit Group #'+esc(g.num):'💾 Save as Group')+'</button>'+
         '<button onclick="event.stopPropagation();gSelectGroup(\''+k+'\')">☑️ Select files</button>'+
-        (g.manual?'<button onclick="event.stopPropagation();gMerge(\''+k+'\')">🔀 Merge</button>'+
+        (g.manual?'<button class="ga-merge" onclick="event.stopPropagation();gMerge(\''+k+'\')">🔀 Merge</button>'+
                   '<button class="ga-del" onclick="event.stopPropagation();gUngroup(\''+gd+'\')">🗑️ Ungroup</button>':'')+
       '</div>';
     }
