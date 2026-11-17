@@ -29,15 +29,19 @@ class PlayerGroupTests(unittest.IsolatedAsyncioTestCase):
                    'normal_kind': lambda x: x or 'qualities', 'KIND_EPISODES': 'episodes',
                    'episode_identity': lambda n: 'E02' if 'E02' in n else '',
                    'episode_label': lambda n, i: (f'E{i+1:02}', i+1),
-                   'quality_label': lambda h, n, q: (q or '?', 0)}
+                   'quality_label': lambda h, n, q: (q or '?', 0),
+                   'vcard_meta': lambda doc: {'duration': doc.get('formatted_duration', ''), 'size': doc.get('formatted_size', '0.00 B')}}
         self.handler = load_function(ROOT / 'web/search_routes.py', 'api_player_group', self.ns)
 
     async def test_members_preserve_custom_episode_and_quality_and_ignore_deleted(self):
         self.store.by_members.return_value = [{'members': ['a', 'b', 'missing'], 'kind': 'episodes', 'episode_map': {'a': 'Special'}}]
-        self.store.files_by_ids.return_value = [{'_id': 'b', 'file_name': 'Show E02', 'quality': '720p'}, {'_id': 'a', 'file_name': 'Show', 'quality': '1080p'}]
+        self.store.files_by_ids.return_value = [{'_id': 'b', 'file_name': 'Show E02', 'quality': '720p'}, {'_id': 'a', 'file_name': 'Show', 'quality': '1080p', 'file_size': 1024, 'formatted_size': '1.00 KB', 'formatted_duration': '23:10'}]
         data, status = await self.handler(SimpleNamespace(query={'file_id': 'a'}))
         self.assertEqual(status, 200)
         self.assertEqual([(i['file_id'], i['episode'], i['quality']) for i in data['items']], [('a', 'Special', '1080p'), ('b', 'E02', '720p')])
+
+        self.assertEqual((data['items'][0]['duration'], data['items'][0]['size']), ('23:10', '1.00 KB'))
+        self.assertEqual((data['items'][1]['duration'], data['items'][1]['size']), ('', ''))
 
     async def test_unauthorized_and_ungrouped(self):
         self.auth.return_value = (None, None)
@@ -50,6 +54,12 @@ class PlayerGroupTests(unittest.IsolatedAsyncioTestCase):
     def test_player_race_guards_and_watch_page(self):
         assets = (ROOT / 'web/web_assets.py').read_text()
         watch = (ROOT / 'web/utils/render_template.py').read_text()
+        self.assertIn('duration:v.duration', assets)
+        self.assertIn('size:v.size', assets)
+        for content in (assets, watch):
+            self.assertIn('item.duration', content)
+            self.assertIn('item.size', content)
+            self.assertIn('choice-meta', content)
         self.assertIn('request!==seq', assets)
         self.assertIn('playerGroupContext(el)', assets)
         self.assertIn('seq!==request', watch)

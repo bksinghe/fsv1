@@ -35,6 +35,7 @@ video{{display:block;width:100%;aspect-ratio:16/9;background:#000}}
 .choices-list{{display:flex;flex-wrap:wrap;gap:8px;max-height:180px;overflow:auto}}
 .choices button{{background:#242430;color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:9px 12px;cursor:pointer}}
 .choices button.active{{background:var(--red);border-color:var(--red)}}
+.choices .choice-meta{{display:block;margin-top:4px;font-size:11px;opacity:.8}}
 .info{{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:16px}}
 .name{{font-size:17px;font-weight:700;flex:1;min-width:200px;word-break:break-word}}
 .btn{{display:inline-block;background:var(--red);color:#fff;font-weight:800;font-size:13px;
@@ -70,6 +71,8 @@ function render(){{
   items.forEach(item=>{{
     const b=document.createElement('button'); b.type='button';
     b.textContent=[item.episode,item.quality].filter(Boolean).join(' · ') || item.name;
+    const meta=[item.duration ? '⏱ '+item.duration : '', item.size && !/^0(?:\.0+)?\s*B$/i.test(item.size) ? item.size : ''].filter(Boolean);
+    if(meta.length){{const detail=document.createElement('span');detail.className='choice-meta';detail.textContent=meta.join(' · ');b.appendChild(detail)}}
     b.title=item.name; b.className=item.file_id===fid?'active':'';
     b.setAttribute('aria-pressed',item.file_id===fid?'true':'false');
     b.addEventListener('click',()=>select(item)); list.appendChild(b);

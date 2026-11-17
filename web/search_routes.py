@@ -258,8 +258,11 @@ async def api_player_group(req):
             if not episode and normal_kind(group.get("kind")) == KIND_EPISODES:
                 episode = episode_label(name, i)[0]
             quality, _ = quality_label(doc.get("height"), name, doc.get("quality"))
+            meta = vcard_meta(doc)
             items.append({"file_id": member, "name": name, "episode": episode,
-                          "quality": "" if quality == "?" else quality})
+                          "quality": "" if quality == "?" else quality,
+                          "duration": meta["duration"],
+                          "size": meta["size"] if doc.get("file_size") else ""})
         return web.json_response({"items": items if len(items) > 1 else []})
     except Exception:
         logger.exception("Player group lookup failed")

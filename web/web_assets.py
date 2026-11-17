@@ -1019,6 +1019,7 @@ video{width:100%;height:100%;display:block;background:#000}
 .pchoices-list{display:flex;gap:8px;flex-wrap:wrap;max-height:145px;overflow-y:auto}
 .pchoices button{background:var(--bg3);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:8px 11px;cursor:pointer;text-align:left;font:inherit;font-size:12px}
 .pchoices button.active{border-color:var(--red);background:var(--red);color:white}
+.pchoices .choice-meta{display:block;margin-top:4px;font-size:11px;opacity:.8}
 .mactions{display:flex;gap:8px;flex-wrap:wrap;padding:13px 16px}
 .mactions a,.mactions button{background:var(--bg3);border:1px solid var(--line);
 color:var(--txt);border-radius:7px;padding:9px 14px;font-size:12px;font-weight:800;
@@ -1339,6 +1340,8 @@ PLAYER_JS = r"""<script>
       b.className=item.file_id===fid?'active':'';
       b.setAttribute('aria-pressed', item.file_id===fid?'true':'false');
       b.textContent=[item.episode,item.quality].filter(Boolean).join(' · ') || item.name;
+      const meta=[item.duration ? '⏱ '+item.duration : '', item.size && !/^0(?:\.0+)?\s*B$/i.test(item.size) ? item.size : ''].filter(Boolean);
+      if(meta.length){const detail=document.createElement('span');detail.className='choice-meta';detail.textContent=meta.join(' · ');b.appendChild(detail)}
       b.title=item.name; b.addEventListener('click',()=>window.play(item.file_id,item.name,items));
       list.appendChild(b);
     });
@@ -1544,7 +1547,7 @@ async function load(reset){
 function playerGroupContext(el){
   const card=el.closest('.gcard'), g=card && window.groupGet && window.groupGet(card.dataset.gkey);
   if(!g || !Array.isArray(g.variants)) return null;
-  return g.variants.map(v=>({file_id:v.file_id,name:v.name,episode:g.kind==='episodes'?(v.el||''):'',quality:v.ql==='?'?'':(v.ql||'')}));
+  return g.variants.map(v=>({file_id:v.file_id,name:v.name,episode:g.kind==='episodes'?(v.el||''):'',quality:v.ql==='?'?'':(v.ql||''),duration:v.duration||'',size:v.size||''}));
 }
 $('#grid').addEventListener('click',e=>{
   const el=e.target.closest('.vcard[data-fid]');if(!el)return;
