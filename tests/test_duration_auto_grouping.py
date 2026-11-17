@@ -9,15 +9,25 @@ import ast
 import asyncio
 import copy
 import logging
+import importlib.util
+import sys
+from types import ModuleType
 import time
 import unittest
 from collections import defaultdict
 from pathlib import Path
 from unittest.mock import patch
 
-from database import group_db
-
 ROOT = Path(__file__).resolve().parents[1]
+
+# Keep these pure in-memory tests independent of runtime dependencies, bot
+# credentials, and a live MongoDB even when PyMongo is installed.
+_stub_db = ModuleType('database.users_chats_db')
+_stub_db.dbase = None
+_spec = importlib.util.spec_from_file_location('_test_group_db', ROOT / 'database/group_db.py')
+group_db = importlib.util.module_from_spec(_spec)
+with patch.dict(sys.modules, {'database.users_chats_db': _stub_db}):
+    _spec.loader.exec_module(group_db)
 
 
 def load_functions(path, names, namespace):
@@ -340,7 +350,7 @@ class TestIndexTimeAutoJoin(unittest.IsolatedAsyncioTestCase):
             auto_keys=[group_db.title_key("Red Planet 1080p.mkv")],
             kind=group_db.KIND_QUALITIES,
         )
-        with patch.object(group_db, "store", quality_store):
+        with patch.dict(sys.modules, {"database.group_db": group_db}), patch.object(group_db, "store", quality_store):
             await INDEX_NAMESPACE["_auto_join_group"]("good", "Red Planet 720p.mkv", 5000)
         self.assertIn("good", quality_store.groups[quality["_id"]]["members"])
 
@@ -353,7 +363,7 @@ class TestIndexTimeAutoJoin(unittest.IsolatedAsyncioTestCase):
             auto_keys=[group_db.title_key("Red Planet 1080p.mkv")],
             kind=group_db.KIND_QUALITIES,
         )
-        with patch.object(group_db, "store", mismatch_store):
+        with patch.dict(sys.modules, {"database.group_db": group_db}), patch.object(group_db, "store", mismatch_store):
             await INDEX_NAMESPACE["_auto_join_group"]("bad", "Red Planet 720p.mkv", 5001)
         self.assertEqual(mismatch_store.groups[mismatch["_id"]]["members"], ["old"])
 
@@ -368,7 +378,7 @@ class TestIndexTimeAutoJoin(unittest.IsolatedAsyncioTestCase):
             auto_keys=[group_db.series_key("River Town S01E01.mkv")],
             kind=group_db.KIND_EPISODES,
         )
-        with patch.object(group_db, "store", series_store):
+        with patch.dict(sys.modules, {"database.group_db": group_db}), patch.object(group_db, "store", series_store):
             await INDEX_NAMESPACE["_auto_join_group"]("e3", "River Town S01E03.mkv", 1900)
         self.assertIn("e3", series_store.groups[series["_id"]]["members"])
 

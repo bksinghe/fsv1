@@ -83,7 +83,7 @@ class TestSingleSource(unittest.TestCase):
 
     def test_05_catalog_pages_and_detail_tabs_use_it(self):
         src = FILES["catalog.py"]
-        self.assertIn('class="cat-card rv-enter vm-card"', src)
+        self.assertIn('class="cat-card rv-enter vm-card vm-show-cover"', src)
         self.assertIn("RevealCards.reveal(grid)", src)
         self.assertIn("RevealCards.stagger('#catVideos .vcard')", src)
         self.assertIn("RevealCards.stagger('#catMediaResults .vcard')", src)

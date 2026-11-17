@@ -72,10 +72,15 @@ align-items:stretch;gap:6px;padding:0}
 align-items:stretch;gap:3px;padding:0;flex:0 0 auto;width:100%;min-width:0}
 .vm-grid.mode-text .vm-title{display:block;flex:1;min-width:0;white-space:nowrap;
 overflow:hidden;text-overflow:ellipsis;-webkit-line-clamp:1}
+/* In poster view the title is on the poster; text view still needs its title. */
+.vm-grid.mode-text .cat-meta-main{display:block}
 /* ⚠️ In Text mode only these are hidden — things tied to the thumbnail */
 .vm-grid.mode-text .vm-img,
 .vm-grid.mode-text .vm-ph,
 .vm-grid.mode-text .vm-overlay{display:none!important}
+/* Catalog covers remain visible in text view too; library images stay hidden. */
+.vm-grid.mode-text .vm-show-cover .vm-img{display:block!important;position:static;width:64px;height:96px;
+object-fit:cover;border-radius:7px;flex:none}
 /* poster box → compact inline details strip (chips/size live inside it) */
 .vm-grid.mode-text .vm-poster{position:static;display:flex;flex-wrap:wrap;
 align-items:center;gap:5px;aspect-ratio:auto;width:100%;flex:0 0 auto;
@@ -140,11 +145,10 @@ window.ViewMode=(function(){
   function key(){return cfg.storage||storageFor(cfg.kind);}
   function get(){return cur;}
   function isText(){return cur==='text';}
-  /* The URL is already HTML-safe; we only choose between src ⇄ data-src.
-     In Text mode no thumbnail network request is made. */
+  /* Text mode defers images unless a surface explicitly needs its cover visible. */
   function imgAttrs(url){
     var u=String(url==null?'':url);
-    return (isText()?'data-src="'+u+'"':'src="'+u+'"')+
+    return (isText()&&!arguments[1]?'data-src="'+u+'"':'src="'+u+'"')+
            ' data-thumb="'+u+'" data-retry="0"';
   }
   function apply(){

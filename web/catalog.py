@@ -163,7 +163,7 @@ def clean_url(value, allow_tg=True) -> str:
     if not v:
         return ""
     if allow_tg and v.startswith("TG_ID:"):
-        return v[:300]
+        return v if len(v) <= 518 else ""
     if not _URL_RE.match(v):
         if _SCHEME_RE.match(v):
             return ""
@@ -303,6 +303,16 @@ font-weight:800;font-size:13px;cursor:pointer;font-family:inherit;transition:tra
 .cat-btn:active{transform:scale(.96)}
 .cat-btn.ghost{background:var(--bg3);border:1px solid var(--line);color:var(--txt)}
 .cat-btn.ghost:hover{background:var(--bg2);border-color:var(--red);box-shadow:none}
+/* Back navigation stays still; its touch ripple is red, not a solid glow. */
+.cat-btn.ghost.cat-back,.cat-btn.ghost.cat-back:hover{display:inline-flex;align-items:center;transform:none;box-shadow:none;animation:none}
+.cat-btn.ghost.cat-back:active{transform:none}
+.cat-btn.ghost.cat-back:focus-visible{outline:2px solid var(--red);outline-offset:3px}
+.cat-detail-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.cat-detail-toolbar .cat-detail-actions{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
+.cat-detail-toolbar .cat-detail-actions .cat-btn{display:inline-flex;align-items:center;justify-content:center}
+@media(max-width:480px){.cat-detail-toolbar .cat-detail-actions{margin-left:auto}}
+.cat-card:focus-visible{outline:2px solid var(--red);outline-offset:3px}
+
 /* 🧩 Like the GitHub reference (v5 `.search-box`): **one card-box** holding the search bar,
    filter buttons, ✨ New Post/Profile and the count — on desktop and mobile alike.
    📱 The old override that stripped the chrome on mobile is gone (the box stays). */
@@ -345,6 +355,7 @@ background-size:200% 100%;animation:catShimmer 1.5s infinite linear}
 .cat-poster{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;
 transition:opacity .35s ease,transform .5s cubic-bezier(.25,1,.5,1)}
 .cat-poster.on{opacity:1}
+.cat-poster-failed{visibility:hidden}
 .cat-card:hover .cat-poster{transform:scale(1.08)}
 .cat-ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
 font-size:34px;color:var(--mut);opacity:.55}
@@ -355,17 +366,12 @@ letter-spacing:.4px;backdrop-filter:blur(6px);box-shadow:0 2px 10px rgba(0,0,0,.
 background:linear-gradient(to top,rgba(0,0,0,.95),rgba(0,0,0,.6) 45%,transparent)}
 .cat-name{color:#fff;font-size:13px;font-weight:900;white-space:nowrap;overflow:hidden;
 text-overflow:ellipsis;text-shadow:0 2px 8px rgba(0,0,0,.9)}
-.cat-meta{padding:8px 10px 9px;display:flex;flex-direction:column;gap:4px}
-.cat-meta-main{font-size:13px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cat-meta{padding:8px 10px 9px;display:none;flex-direction:column;gap:4px}
+.cat-meta-main{display:none;font-size:13px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cat-card:active .cat-name,.cat-card:active .cat-meta-main{animation:catNameTap .28s ease-out both}
+@keyframes catNameTap{0%{color:inherit}45%,100%{color:#e50914}}
+@media(prefers-reduced-motion:reduce){.cat-card:active .cat-name,.cat-card:active .cat-meta-main{animation:none}}
 .cat-meta-sub{font-size:11px;color:var(--mut);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.cat-actions{position:absolute;bottom:0;left:0;right:0;z-index:3;display:flex;gap:6px;padding:8px;
-opacity:0;transform:translateY(10px);transition:opacity .22s,transform .22s;pointer-events:none}
-.cat-card:hover .cat-actions,.cat-card:focus-within .cat-actions{opacity:1;transform:translateY(0);pointer-events:all}
-.cat-edit,.cat-del{flex:1;border:1px solid rgba(255,255,255,.2);border-radius:7px;padding:7px 4px;
-font:800 11px inherit;font-family:inherit;cursor:pointer;backdrop-filter:blur(10px);transition:background .14s,transform .1s}
-.cat-edit{background:rgba(30,30,40,.9);color:#fff}.cat-edit:hover{background:rgba(70,70,85,.95)}
-.cat-del{background:rgba(160,8,8,.85);color:#fff}.cat-del:hover{background:rgba(229,9,20,.95)}
-.cat-edit:active,.cat-del:active{transform:scale(.94)}
 .cat-skel{aspect-ratio:2/3;border-radius:12px;border:1px solid var(--line);
 background:linear-gradient(90deg,var(--bg3) 0,#2b2b3a 50%,var(--bg3) 100%);
 background-size:200% 100%;animation:catShimmer 1.5s infinite linear}
@@ -434,20 +440,33 @@ font:800 11px inherit;font-family:inherit;cursor:pointer}
 .cat-ripple{position:relative;overflow:hidden}
 .cat-ripple i{position:absolute;border-radius:50%;background:rgba(255,255,255,.42);
 transform:scale(0);animation:catRipple .5s ease-out forwards;pointer-events:none}
+.cat-back.cat-ripple i{background:rgba(229,9,20,.5);animation:catRipple .42s ease-out forwards}
 @keyframes catRipple{to{transform:scale(2.8);opacity:0}}
+@media(prefers-reduced-motion:reduce){.cat-back.cat-ripple i{display:none;animation:none}}
 /* ── detail page ── */
 .cat-hero{display:flex;gap:26px;flex-wrap:wrap;background:var(--card);border:1px solid var(--line);
 border-radius:16px;padding:24px;margin-bottom:24px;animation:catFade .5s ease both}
 @keyframes catFade{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
 .cat-hero-img{width:220px;max-width:100%;aspect-ratio:2/3;border-radius:12px;object-fit:cover;
 background:var(--bg3);border:1px solid var(--line)}
-.cat-hero-info{flex:1;min-width:240px}
-.cat-hero-title{font-size:28px;font-weight:900;letter-spacing:-1px;margin-bottom:10px}
+.cat-hero-cover{position:relative;display:block;flex:0 0 220px;width:220px;max-width:100%;padding:0;
+border:0;border-radius:12px;background:none;cursor:zoom-in;color:#fff;text-align:left}
+.cat-hero-cover .cat-hero-img{display:block;width:100%}
+.cat-hero-cover:focus-visible{outline:2px solid var(--red);outline-offset:4px}
+.cat-hero-zoom{position:absolute;right:10px;bottom:10px;background:rgba(0,0,0,.8);color:#fff;
+border:1px solid rgba(255,255,255,.4);border-radius:8px;padding:6px 9px;font-size:12px;font-weight:800}
+.cat-hero-info{flex:1;min-width:0}
+@media(max-width:600px){
+  .cat-hero{padding:16px;gap:18px}
+  .cat-hero-cover,.cat-hero > .cat-hero-img{flex:0 1 100%;width:100%;max-width:360px;margin:0 auto}
+  .cat-hero-info{flex-basis:100%}
+}
+.cat-hero-title{font-size:28px;font-weight:900;letter-spacing:-1px;margin-bottom:10px;overflow-wrap:anywhere}
 .cat-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
 .cat-chip{background:var(--bg3);border:1px solid var(--line);border-radius:20px;padding:4px 10px;
 font-size:11px;font-weight:800;color:var(--mut)}
 .cat-chip.red{background:var(--red);border-color:var(--red);color:#fff}
-.cat-body-txt{font-size:14px;line-height:1.7;color:var(--txt);white-space:pre-wrap;margin-bottom:18px}
+.cat-body-txt{font-size:14px;line-height:1.7;color:var(--txt);white-space:pre-wrap;overflow-wrap:anywhere;margin-bottom:18px}
 .cat-links{display:flex;gap:9px;flex-wrap:wrap}
 .cat-links a{background:var(--bg3);border:1px solid var(--line);border-radius:8px;padding:9px 14px;
 font-size:12px;font-weight:800;color:var(--txt);transition:transform .16s,border-color .16s,color .16s}
@@ -462,6 +481,10 @@ align-items:center;justify-content:center;padding:20px;opacity:0;transition:opac
 .cat-lightbox img{max-width:94%;max-height:88vh;border-radius:10px;transform:scale(.94);
 transition:transform .3s cubic-bezier(.34,1.3,.64,1)}
 .cat-lightbox.show img{transform:scale(1)}
+.cat-lightbox-close{position:absolute;top:max(16px,env(safe-area-inset-top));right:16px;
+width:44px;height:44px;border:1px solid rgba(255,255,255,.5);border-radius:50%;
+background:rgba(0,0,0,.75);color:#fff;font-size:26px;cursor:pointer;z-index:1}
+.cat-lightbox-close:focus-visible{outline:2px solid var(--red);outline-offset:3px}
 .cat-related{display:flex;flex-direction:column;gap:8px}
 .cat-related a{display:flex;justify-content:space-between;gap:10px;background:var(--bg3);
 border:1px solid var(--line);border-radius:8px;padding:10px 13px;font-size:12px;font-weight:700}
@@ -475,6 +498,7 @@ margin:22px 0 20px;position:relative}
 .cat-tab{background:none;border:0;color:var(--mut);font-family:inherit;font-weight:800;font-size:13px;
 padding:12px 16px;cursor:pointer;position:relative;white-space:nowrap;transition:color .18s,transform .18s}
 .cat-tab:hover{color:var(--txt);transform:translateY(-2px)}
+.cat-tab:focus-visible{outline:2px solid var(--red);outline-offset:-3px;border-radius:6px}
 .cat-tab.active{color:var(--red)}
 .cat-tab::after{content:'';position:absolute;left:12px;right:12px;bottom:-2px;height:2px;
 background:var(--red);transform:scaleX(0);transition:transform .28s cubic-bezier(.34,1.4,.64,1)}
@@ -505,7 +529,9 @@ background:var(--bg3);cursor:zoom-in}
 .cat-galitem img.on{opacity:1}.cat-galitem:hover img{transform:scale(1.06)}
 .cat-galdel{position:absolute;top:7px;right:7px;background:rgba(160,8,8,.9);border:0;color:#fff;
 border-radius:6px;padding:4px 8px;font-size:10px;font-weight:800;cursor:pointer;opacity:0;
-transition:opacity .2s}.cat-galitem:hover .cat-galdel{opacity:1}
+transition:opacity .2s}.cat-galitem:hover .cat-galdel,.cat-galitem:focus-within .cat-galdel{opacity:1}
+.cat-galitem:focus-visible{outline:2px solid var(--red);outline-offset:2px}
+@media(hover:none){.cat-galitem .cat-galdel{opacity:1;min-width:36px;min-height:36px}}
 .cat-lib{margin-top:26px}
 .cat-lib-title{font-size:14px;font-weight:900;margin-bottom:12px;letter-spacing:-.2px}
 
@@ -590,6 +616,27 @@ animation:none!important;transition:none!important;opacity:1!important;transform
 # ─────────────────────────────────────────────────────────────
 # 🧠 SHARED JS — listing + inline editor (one code path for both kinds)
 # ─────────────────────────────────────────────────────────────
+# Defined before image markup so even an immediately failing cached request is handled.
+CATALOG_IMAGE_JS = r"""<script>
+window.catPosterFail=function(img){
+  const base=img.dataset.posterSrc || img.getAttribute('src') || '';
+  if(!base)return;
+  img.dataset.posterSrc=base;
+  const delays=[1500,3000,6000,10000];
+  const n=Number(img.dataset.posterRetry||0);
+  if(n>=delays.length){
+    img.classList.add('cat-poster-failed');
+    img.alt='Poster unavailable';
+    return;
+  }
+  img.dataset.posterRetry=String(n+1);
+  setTimeout(()=>{
+    if(!img.isConnected || img.classList.contains('on'))return;
+    img.src=base+(base.includes('?')?'&':'?')+'retry=true&t='+Date.now();
+  },delays[n]);
+};
+</script>"""
+
 CATALOG_JS = r"""
 <script>
 const CFG = __CFG__;
@@ -600,7 +647,7 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let state = {q:'', cat:'all',
              offset:0, page:1, hasNext:false, req:0, items:{}, editing:null, dirty:false,
-             flash:null, gallery:[]};
+             flash:null, gallery:[], uploadSeq:0, uploadPending:false, uploadError:false, saving:false};
 /* 🖼️📄 Poster/Text state + persistence: web/mode_assets.py → window.ViewMode */
 
 function imgSrc(v){
@@ -615,24 +662,16 @@ function catLabel(v){
 function cardHTML(it){
   const id = esc(it.id), src = imgSrc(it.image);
   const tags = (it.tags||[]).slice(0,2).map(t=>'#'+t).join(' ');
-  /* ⚠️ user data never goes into an inline JS string — only data-id attributes */
-  const admin = ADMIN ? `<div class="cat-actions vm-actions vm-always">
-      <button class="cat-edit" onclick="event.stopPropagation();openEditor(this.closest('.cat-card').dataset.id)">✏️ Edit</button>
-      <button class="cat-del" onclick="event.stopPropagation();removeItem(this.closest('.cat-card').dataset.id)">🗑 Delete</button>
-    </div>` : '';
-  /* ✅ Poster and Text share exactly the same markup — in Text mode only
-     `.vm-img`/`.vm-overlay` are hidden by CSS (web/mode_assets.py).
-     `ViewMode.imgAttrs()` supplies data-src instead of src in Text mode,
-     so no thumbnail request is made. There is no separate render branch. */
+  /* Catalog covers stay visible and clickable in text view. */
   const img = src
-    ? `<img class="cat-poster vm-img" ${ViewMode.imgAttrs(esc(src))} alt="" loading="lazy"
-          onload="this.classList.add('on')" onerror="this.remove()">`
-    : '<div class="cat-ph vm-ph vm-overlay">🖼️</div>';
-  return `<div class="cat-card rv-enter vm-card" data-id="${id}" onclick="openDetail(this.dataset.id)">
+    ? `<img class="cat-poster vm-img" onload="this.classList.add('on')" onerror="catPosterFail(this)"
+          ${ViewMode.imgAttrs(esc(src),true)} alt="" loading="lazy">`
+    : '';
+  return `<div class="cat-card rv-enter vm-card vm-show-cover" data-id="${id}" role="link" tabindex="0" aria-label="Open ${esc(it.title)}" onclick="openDetail(this)">
     <div class="cat-poster-wrap vm-poster">
-      ${img}
+      <div class="cat-ph vm-ph vm-overlay" aria-hidden="true">🖼️</div>${img}
       <div class="cat-badge vm-chip">${esc(catLabel(it.category))}</div>
-      <div class="cat-grad vm-overlay"><div class="cat-name">${esc(it.title)}</div></div>${admin}
+      <div class="cat-grad vm-overlay"><div class="cat-name">${esc(it.title)}</div></div>
     </div>
     <div class="cat-meta vm-body"><span class="cat-meta-main vm-title">${esc(it.title)}</span>
       <span class="cat-meta-sub">${esc(catLabel(it.category))} · ${esc(tags || 'No tags')}</span></div>
@@ -664,13 +703,15 @@ function updatePg(){
   $('#catPage').textContent = 'Page ' + state.page;
 }
 async function load(reset){
-  if(reset){ state.offset = 0; state.page = 1; }
+  if(reset){ state.offset = 0; state.page = 1; state.hasNext = false; updatePg(); }
   const my = ++state.req, grid = $('#catGrid'), search = $('#catSearch');
   search.classList.add('loading');
   if(reset) grid.innerHTML = skeletons();
   try{
     const r = await fetch(`/api/catalog/${CFG.kind}?q=${encodeURIComponent(state.q)}&category=${encodeURIComponent(state.cat)}&offset=${state.offset}&limit=${LIMIT}`);
+    if(my !== state.req) return;
     if(r.status === 401){ location.href='/login'; return; }
+    if(!r.ok) throw new Error('HTTP '+r.status);
     const d = await r.json();
     if(my !== state.req) return;
     state.items = {};
@@ -680,10 +721,16 @@ async function load(reset){
     state.hasNext = !!d.has_next;
     $('#catCount').textContent = (d.total||0) + ' entries';
     bump(); updatePg(); RevealCards.reveal(grid); flashSaved(grid);
-  }catch(e){ grid.innerHTML = '<div class="cat-empty">⚠️ Could not load results. '+esc(e.message||e)+'</div>'; }
+  }catch(e){ if(my === state.req) grid.innerHTML = '<div class="cat-empty">⚠️ Could not load results. '+esc(e.message||e)+'</div>'; }
   finally{ if(my === state.req) search.classList.remove('loading'); }
 }
-function openDetail(id){ location.href = CFG.detail + encodeURIComponent(id); }
+function openDetail(card){ location.href = CFG.detail + encodeURIComponent(card.dataset.id); }
+document.addEventListener('keydown',e=>{
+  const card=e.target.closest && e.target.closest('.cat-card[data-id]');
+  if(card && e.target===card && (e.key==='Enter'||e.key===' ')){
+    e.preventDefault();openDetail(card);
+  }
+});
 
 /* ── toast (with Undo) ── */
 let toastTimer = null;
@@ -769,7 +816,7 @@ function editorHTML(){
     <div class="cat-mfoot">
       <span class="cat-dirty" id="fDirty" style="display:none">● Unsaved changes</span>
       <button class="cat-btn ghost" type="button" id="fDelete" onclick="deleteFromEditor()" style="display:none">🗑 Delete</button>
-      <button class="cat-btn" type="button" onclick="saveEditor()">💾 Save</button>
+      <button class="cat-btn" type="button" id="catSave" onclick="saveEditor()">💾 Save</button>
     </div>
   </div></div>`;
 }
@@ -861,6 +908,8 @@ function setPreview(v){
 }
 async function openEditor(id, focus){
   state.editing = id || null; state.dirty = false;
+  state.uploadSeq++; state.uploadPending=false; state.uploadError=false; state.saving=false;
+  $('#fUploadNote').textContent=''; $('#fUpload').value=''; $('#catSave').disabled=false;
   let it = id ? state.items[id] : null;
   if(id && !it){
     try{
@@ -903,6 +952,7 @@ function closeEditor(force){
   const m = $('#catModal'); m.classList.remove('show');
   setTimeout(()=>m.classList.remove('open'), 220);
   state.editing = null; state.dirty = false;
+  state.uploadSeq++; state.uploadPending=false; state.uploadError=false;
 }
 function collect(){
   const links = Array.from(document.querySelectorAll('#fLinks .cat-linkrow')).map(r=>{
@@ -925,10 +975,13 @@ function collect(){
   };
 }
 async function saveEditor(){
+  if(state.saving)return;
+  if(state.uploadPending){toast('Wait for the cover image upload to finish', 'err');return;}
+  if(state.uploadError){toast('Cover upload failed. Retry it or enter an image URL before saving.', 'err');return;}
   const payload = collect();
   if(!payload.title){ toast('A title is required', 'err'); $('#fTitle').focus(); return; }
   const btn = document.querySelector('#catModal .cat-mfoot .cat-btn:last-child');
-  btn.disabled = true; btn.textContent = '⏳ Saving…';
+  state.saving=true; btn.disabled = true; btn.textContent = '⏳ Saving…';
   try{
     const r = await fetch(`/api/catalog/${CFG.kind}/save`, {method:'POST',
       headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
@@ -940,7 +993,7 @@ async function saveEditor(){
     toast('✅ Saved');
     await load(true);
   }catch(e){ toast('⚠️ '+e.message, 'err'); }
-  finally{ btn.disabled = false; btn.textContent = '💾 Save'; }
+  finally{ state.saving=false; btn.disabled = false; btn.textContent = '💾 Save'; }
 }
 async function removeItem(id){
   const it = state.items[id];
@@ -963,16 +1016,27 @@ async function deleteFromEditor(){
 }
 async function uploadImage(input){
   if(!input.files || !input.files[0]) return;
-  const note = $('#fUploadNote'); note.textContent = '⏳ Uploading…';
+  if(state.saving){toast('Wait for the post to finish saving', 'err');input.value='';return;}
+  const seq=++state.uploadSeq;
+  state.uploadPending=true;state.uploadError=false;markDirty();
+  const note = $('#fUploadNote'); note.textContent = '⏳ Uploading… please wait before saving';
+  $('#catSave').disabled=true;
   const fd = new FormData(); fd.append('image', input.files[0]);
   try{
     const r = await fetch('/api/catalog/upload', {method:'POST', body:fd});
     const d = await r.json();
-    if(!d.ok) throw new Error(d.error || 'Upload failed');
+    if(seq!==state.uploadSeq)return;
+    if(!r.ok || !d.ok || typeof d.value!=='string' || !d.value.startsWith('TG_ID:') || d.value.length<=6)
+      throw new Error(d.error || 'Upload failed');
     $('#fImage').value = d.value; setPreview(d.value); markDirty();
-    note.textContent = '✅ Saved to Telegram';
-  }catch(e){ note.textContent = '⚠️ '+e.message+' (paste a URL instead)'; }
-  input.value = '';
+    note.textContent = '✅ Uploaded — press Save to store the post';
+  }catch(e){
+    if(seq!==state.uploadSeq)return;
+    state.uploadError=true;
+    note.textContent = '⚠️ '+e.message+' — retry or enter an image URL before saving';
+  }finally{
+    if(seq===state.uploadSeq){state.uploadPending=false;$('#catSave').disabled=false;input.value='';}
+  }
 }
 async function pickMedia(){
   const q = $('#fPickerQ').value.trim();
@@ -1011,7 +1075,12 @@ document.addEventListener('keydown', e => {
 });
 document.addEventListener('input', e => {
   if(e.target.closest('#catModal')) markDirty();
-  if(e.target.id === 'fImage') setPreview(e.target.value);
+  if(e.target.id === 'fImage'){
+    // A manually entered URL supersedes any pending/failed upload.
+    state.uploadSeq++; state.uploadPending=false; state.uploadError=false;
+    $('#catSave').disabled=state.saving; $('#fUploadNote').textContent='';
+    setPreview(e.target.value);
+  }
 });
 
 /* ── wiring ── */
@@ -1056,7 +1125,10 @@ function toast(msg,type){
 function switchTab(name, init){
   if(name===D.tabAlias) name='gallery';
   if(!['overview','videos','gallery'].includes(name)) name='overview';
-  document.querySelectorAll('.cat-tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===name));
+  document.querySelectorAll('.cat-tab').forEach(t=>{
+    const active=t.dataset.tab===name;
+    t.classList.toggle('active',active);t.setAttribute('aria-selected',String(active));t.tabIndex=active?0:-1;
+  });
   document.querySelectorAll('.cat-panel').forEach(p=>p.classList.toggle('active',p.id==='cp-'+name));
   if(name==='videos'){ RevealCards.stagger('#catVideos .vcard'); if(D.tagMedia && !mediaLoaded) loadMedia(0); }
   if(name==='gallery') RevealCards.stagger('#catGallery .cat-galitem');
@@ -1133,7 +1205,7 @@ function mediaPage(step){
 function renderGallery(){
   const box=document.getElementById('catGallery'); if(!box) return;
   box.innerHTML=GALLERY.length ? GALLERY.map((src,i)=>
-      '<div class="cat-galitem rv-enter" data-idx="'+i+'" data-src="'+esc(src)+'" '
+      '<div class="cat-galitem rv-enter" role="button" tabindex="0" aria-label="Enlarge image" data-idx="'+i+'" data-src="'+esc(src)+'" '
       +'onclick="openLight(this.dataset.src)">'
       +'<img src="'+esc(src)+'" alt="" loading="lazy" '
       +'onload="this.classList.add(\'on\')" onerror="this.remove()">'
@@ -1176,14 +1248,22 @@ async function deleteGallery(idx){
     GALLERY.splice(idx,1); renderGallery(); toast('🗑 Image removed');
   }catch(e){ toast('Delete failed','err'); }
 }
+let lightReturnFocus=null, lightCloseTimer=null;
 function openLight(src){
   const l=document.getElementById('catLight');
+  clearTimeout(lightCloseTimer);
+  lightReturnFocus=document.activeElement;
   l.querySelector('img').src=src; l.classList.add('open');
+  l.setAttribute('aria-hidden','false');
+  l.querySelector('.cat-lightbox-close').focus();
   requestAnimationFrame(()=>l.classList.add('show'));
 }
 function closeLight(){
-  const l=document.getElementById('catLight'); l.classList.remove('show');
-  setTimeout(()=>l.classList.remove('open'),250);
+  const l=document.getElementById('catLight');
+  if(!l.classList.contains('open'))return;
+  l.classList.remove('show'); l.setAttribute('aria-hidden','true');
+  if(lightReturnFocus && lightReturnFocus.focus)lightReturnFocus.focus();
+  lightCloseTimer=setTimeout(()=>l.classList.remove('open'),250);
 }
 async function deleteDetail(id){
   if(!confirm('Delete this item?')) return;
@@ -1196,28 +1276,54 @@ document.querySelectorAll('.vposter img,.cat-galitem img').forEach(img=>{
   img.addEventListener('load',()=>img.classList.add('on'));
 });
 document.addEventListener('keydown',e=>{
-  if(e.key==='Escape'){ closeLight(); if(window.closePlayer) window.closePlayer(); }
+  const light=document.getElementById('catLight');
+  if(light.classList.contains('open') && light.getAttribute('aria-hidden')==='false'){
+    if(e.key==='Escape'){e.preventDefault();closeLight();}
+    else if(e.key==='Tab'){e.preventDefault();light.querySelector('.cat-lightbox-close').focus();}
+    return;
+  }
+  if(e.key==='Escape'){ if(window.closePlayer) window.closePlayer(); }
   const focused=document.activeElement||{};
+  if((e.key==='Enter'||e.key===' ') && focused.classList && focused.classList.contains('cat-galitem')){
+    e.preventDefault();openLight(focused.dataset.src);return;
+  }
   if(focused.closest && focused.closest('#feModal')) return;  // ✏️ skip tab-nav while the editor modal is open
   if((e.key==='Enter'||e.key===' ') && focused.classList && focused.classList.contains('vcard')){
     e.preventDefault(); playCard(focused); return;
   }
   const tag=focused.tagName;
   if(tag==='INPUT'||tag==='TEXTAREA') return;
-  if(e.key==='ArrowLeft'||e.key==='ArrowRight'){
+  if(focused.classList && focused.classList.contains('cat-tab') &&
+     ['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){
+    e.preventDefault();
     const names=['overview','videos','gallery'];
-    const cur=document.querySelector('.cat-tab.active');
-    let i=names.indexOf(cur?cur.dataset.tab:'overview');
-    i=(i+(e.key==='ArrowRight'?1:names.length-1))%names.length;
+    let i=names.indexOf(focused.dataset.tab);
+    if(e.key==='Home')i=0;
+    else if(e.key==='End')i=names.length-1;
+    else i=(i+(e.key==='ArrowRight'?1:names.length-1))%names.length;
     switchTab(names[i]);
+    document.querySelector('.cat-tab[data-tab="'+names[i]+'"]').focus();
   }
 });
 document.addEventListener('pointerdown',e=>{
   const b=e.target.closest('.cat-btn'); if(!b)return;
+  if(b.classList.contains('cat-back') && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
   const r=b.getBoundingClientRect(),i=document.createElement('i'),d=Math.max(r.width,r.height);
   i.style.cssText=`width:${d}px;height:${d}px;left:${e.clientX-r.left-d/2}px;top:${e.clientY-r.top-d/2}px`;
   b.classList.add('cat-ripple'); b.appendChild(i); setTimeout(()=>i.remove(),520);
 });
+// Keep native modified/keyboard clicks; briefly show the touch ripple on normal clicks.
+document.addEventListener('click',e=>{
+  const link=e.target.closest('.cat-back');
+  if(!link || e.defaultPrevented || e.button!==0 || e.detail===0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey ||
+     link.hasAttribute('download') || (link.target && link.target!=='_self'))return;
+  if(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+  e.preventDefault();
+  if(link.dataset.backNavigating)return;
+  link.dataset.backNavigating='1';
+  setTimeout(()=>location.assign(link.href),220);
+});
+window.addEventListener('pageshow',()=>{document.querySelectorAll('.cat-back').forEach(link=>delete link.dataset.backNavigating);});
 const mq=document.getElementById('catMediaQ');
 if(mq){
   let t;
@@ -1261,12 +1367,12 @@ def _listing_body(kind: str, role: str) -> str:
     return f"""<div class="main"><div class="cat-wrap">
   <div class="cat-toolbar cat-box" role="search">
     <div class="cat-search" id="catSearch">
-      <input type="search" id="catQ" placeholder="{html.escape(cfg['placeholder'])}" autocomplete="off">
+      <input type="search" id="catQ" aria-label="{html.escape(cfg['placeholder'], quote=True)}" placeholder="{html.escape(cfg['placeholder'])}" autocomplete="off">
       <div class="cat-spin"></div>
     </div>
     {filters_html}
     {create_btn}
-    <span class="cat-count" id="catCount">…</span>
+    <span class="cat-count" id="catCount" aria-live="polite">…</span>
   </div>
   <div class="cat-grid vm-grid" id="catGrid"></div>
   <div class="cat-pg" id="catPg">
@@ -1293,7 +1399,7 @@ def build_listing_page(kind: str, role: str, tg_id: int):
     )
     return app_page(
         f"{cfg['label']} - Fast Finder",
-        f"<style>{CATALOG_CSS}</style>" + _listing_body(kind, role) + js,
+        f"<style>{CATALOG_CSS}</style>" + CATALOG_IMAGE_JS + _listing_body(kind, role) + js,
         tg_id=tg_id, role=role, active_tab=kind,
     )
 
@@ -1375,9 +1481,9 @@ def _detail_body(kind: str, role: str, item: dict) -> str:
                 if admin else ""
             )
             gal_html += (
-                f'<div class="cat-galitem rv-enter" data-idx="{i}" data-src="{esc(u)}" '
+                f'<div class="cat-galitem rv-enter" role="button" tabindex="0" aria-label="Enlarge image" data-idx="{i}" data-src="{esc(u)}" '
                 f'onclick="openLight(this.dataset.src)">'
-                f'<img src="{esc(u)}" alt="" loading="lazy" onerror="this.remove()">{del_btn}</div>'
+                f'<img src="{esc(u)}" alt="" loading="lazy" onload="this.classList.add(&quot;on&quot;)" onerror="this.remove()">{del_btn}</div>'
             )
     else:
         gal_html = f'<div class="cat-gempty">{esc(cfg["galleryEmpty"])}</div>'
@@ -1396,7 +1502,7 @@ def _detail_body(kind: str, role: str, item: dict) -> str:
     admin_bar = ""
     if admin:
         admin_bar = (
-            '<div style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap">'
+            '<div class="cat-detail-actions">'
             f'<a class="cat-btn" href="{cfg["base"]}?edit={item_id}">✏️ Edit</a>'
             f'<button class="cat-btn ghost" data-id="{item_id}" '
             'onclick="deleteDetail(this.dataset.id)">🗑 Delete</button></div>'
@@ -1406,21 +1512,24 @@ def _detail_body(kind: str, role: str, item: dict) -> str:
         '🎬 Add Videos</a>' if admin else ""
     )
     hero_img = (
-        f'<img class="cat-hero-img" src="{esc(src)}" alt="" onerror="this.style.visibility=\'hidden\'">'
+        '<button type="button" class="cat-hero-cover" aria-label="Enlarge poster" '
+        'onclick="openLight(this.firstElementChild.currentSrc || this.firstElementChild.src)">'
+        f'<img class="cat-hero-img" onerror="catPosterFail(this)" src="{esc(src, quote=True)}" alt="Cover image">'
+        '<span class="cat-hero-zoom" aria-hidden="true">🔍 Enlarge</span></button>'
         if src else '<div class="cat-hero-img" style="display:flex;align-items:center;'
                     'justify-content:center;font-size:44px">🖼️</div>'
     )
 
     return f"""<div class="main"><div class="cat-wrap">
-  <div style="margin-bottom:16px"><a class="cat-btn ghost" href="{cfg['base']}">← Back to {esc(cfg['label'])}</a></div>
+  <div class="cat-detail-toolbar"><a class="cat-btn ghost cat-back" href="{cfg['base']}">← Back</a>{admin_bar}</div>
   <div class="cat-tabs" role="tablist">
-    <button class="cat-tab active" data-tab="overview" onclick="switchTab('overview')">ℹ️ Overview</button>
-    <button class="cat-tab" data-tab="videos" onclick="switchTab('videos')">🎬 Videos <span class="cat-tab-n">{len(videos)}</span></button>
-    <button class="cat-tab" data-tab="gallery" onclick="switchTab('gallery')">{gallery_tab} <span class="cat-tab-n">{len(gallery)}</span></button>
+    <button class="cat-tab active" id="tab-overview" role="tab" aria-selected="true" aria-controls="cp-overview" tabindex="0" data-tab="overview" onclick="switchTab('overview')">ℹ️ Overview</button>
+    <button class="cat-tab" id="tab-videos" role="tab" aria-selected="false" aria-controls="cp-videos" tabindex="-1" data-tab="videos" onclick="switchTab('videos')">🎬 Videos <span class="cat-tab-n">{len(videos)}</span></button>
+    <button class="cat-tab" id="tab-gallery" role="tab" aria-selected="false" aria-controls="cp-gallery" tabindex="-1" data-tab="gallery" onclick="switchTab('gallery')">{gallery_tab} <span class="cat-tab-n">{len(gallery)}</span></button>
     <span class="cat-tabspace"></span>{add_videos_btn}
   </div>
 
-  <section class="cat-panel active" id="cp-overview">
+  <section class="cat-panel active" id="cp-overview" role="tabpanel" aria-labelledby="tab-overview">
     <div class="cat-hero">
       {hero_img}
       <div class="cat-hero-info">
@@ -1428,7 +1537,6 @@ def _detail_body(kind: str, role: str, item: dict) -> str:
         <div class="cat-chips"><span class="cat-chip red">{esc(cat_label)}</span>{chips}</div>
         <div class="cat-body-txt">{body or '<span style="color:var(--mut)">No description available.</span>'}</div>
         <div class="cat-links">{links_html or '<span style="color:var(--mut);font-size:12px">🔗 No external links.</span>'}</div>
-        {admin_bar}
       </div>
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px">
@@ -1437,18 +1545,18 @@ def _detail_body(kind: str, role: str, item: dict) -> str:
     </div>
   </section>
 
-  <section class="cat-panel" id="cp-videos">
+  <section class="cat-panel" id="cp-videos" role="tabpanel" aria-labelledby="tab-videos">
     <div class="cat-subhead"><h3>{videos_heading}</h3><span class="cat-hint">Added in the editor · {len(videos)}</span></div>
     <div class="cat-vgrid vgrid" id="catVideos">{vids_html}</div>
     {tag_section}
   </section>
 
-  <section class="cat-panel" id="cp-gallery">
+  <section class="cat-panel" id="cp-gallery" role="tabpanel" aria-labelledby="tab-gallery">
     {upload_bar}
     <div class="cat-galgrid" id="catGallery">{gal_html}</div>
   </section>
 </div></div>
-<div class="cat-lightbox" id="catLight" onclick="if(event.target===this)closeLight()"><img src="" alt=""></div>
+<div class="cat-lightbox" id="catLight" role="dialog" aria-label="Image preview" aria-hidden="true" onclick="if(event.target===this)closeLight()"><button type="button" class="cat-lightbox-close" aria-label="Close image preview" onclick="closeLight()">×</button><img src="" alt="Enlarged image"></div>
 <div class="cat-toast" id="catToast"></div>"""
 
 def build_detail_page(kind: str, role: str, tg_id: int, item: dict):
@@ -1473,7 +1581,7 @@ def build_detail_page(kind: str, role: str, tg_id: int, item: dict):
     js = DETAIL_JS.replace("__DETAIL_CFG__", json.dumps(detail_cfg, ensure_ascii=False))
     return app_page(
         f"{item.get('title') or cfg['singular']} - Fast Finder",
-        (f"<style>{CATALOG_CSS}</style>" + _detail_body(kind, role, item)
+        (f"<style>{CATALOG_CSS}</style>" + CATALOG_IMAGE_JS + _detail_body(kind, role, item)
          + js + PLAYER_MODAL_HTML + PLAYER_JS
          + ((FILE_EDIT_HTML + FILE_EDIT_JS) if role == "admin" else "")),
         tg_id=tg_id, role=role, active_tab=kind,

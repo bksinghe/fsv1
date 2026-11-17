@@ -1,25 +1,20 @@
-# 1. Use the latest stable base image
-FROM python:3.11-slim-bookworm
+# Build dependencies separately so compilers never enter the runtime image.
+FROM python:3.11-slim-bookworm AS builder
 
-# 2. Install the system dependencies (required tools)
-RUN apt-get update && apt-get install -y \
-    git \
-    gcc \
-    python3-dev \
+# Some dependencies (including Hydrogram's pyaes) may need building from source.
+RUN apt-get update && apt-get install -y --no-install-recommends gcc \
     && rm -rf /var/lib/apt/lists/*
-
-# 3. Set the working directory
 WORKDIR /app
-
-# 4. Copy requirements.txt first (to benefit from the layer cache)
 COPY requirements.txt .
+RUN python -m venv /opt/venv \
+    && /opt/venv/bin/pip install --no-cache-dir --upgrade pip \
+    && /opt/venv/bin/pip install --no-cache-dir -r requirements.txt \
+    && /opt/venv/bin/pip check
 
-# 5. Install dependencies without caching and upgrade pip
-RUN pip install --no-cache-dir -U pip && \
-    pip install --no-cache-dir -r requirements.txt
-
-# 6. Copy the rest of the application code
+# The same Python base keeps the built virtual environment compatible.
+FROM python:3.11-slim-bookworm AS runtime
+ENV PATH="/opt/venv/bin:$PATH" PYTHONUNBUFFERED=1
+WORKDIR /app
+COPY --from=builder /opt/venv /opt/venv
 COPY . .
-
-# 7. Start the bot
-CMD ["python3", "bot.py"]
+CMD ["python", "bot.py"]

@@ -1,11 +1,13 @@
+# Telegram client and accelerated cryptography/event loop (Linux deployment).
 hydrogram==0.2.0
-tgcrypto
-pymongo>=4.6.0
-aiohttp>=3.9.0
-aiofiles
-uvloop
-requests
-qrcode
-Pillow
-pytz
-shortzy
+tgcrypto==1.2.5
+uvloop==0.23.0
+
+# Web server and MongoDB driver.
+aiohttp==3.14.5
+pymongo==4.20.0
+
+# QR code images, thumbnail validation and India timezone.
+qrcode==8.2
+Pillow==13.0.0
+pytz==2026.6
