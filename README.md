@@ -228,6 +228,24 @@ In `JoneySin/v5`, these features were split between `post_routes.py` (~790 lines
 
 ---
 
+### Runtime dependencies
+
+`requirements.txt` pins direct dependencies tested on the Docker image's Python 3.11/Linux.
+Hydrogram is kept at 0.2.0; TgCrypto and uvloop retain its fast crypto/event loop
+on Linux. Pillow is required for QR images and full thumbnail validation. Unused
+`aiofiles`, `requests`, and `shortzy` were removed. Transitive dependencies are not
+locked, so rebuilds can still change them; review and test dependency updates regularly.
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/pip check
+.venv/bin/python -m unittest discover -s tests
+```
+
+Unit and offline smoke tests do not replace testing against the deployed Telegram bot
+and MongoDB. Deployment uses Linux; `uvloop` is not supported on Windows.
+
 ### ✅ Single-source regression test
 
 A stdlib-only regression test keeps Poster/Text code from splitting across files again (no MongoDB / Telegram / aiohttp required):
