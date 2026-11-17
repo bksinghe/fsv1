@@ -26,6 +26,7 @@ from web.stats_routes import stats_routes as _stats_routes
 from web.profile_routes import profile_routes as _profile_routes
 from web.file_edit_routes import file_edit_routes as _file_edit_routes
 from web.group_routes import group_routes as _group_routes
+from web.progress_routes import progress_routes as _progress_routes
 
 
 def create_app():
@@ -39,6 +40,7 @@ def create_app():
     app.add_routes(_profile_routes)
     app.add_routes(_file_edit_routes)
     app.add_routes(_group_routes)
+    app.add_routes(_progress_routes)
 
     return app
 

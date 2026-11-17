@@ -4,6 +4,19 @@ The Telegram Auto-Filter Bot (`fsv1`) now lets you **sign in on the web**, searc
 
 ---
 
+## ▶ Continue Watching
+
+The signed-in web player remembers progress per account in MongoDB, including the
+specific file/episode/quality. The Home search page shows up to six recent items
+(with Show all for the rest); each item can be removed. Playback is recorded after
+five seconds and refreshed periodically, on pause or close. At 95% complete the
+entry is removed. Up to 30 entries are retained per account; no signed URLs are
+stored. Progress is best-effort if MongoDB or the connection is unavailable.
+
+This applies to the shared player on Home, Post and Actor pages. Standalone signed
+`/watch` links do not record progress. If the browser cannot provide a finite video
+duration, progress cannot be saved. Removing an entry does not delete the media.
+
 ## ✨ What's new
 
 | Feature | Detail |

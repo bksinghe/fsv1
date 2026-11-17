@@ -1011,6 +1011,18 @@ background:var(--bg3);border:1px solid var(--line);color:var(--txt);font-weight:
 cursor:pointer;font-family:inherit}
 .more.show{display:block}
 .more:disabled{opacity:.55;cursor:wait}
+.continue-section{margin:0 0 24px}
+.continue-toggle{margin:10px 0 0;background:none;border:0;color:var(--red);font:inherit;font-size:12px;font-weight:800;cursor:pointer;padding:8px 0}
+.continue-head{display:flex;align-items:center;gap:8px;margin:0 0 10px;font-size:16px;font-weight:900}
+.continue-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr));gap:9px}
+.continue-item{position:relative;display:flex;align-items:center;gap:8px;padding:10px;background:var(--card);border:1px solid var(--line);border-radius:10px;min-width:0}
+.continue-play{display:flex;flex:1;min-width:0;flex-direction:column;gap:6px;text-align:left;background:none;border:0;color:var(--txt);font:inherit;cursor:pointer}
+.continue-name{width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:800}
+.continue-meta{font-size:11px;color:var(--mut);font-weight:700}
+.continue-bar{width:100%;height:4px;background:var(--bg3);border-radius:4px;overflow:hidden}
+.continue-bar i{display:block;height:100%;background:var(--red)}
+.continue-remove{background:var(--bg3);color:var(--txt);border:1px solid var(--line);border-radius:7px;min-width:36px;min-height:36px;cursor:pointer}
+.continue-play:focus-visible,.continue-remove:focus-visible{outline:2px solid var(--red);outline-offset:2px}
 .search-status:not(:empty){text-align:center;margin:16px auto 0;color:var(--mut);font-size:13px;font-weight:700;overflow-wrap:anywhere}
 /* ── player modal ── */
 .modal{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.88);
@@ -1349,7 +1361,37 @@ PLAYER_MODAL_HTML = """<div class="modal" id="modal" onclick="if(event.target===
 PLAYER_JS = r"""<script>
 (function(){
   const q = s => document.querySelector(s);
-  let currentWatch = '', seq = 0, items = [];
+  let currentWatch = '', seq = 0, items = [], currentFile='', progressSuppressed=false, lastProgress=0;
+  let progressQueue=Promise.resolve();
+  function queueProgress(url, options){
+    const send=()=>fetch(url,{credentials:'same-origin',keepalive:true,...options}).then(r=>{
+      if(!r.ok)throw new Error('Progress unavailable');
+      document.dispatchEvent(new Event('progresschange'));return r;
+    });
+    const result=progressQueue.then(send,send);
+    progressQueue=result.catch(()=>{});return result;
+  }
+  function saveProgress(force){
+    const v=q('#player');
+    if(!v||!currentFile||progressSuppressed||!Number.isFinite(v.duration)||v.duration<=0||!Number.isFinite(v.currentTime))return;
+    if(!force && Date.now()-lastProgress<15000)return;
+    lastProgress=Date.now();
+    queueProgress('/api/progress',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({file_id:currentFile,position:v.currentTime,duration:v.duration})}).catch(()=>{});
+  }
+  window.removePlaybackProgress=function(fid){
+    const active=currentFile===fid;if(active)progressSuppressed=true;
+    return queueProgress('/api/progress?file_id='+encodeURIComponent(fid),{method:'DELETE'}).catch(e=>{
+      if(active && currentFile===fid)progressSuppressed=false;throw e;
+    });
+  };
+  const video=q('#player');
+  if(video){
+    video.addEventListener('timeupdate',()=>saveProgress(false));
+    video.addEventListener('pause',()=>saveProgress(true));
+    video.addEventListener('ended',()=>saveProgress(true));
+  }
+  window.addEventListener('pagehide',()=>saveProgress(true));
   function renderChoices(fid){
     const box=q('#pChoices'), list=q('#pChoicesList');
     list.replaceChildren(); box.hidden=items.length<2;
@@ -1372,13 +1414,19 @@ PLAYER_JS = r"""<script>
   window.play = async function(fid, name, context){
     const modal=q('#modal'), v=q('#player');
     if(!modal || !v) return;
+    saveProgress(true);currentFile='';
     const request=++seq;
+    const progress=Promise.race([
+      progressQueue.then(()=>fetch('/api/progress?file_id='+encodeURIComponent(fid),{credentials:'same-origin',cache:'no-store'}))
+        .then(r=>r.ok?r.json():null).catch(()=>null),
+      new Promise(resolve=>setTimeout(()=>resolve(null),2000))
+    ]);
     items=Array.isArray(context)?context:[]; renderChoices(fid);
     currentWatch=''; q('#pDl').removeAttribute('href');
     q('#pTitle').textContent='⏳ '+name;
     q('#pNote').textContent='Preparing the streaming link…';
     modal.classList.add('open');
-    v.pause(); v.removeAttribute('src'); v.load();
+    v.onloadedmetadata=null;v.pause(); v.removeAttribute('src'); v.load();
     if(!items.length){
       fetch('/api/player/group?file_id='+encodeURIComponent(fid),{credentials:'same-origin'})
         .then(r=>r.ok?r.json():null).then(d=>{
@@ -1394,11 +1442,21 @@ PLAYER_JS = r"""<script>
       if(request!==seq) return;
       if(!d.stream){q('#pTitle').textContent='❌ '+(d.error||'Stream unavailable');
         q('#pNote').textContent='This file could not be streamed right now.';return}
+      const saved=await progress;
+      if(request!==seq)return;
+      currentFile=fid;progressSuppressed=false;lastProgress=0;
       currentWatch=location.origin+d.watch;
       q('#pTitle').textContent='▶ '+name;
       q('#pNote').textContent='Signed link · '+(d.expires_in||0)+' seconds valid · Range/seek supported';
       q('#pDl').href=d.download;
       v.poster=d.poster||'';
+      v.onloadedmetadata=()=>{
+        const pos=Number(saved && saved.item && saved.item.position);
+        if(request===seq && Number.isFinite(pos) && pos>=5 && Number.isFinite(v.duration) && pos<v.duration*.95){
+          try{v.currentTime=pos;}catch(e){}
+        }
+        v.onloadedmetadata=null;
+      };
       v.src=d.stream;
       v.load();
       const pr=v.play(); if(pr && typeof pr.catch==='function') pr.catch(()=>{});
@@ -1406,9 +1464,10 @@ PLAYER_JS = r"""<script>
       q('#pNote').textContent=String(e.message||e)}
   };
   window.closePlayer = function(){
+    saveProgress(true);currentFile='';
     ++seq; items=[]; currentWatch='';
     const v=q('#player'); if(!v) return;
-    v.pause(); v.removeAttribute('src'); v.load();
+    v.onloadedmetadata=null;v.pause(); v.removeAttribute('src'); v.load();
     const m=q('#modal'); if(m) m.classList.remove('open');
   };
   window.copyLink = function(){
@@ -1440,6 +1499,11 @@ SEARCH_BODY = """<div class="search-zone">
 </div>
 
 <div class="main">
+  <section class="continue-section" id="continueSection" hidden aria-labelledby="continueHeading">
+    <h2 class="continue-head" id="continueHeading">▶ Continue Watching</h2>
+    <div class="continue-list" id="continueList"></div>
+    <button class="continue-toggle" id="continueToggle" type="button" hidden aria-expanded="false">Show all</button>
+  </section>
   <div class="vgrid vm-grid" id="grid"></div>
   <div class="search-status" id="searchStatus" role="status" aria-live="polite"></div>
   <button class="more" id="more" onclick="load(false)">Show more ⬇</button>
@@ -1587,6 +1651,42 @@ document.addEventListener('keydown',e=>{
   e.preventDefault();play(decodeURIComponent(el.dataset.fid),el.dataset.name,playerGroupContext(el));
 });
 
+let progressRequest=0,progressExpanded=false;
+$('#continueToggle').addEventListener('click',()=>{progressExpanded=!progressExpanded;refreshProgress()});
+async function refreshProgress(){
+  const request=++progressRequest,section=$('#continueSection'),list=$('#continueList');
+  try{
+    const r=await fetch('/api/progress',{credentials:'same-origin',cache:'no-store'});
+    if(!r.ok) return;
+    const data=await r.json();if(request!==progressRequest)return;
+    const records=Array.isArray(data.items)?data.items:[];
+    list.replaceChildren();section.hidden=!records.length;
+    if(records.length<=6)progressExpanded=false;
+    const toggle=$('#continueToggle');toggle.hidden=records.length<=6;
+    toggle.textContent=progressExpanded?'Show less':'Show all ('+records.length+')';
+    toggle.setAttribute('aria-expanded',String(progressExpanded));
+    (progressExpanded?records:records.slice(0,6)).forEach(item=>{
+      const row=document.createElement('div');row.className='continue-item';
+      const button=document.createElement('button');button.type='button';button.className='continue-play';
+      const name=document.createElement('span');name.className='continue-name';name.textContent=item.name||'Video';
+      const meta=document.createElement('span');meta.className='continue-meta';
+      const pos=Math.max(0,Number(item.position)||0),duration=Number(item.duration)||0;
+      const mins=Math.floor(pos/60);meta.textContent='Resume at '+Math.floor(mins/60)+':'+String(mins%60).padStart(2,'0')+':'+String(Math.floor(pos%60)).padStart(2,'0');
+      const bar=document.createElement('span');bar.className='continue-bar';bar.setAttribute('aria-hidden','true');
+      const fill=document.createElement('i');fill.style.width=Math.min(100,Math.max(0,duration?100*pos/duration:0))+'%';bar.appendChild(fill);
+      button.append(name,meta,bar);button.addEventListener('click',()=>window.play(item.file_id,item.name||'Video'));
+      const remove=document.createElement('button');remove.type='button';remove.className='continue-remove';remove.textContent='✕';remove.setAttribute('aria-label','Remove '+(item.name||'video')+' from Continue Watching');
+      remove.addEventListener('click',async()=>{
+        remove.disabled=true;
+        try{await window.removePlaybackProgress(item.file_id);}
+        catch(e){remove.disabled=false;$('#searchStatus').textContent='Could not remove video. Please try again.';}
+      });
+      row.append(button,remove);list.appendChild(row);
+    });
+  }catch(e){} // Progress is optional; search must still work while it is unavailable.
+}
+document.addEventListener('progresschange',refreshProgress);
+refreshProgress();
 ViewMode.apply();
 load(true);
 </script>
