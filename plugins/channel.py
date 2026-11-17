@@ -13,14 +13,6 @@ from database.ia_filterdb import (
 )
 from utils import get_size
 
-# 🔥 Channels the manual indexer is working on right now (plugins/index.py
-#    owns that set). Live posts of such a channel are skipped, so the manual
-#    loop and this handler never write the same file at the same time.
-try:
-    from plugins.index import ACTIVE_INDEXES
-except ImportError:
-    ACTIVE_INDEXES = set()
-
 # ─────────────────────────────────────────────
 # MEDIA FILTER
 # ─────────────────────────────────────────────
@@ -79,10 +71,8 @@ def get_media_info(message):
 
 @Client.on_message(filters.chat(INDEX_CHANNELS) & media_filter, group=10)
 async def index_new_file(bot, message):
-    # 🛑 Skip while the manual indexer is running for this channel
-    if message.chat.id in ACTIVE_INDEXES:
-        return
-
+    # Keep processing live posts during a manual scan. The scan only covers
+    # up to the forwarded message, so skipping newer posts creates gaps.
     media = get_media_info(message)
     if not media:
         return
@@ -125,9 +115,6 @@ async def index_new_file(bot, message):
 
 @Client.on_edited_message(filters.chat(INDEX_CHANNELS) & media_filter, group=11)
 async def update_caption(bot, message):
-    if message.chat.id in ACTIVE_INDEXES:
-        return
-
     media = get_media_info(message)
     if not media:
         return

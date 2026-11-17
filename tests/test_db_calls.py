@@ -183,10 +183,9 @@ class TestIndexAndChannel(unittest.TestCase):
     def test_active_indexes_is_shared(self):
         """channel.py must read the set index.py actually owns."""
         self.assertIn("ACTIVE_INDEXES = set()", self.index)
-        self.assertIn("from plugins.index import ACTIVE_INDEXES", self.channel)
         self.assertIn("ACTIVE_INDEXES.add(chat_id)", self.index)
         self.assertIn("ACTIVE_INDEXES.discard(chat_id)", self.index)
-        self.assertIn("message.chat.id in ACTIVE_INDEXES", self.channel)
+        self.assertNotIn("message.chat.id in ACTIVE_INDEXES", self.channel)
 
     def test_no_dead_cancel_index_import(self):
         """`CANCEL_INDEX` never existed in index.py — the import was dead."""
