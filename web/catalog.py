@@ -303,6 +303,12 @@ font-weight:800;font-size:13px;cursor:pointer;font-family:inherit;transition:tra
 .cat-btn:active{transform:scale(.96)}
 .cat-btn.ghost{background:var(--bg3);border:1px solid var(--line);color:var(--txt)}
 .cat-btn.ghost:hover{background:var(--bg2);border-color:var(--red);box-shadow:none}
+/* Back navigation stays still; only a pressed/clicked state gets a red glow. */
+.cat-btn.ghost.cat-back,.cat-btn.ghost.cat-back:hover{transform:none;box-shadow:none;animation:none}
+.cat-btn.ghost.cat-back:active,.cat-btn.ghost.cat-back.is-pressed{transform:none;background:var(--red);
+border-color:var(--red);color:#fff;box-shadow:0 0 0 2px rgba(229,9,20,.24),0 0 22px rgba(229,9,20,.62)}
+.cat-btn.ghost.cat-back:focus-visible{outline:2px solid var(--red);outline-offset:3px}
+
 /* 🧩 Like the GitHub reference (v5 `.search-box`): **one card-box** holding the search bar,
    filter buttons, ✨ New Post/Profile and the count — on desktop and mobile alike.
    📱 The old override that stripped the chrome on mobile is gone (the box stays). */
@@ -1254,10 +1260,21 @@ document.addEventListener('keydown',e=>{
   }
 });
 document.addEventListener('pointerdown',e=>{
-  const b=e.target.closest('.cat-btn'); if(!b)return;
+  const b=e.target.closest('.cat-btn'); if(!b||b.classList.contains('cat-back'))return;
   const r=b.getBoundingClientRect(),i=document.createElement('i'),d=Math.max(r.width,r.height);
   i.style.cssText=`width:${d}px;height:${d}px;left:${e.clientX-r.left-d/2}px;top:${e.clientY-r.top-d/2}px`;
   b.classList.add('cat-ripple'); b.appendChild(i); setTimeout(()=>i.remove(),520);
+});
+// Keep links native for modified/middle clicks; briefly show the glow on normal activation.
+document.addEventListener('click',e=>{
+  const link=e.target.closest('.cat-back');
+  if(!link || e.defaultPrevented || e.button!==0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey ||
+     link.hasAttribute('download') || (link.target && link.target!=='_self'))return;
+  if(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+  e.preventDefault();
+  if(link.classList.contains('is-pressed'))return;
+  link.classList.add('is-pressed');
+  setTimeout(()=>location.assign(link.href),140);
 });
 const mq=document.getElementById('catMediaQ');
 if(mq){
@@ -1453,7 +1470,7 @@ def _detail_body(kind: str, role: str, item: dict) -> str:
     )
 
     return f"""<div class="main"><div class="cat-wrap">
-  <div style="margin-bottom:16px"><a class="cat-btn ghost" href="{cfg['base']}">← Back to {esc(cfg['label'])}</a></div>
+  <div style="margin-bottom:16px"><a class="cat-btn ghost cat-back" href="{cfg['base']}">← Back to {esc(cfg['label'])}</a></div>
   <div class="cat-tabs" role="tablist">
     <button class="cat-tab active" data-tab="overview" onclick="switchTab('overview')">ℹ️ Overview</button>
     <button class="cat-tab" data-tab="videos" onclick="switchTab('videos')">🎬 Videos <span class="cat-tab-n">{len(videos)}</span></button>
