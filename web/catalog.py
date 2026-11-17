@@ -368,6 +368,9 @@ background:linear-gradient(to top,rgba(0,0,0,.95),rgba(0,0,0,.6) 45%,transparent
 text-overflow:ellipsis;text-shadow:0 2px 8px rgba(0,0,0,.9)}
 .cat-meta{padding:8px 10px 9px;display:none;flex-direction:column;gap:4px}
 .cat-meta-main{display:none;font-size:13px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cat-card.cat-opening .cat-name,.cat-card.cat-opening .cat-meta-main{animation:catNameTap .28s ease-out both}
+@keyframes catNameTap{0%{color:inherit}45%,100%{color:#e50914}}
+@media(prefers-reduced-motion:reduce){.cat-card.cat-opening .cat-name,.cat-card.cat-opening .cat-meta-main{animation:none}}
 .cat-meta-sub{font-size:11px;color:var(--mut);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cat-skel{aspect-ratio:2/3;border-radius:12px;border:1px solid var(--line);
 background:linear-gradient(90deg,var(--bg3) 0,#2b2b3a 50%,var(--bg3) 100%);
@@ -646,7 +649,7 @@ function cardHTML(it){
     ? `<img class="cat-poster vm-img" onload="this.classList.add('on')" onerror="catPosterFail(this)"
           ${ViewMode.imgAttrs(esc(src),true)} alt="" loading="lazy">`
     : '';
-  return `<div class="cat-card rv-enter vm-card vm-show-cover" data-id="${id}" role="link" tabindex="0" aria-label="Open ${esc(it.title)}" onclick="openDetail(this.dataset.id)">
+  return `<div class="cat-card rv-enter vm-card vm-show-cover" data-id="${id}" role="link" tabindex="0" aria-label="Open ${esc(it.title)}" onclick="openDetail(this)">
     <div class="cat-poster-wrap vm-poster">
       <div class="cat-ph vm-ph vm-overlay" aria-hidden="true">🖼️</div>${img}
       <div class="cat-badge vm-chip">${esc(catLabel(it.category))}</div>
@@ -701,11 +704,23 @@ async function load(reset){
   }catch(e){ grid.innerHTML = '<div class="cat-empty">⚠️ Could not load results. '+esc(e.message||e)+'</div>'; }
   finally{ if(my === state.req) search.classList.remove('loading'); }
 }
-function openDetail(id){ location.href = CFG.detail + encodeURIComponent(id); }
+function openDetail(card){
+  if(card.dataset.opening)return;
+  const url=CFG.detail+encodeURIComponent(card.dataset.id);
+  if(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches){location.href=url;return;}
+  card.dataset.opening='1';
+  card.classList.add('cat-opening');
+  setTimeout(()=>{location.href=url;},220);
+}
+window.addEventListener('pageshow',()=>{
+  document.querySelectorAll('.cat-card[data-opening]').forEach(card=>{
+    delete card.dataset.opening;card.classList.remove('cat-opening');
+  });
+});
 document.addEventListener('keydown',e=>{
   const card=e.target.closest && e.target.closest('.cat-card[data-id]');
   if(card && e.target===card && (e.key==='Enter'||e.key===' ')){
-    e.preventDefault();openDetail(card.dataset.id);
+    e.preventDefault();openDetail(card);
   }
 });
 

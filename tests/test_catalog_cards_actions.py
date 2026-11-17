@@ -13,7 +13,7 @@ class CatalogCardsTests(unittest.TestCase):
         self.assertNotIn('cat-actions', section)
         self.assertNotIn('openEditor(', section)
         self.assertNotIn('removeItem(', section)
-        self.assertIn('onclick="openDetail(this.dataset.id)"', section)
+        self.assertIn('onclick="openDetail(this)"', section)
         self.assertIn('role="link" tabindex="0"', section)
         self.assertIn('ViewMode.imgAttrs(esc(src),true)', section)
         self.assertIn('.cat-meta{padding:8px 10px 9px;display:none;', CATALOG)
@@ -21,6 +21,14 @@ class CatalogCardsTests(unittest.TestCase):
         self.assertIn('.cat-meta-main{display:none', CATALOG)
         self.assertIn('.vm-grid.mode-text .cat-meta-main{display:block}', MODE)
         self.assertIn("e.target===card && (e.key==='Enter'||e.key===' ')", CATALOG)
+
+    def test_name_tap_animation_and_navigation(self):
+        self.assertIn('.cat-card.cat-opening .cat-name,.cat-card.cat-opening .cat-meta-main{animation:catNameTap', CATALOG)
+        self.assertIn('color:#e50914', CATALOG)
+        self.assertIn("card.classList.add('cat-opening')", CATALOG)
+        self.assertIn('encodeURIComponent(card.dataset.id)', CATALOG)
+        self.assertIn("prefers-reduced-motion: reduce", CATALOG)
+        self.assertIn("delete card.dataset.opening;card.classList.remove('cat-opening')", CATALOG)
 
     def test_detail_actions_admin_only_and_available_above_tabs(self):
         tree = ast.parse(CATALOG)
