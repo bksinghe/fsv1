@@ -120,6 +120,28 @@ background:#45495c;cursor:pointer;font-family:inherit;transition:background .15s
 box-shadow:none;border:0;border-radius:0}
 .gcard.open .gadmin button{flex:0 1 auto;min-width:0}
 @media(max-width:520px){.gcard.open .gadmin button{flex:1 1 calc(50% - 6px)}}
+/* Light theme: legible toolbar and chips on both opened and text-mode cards. */
+html.light .gcard.open{box-shadow:0 8px 26px rgba(31,41,55,.12)}
+html.light .gadmin{background:rgba(255,255,255,.96);border-color:#d8dce6;
+box-shadow:0 8px 24px rgba(31,41,55,.2)}
+html.light .gadmin button{background:#f1f3f8;color:#273144;border-color:#d5dbe6}
+html.light .gadmin button:hover{background:#e2e7f1;border-color:#aab6cb}
+html.light .gadmin .ga-edit{background:#e7efff;color:#244b87;border-color:#b8ccef}
+html.light .gadmin .ga-edit:hover{background:#d4e3ff}
+html.light .gadmin .ga-merge{background:#f0eafa;color:#62428b;border-color:#d7c8eb}
+html.light .gadmin .ga-merge:hover{background:#e4d9f5}
+html.light .gadmin .ga-del{background:#fff0f1;color:#a82838;border-color:#f0c4c9}
+html.light .gadmin .ga-del:hover{background:#ffdee1}
+html.light .gcard.open .gposter .gadmin{background:none;box-shadow:none}
+html.light .gcard.open .gposter .vtag{background:#f0f2f7;color:#334155;border-color:#d5dbe6;backdrop-filter:none}
+html.light .gcard.open .gposter .vtag.blue{background:#e8f0ff;color:#24589c;border-color:#c1d4f4}
+html.light .gcard.open .gposter .vtag.gold{background:#fff4d8;color:#805400;border-color:#edd9a4}
+html.light .gcard.open .gposter .vtag.gdur{background:#e6f6ec;color:#17663a;border-color:#bee2ca}
+html.light .gcard.open .gposter .gkind{background:#f2edfb;color:#61448e;border-color:#d8cbea;backdrop-filter:none}
+html.light .gcard.open .gposter .gqchip{background:#e8f5ff;color:#075985;border-color:#9bd1ef}
+html.light .gcard.open .gposter .gqchip.ep{background:#f3e8ff;color:#6b21a8;border-color:#d5b9ee}
+html.light .gcard.open .gposter .gqchip.more{background:#f1f3f6;color:#475569;border-color:#d7dce3}
+html.light .gcard.open .gposter .gqchip i{color:inherit}
 /* ☑️ Group Mode: select files → permanent group */
 .gfab{position:fixed;right:16px;bottom:18px;z-index:140;background:var(--red);color:#fff;
 border:0;border-radius:999px;padding:11px 16px;font-size:12px;font-weight:800;
@@ -182,34 +204,45 @@ color:#fff;background:var(--red);font-family:inherit}
 .gmbtn:disabled{opacity:.5}
 .gmnote{font-size:11px;color:var(--mut);line-height:1.5;margin-top:10px}
 /* Group editor: structured, responsive sections without changing other modals. */
-.gmcard.is-edit{padding:0;max-width:620px;border-color:#414454;
-background:linear-gradient(160deg,#20212c,var(--bg2) 55%);box-shadow:0 24px 70px rgba(0,0,0,.55)}
+.gmcard.is-edit{--gm-surface:var(--bg2);--gm-section:rgba(255,255,255,.025);
+--gm-section-border:rgba(255,255,255,.08);--gm-input:rgba(8,9,15,.48);
+--gm-label:#c6c8d4;--gm-muted-action:#ff9fa5;--gm-shadow:rgba(0,0,0,.55);
+padding:0;max-width:620px;border-color:var(--line);
+background:var(--gm-surface);box-shadow:0 24px 70px var(--gm-shadow)}
+html.light .gmcard.is-edit{--gm-surface:#fff;--gm-section:#f7f8fb;
+--gm-section-border:#e3e6ee;--gm-input:#fff;--gm-label:#50596a;
+--gm-muted-action:#b42332;--gm-shadow:rgba(32,39,57,.2)}
 .gmcard.is-edit .gmhead{position:sticky;top:0;z-index:4;margin:0;padding:18px 20px;
-background:rgba(30,31,42,.97);border-bottom:1px solid var(--line)}
+background:var(--gm-surface);border-bottom:1px solid var(--line)}
 .gmcard.is-edit .gmclose{display:grid;place-items:center;width:34px;height:34px;
 border-radius:9px;background:var(--bg3);border:1px solid var(--line);font-size:18px}
 .gmcard.is-edit .gmclose:hover{color:var(--txt);border-color:#73798a}
-.gmedit{padding:16px 20px 0}.gmedit-section{background:rgba(255,255,255,.025);
-border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px;margin-bottom:12px}
-.gmedit .gmlabel{display:block;margin:0 0 9px;font-size:11px;letter-spacing:.06em;color:#c6c8d4}
-.gmedit .gminput{background:rgba(8,9,15,.48);border-radius:9px;padding:11px 12px}
+.gmedit{padding:16px 20px 0}.gmedit-section{background:var(--gm-section);
+border:1px solid var(--gm-section-border);border-radius:12px;padding:14px;margin-bottom:12px}
+.gmedit .gmlabel{display:block;margin:0 0 9px;font-size:11px;letter-spacing:.06em;color:var(--gm-label)}
+.gmedit .gminput{background:var(--gm-input);border-radius:9px;padding:11px 12px}
 .gmedit .gminput:focus,.gmedit .gmep:focus{outline:2px solid rgba(229,9,20,.3);outline-offset:1px}
 .gmedit #gmEpisodes{margin-top:16px}.gmedit .gmkind{gap:10px}.gmedit .gmkind button{padding:12px 8px;border-radius:10px;background:var(--bg3)}
 .gmedit .gmkind button.on{background:rgba(229,9,20,.15);box-shadow:inset 0 0 0 1px rgba(229,9,20,.25)}
 .gmedit .gmkind button:focus-visible,.gmedit button:focus-visible,.gmedit summary:focus-visible{outline:2px solid #ff737c;outline-offset:2px}
-.gmedit .gmresults{background:rgba(8,9,15,.3)}.gmedit .gmchosen:empty{display:none}
+.gmedit .gmresults{background:var(--gm-input)}.gmedit .gmchosen:empty{display:none}
 .gmedit .gmth{border-radius:9px}.gmedit .gmth.on{border-color:#4ade80;box-shadow:0 0 0 2px rgba(74,222,128,.18)}
 .gmedit .gmrow{margin-top:12px}.gmedit .gmmem,.gmedit .gmeprow{padding:9px 2px}
-.gmedit .gmmem button{width:30px;height:30px;border-radius:7px;background:rgba(229,9,20,.1);color:#ff9fa5}
-.gmedit .gmmem button:hover{background:rgba(229,9,20,.25);color:#fff}
+.gmedit .gmmem button{width:30px;height:30px;border-radius:7px;background:rgba(229,9,20,.1);color:var(--gm-muted-action)}
+.gmedit .gmmem button:hover{background:rgba(229,9,20,.2);color:var(--gm-muted-action)}
 .gmedit .gmlist{max-height:210px;overflow-y:auto;overscroll-behavior:contain}
 .gmedit details summary{cursor:pointer;color:var(--txt);font-size:12px;font-weight:800;list-style:none}
 .gmedit details summary::-webkit-details-marker{display:none}.gmedit details summary::after{content:'+';float:right;color:var(--mut);font-size:17px;line-height:1}
 .gmedit details[open] summary::after{content:'−'}.gmedit details[open] summary{margin-bottom:12px}
 .gmedit-actions{position:sticky;bottom:0;z-index:3;display:flex;gap:8px;flex-wrap:wrap;
-margin:4px -20px 0;padding:14px 20px;background:rgba(30,31,42,.97);border-top:1px solid var(--line)}
+margin:4px -20px 0;padding:14px 20px;background:var(--gm-surface);border-top:1px solid var(--line)}
 .gmedit-actions .gmbtn{min-height:40px}.gmedit-actions .gmbtn:first-child{flex:1}
 .gmedit-actions .danger{background:#693940;border:1px solid #a65b63}
+html.light .gmodal{background:rgba(28,34,47,.46)}
+html.light .gmedit-actions .danger{background:#fff0f1;color:#a82838;border-color:#f0c4c9}
+html.light .gmedit-actions .danger:hover{background:#ffdee1}
+html.light .gmedit .gmchosen{color:#15803d}
+html.light .gmedit .gmcount{color:#6941a1}
 @media(max-width:520px){.gmodal{padding:8px}.gmcard.is-edit{max-height:94vh}
 .gmcard.is-edit .gmhead{padding:14px}.gmedit{padding:12px 12px 0}
 .gmedit-section{padding:12px}.gmedit-actions{margin:4px -12px 0;padding:12px}

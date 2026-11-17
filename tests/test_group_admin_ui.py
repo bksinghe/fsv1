@@ -38,3 +38,26 @@ class GroupEditorTests(unittest.TestCase):
         self.assertIn('.gmedit-actions{position:sticky', GROUP)
         self.assertIn('.gmedit .gmlist{max-height:210px', GROUP)
         self.assertIn("b.setAttribute('aria-pressed'", GROUP)
+
+
+class GroupLightThemeTests(unittest.TestCase):
+    def test_group_editor_uses_light_theme_surfaces_and_readable_controls(self):
+        self.assertIn('html.light .gmcard.is-edit{--gm-surface:#fff', GROUP)
+        for part in ('--gm-section:#f7f8fb', '--gm-input:#fff', '--gm-label:#50596a',
+                     'background:var(--gm-surface);border-bottom',
+                     'background:var(--gm-surface);border-top',
+                     '.gmedit .gminput{background:var(--gm-input)',
+                     'html.light .gmedit-actions .danger',
+                     'html.light .gmodal{background:rgba(28,34,47,.46)}'):
+            self.assertIn(part, GROUP)
+        self.assertNotIn('background:rgba(30,31,42,.97)', GROUP)
+
+    def test_group_toolbar_and_chips_have_light_styles(self):
+        for part in ('html.light .gadmin{background:rgba(255,255,255,.96)',
+                     'html.light .gadmin .ga-edit', 'html.light .gadmin .ga-merge',
+                     'html.light .gadmin .ga-del',
+                     'html.light .gcard.open .gposter .vtag',
+                     'html.light .gcard.open .gposter .gqchip.ep'):
+            self.assertIn(part, GROUP)
+        mode = (Path(__file__).resolve().parents[1] / 'web' / 'mode_assets.py').read_text()
+        self.assertIn('html.light .vm-grid.mode-text .gcard .gposter .gqchip', mode)
