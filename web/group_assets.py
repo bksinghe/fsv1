@@ -181,6 +181,39 @@ color:#fff;background:var(--red);font-family:inherit}
 .gmbtn.danger{background:#a00808}
 .gmbtn:disabled{opacity:.5}
 .gmnote{font-size:11px;color:var(--mut);line-height:1.5;margin-top:10px}
+/* Group editor: structured, responsive sections without changing other modals. */
+.gmcard.is-edit{padding:0;max-width:620px;border-color:#414454;
+background:linear-gradient(160deg,#20212c,var(--bg2) 55%);box-shadow:0 24px 70px rgba(0,0,0,.55)}
+.gmcard.is-edit .gmhead{position:sticky;top:0;z-index:4;margin:0;padding:18px 20px;
+background:rgba(30,31,42,.97);border-bottom:1px solid var(--line)}
+.gmcard.is-edit .gmclose{display:grid;place-items:center;width:34px;height:34px;
+border-radius:9px;background:var(--bg3);border:1px solid var(--line);font-size:18px}
+.gmcard.is-edit .gmclose:hover{color:var(--txt);border-color:#73798a}
+.gmedit{padding:16px 20px 0}.gmedit-section{background:rgba(255,255,255,.025);
+border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px;margin-bottom:12px}
+.gmedit .gmlabel{display:block;margin:0 0 9px;font-size:11px;letter-spacing:.06em;color:#c6c8d4}
+.gmedit .gminput{background:rgba(8,9,15,.48);border-radius:9px;padding:11px 12px}
+.gmedit .gminput:focus,.gmedit .gmep:focus{outline:2px solid rgba(229,9,20,.3);outline-offset:1px}
+.gmedit #gmEpisodes{margin-top:16px}.gmedit .gmkind{gap:10px}.gmedit .gmkind button{padding:12px 8px;border-radius:10px;background:var(--bg3)}
+.gmedit .gmkind button.on{background:rgba(229,9,20,.15);box-shadow:inset 0 0 0 1px rgba(229,9,20,.25)}
+.gmedit .gmkind button:focus-visible,.gmedit button:focus-visible,.gmedit summary:focus-visible{outline:2px solid #ff737c;outline-offset:2px}
+.gmedit .gmresults{background:rgba(8,9,15,.3)}.gmedit .gmchosen:empty{display:none}
+.gmedit .gmth{border-radius:9px}.gmedit .gmth.on{border-color:#4ade80;box-shadow:0 0 0 2px rgba(74,222,128,.18)}
+.gmedit .gmrow{margin-top:12px}.gmedit .gmmem,.gmedit .gmeprow{padding:9px 2px}
+.gmedit .gmmem button{width:30px;height:30px;border-radius:7px;background:rgba(229,9,20,.1);color:#ff9fa5}
+.gmedit .gmmem button:hover{background:rgba(229,9,20,.25);color:#fff}
+.gmedit .gmlist{max-height:210px;overflow-y:auto;overscroll-behavior:contain}
+.gmedit details summary{cursor:pointer;color:var(--txt);font-size:12px;font-weight:800;list-style:none}
+.gmedit details summary::-webkit-details-marker{display:none}.gmedit details summary::after{content:'+';float:right;color:var(--mut);font-size:17px;line-height:1}
+.gmedit details[open] summary::after{content:'−'}.gmedit details[open] summary{margin-bottom:12px}
+.gmedit-actions{position:sticky;bottom:0;z-index:3;display:flex;gap:8px;flex-wrap:wrap;
+margin:4px -20px 0;padding:14px 20px;background:rgba(30,31,42,.97);border-top:1px solid var(--line)}
+.gmedit-actions .gmbtn{min-height:40px}.gmedit-actions .gmbtn:first-child{flex:1}
+.gmedit-actions .danger{background:#693940;border:1px solid #a65b63}
+@media(max-width:520px){.gmodal{padding:8px}.gmcard.is-edit{max-height:94vh}
+.gmcard.is-edit .gmhead{padding:14px}.gmedit{padding:12px 12px 0}
+.gmedit-section{padding:12px}.gmedit-actions{margin:4px -12px 0;padding:12px}
+.gmedit-actions .gmbtn{padding:9px 10px}.gmedit-actions .gmbtn:first-child{flex:1 1 100%}}
 .gmtoast{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:400;
 background:var(--bg2);border:1.5px solid var(--line);border-radius:10px;padding:10px 16px;
 font-size:12px;font-weight:800;color:var(--txt);opacity:0;pointer-events:none;
@@ -337,6 +370,7 @@ GROUP_ADMIN_JS = r"""<script>
   }
   function refresh(){if(window.load)window.load(true);}
   function open(title,body){q('#gmTitle').textContent=title;q('#gmBody').innerHTML=body;
+    q('#gmModal .gmcard').classList.toggle('is-edit',!!q('#gmBody .gmedit'));
     q('#gmModal').classList.add('open');}
   window.gClose=function(){var m=q('#gmModal');if(m)m.classList.remove('open');
     current=null;targetGid='';thumbFid='';};
@@ -412,13 +446,13 @@ GROUP_ADMIN_JS = r"""<script>
   }
   function kindHtml(g){
     var isQ=currentKind!=='episodes';
-    return '<div class="gmlabel">GROUP TYPE — does this group hold qualities or episodes?</div>'+
+    return '<div class="gmlabel">GROUP TYPE</div>'+
       '<div class="gmkind">'+
         '<button type="button" data-kind="qualities" class="'+(isQ?'on':'')+'" '+
-          'onclick="gPickKind(\'qualities\')">🎞️ Qualities'+
+          'aria-pressed="'+(isQ?'true':'false')+'" onclick="gPickKind(\'qualities\')">🎞️ Qualities'+
           '<small>Different qualities of one file / movie</small></button>'+
         '<button type="button" data-kind="episodes" class="'+(isQ?'':'on')+'" '+
-          'onclick="gPickKind(\'episodes\')">📺 Episodes'+
+          'aria-pressed="'+(isQ?'false':'true')+'" onclick="gPickKind(\'episodes\')">📺 Episodes'+
           '<small>Different episodes of a series</small></button>'+
       '</div>';
   }
@@ -429,14 +463,15 @@ GROUP_ADMIN_JS = r"""<script>
         'value="'+esc(v.el||'')+'" aria-label="Episode label" title="Change episode label"></div>';
     }).join('');
     return '<div id="gmEpisodes" style="display:'+(currentKind==='episodes'?'block':'none')+'">'+
-      '<div class="gmlabel">📺 EPISODE LABELS — optionally change the episode number of any file</div>'+
-      rows+'<div class="gmcount">This group has '+(g.episodes||(g.variants||[]).length)+
+      '<div class="gmlabel">EPISODE LABELS</div>'+
+      '<div class="gmlist">'+rows+'</div><div class="gmcount">This group has '+(g.episodes||(g.variants||[]).length)+
       ' episodes / '+(g.variants||[]).length+' files</div></div>';
   }
   window.gPickKind=function(k){
     currentKind=(k==='episodes')?'episodes':'qualities';
     Array.prototype.forEach.call(document.querySelectorAll('.gmkind button'),function(b){
-      b.classList.toggle('on',b.getAttribute('data-kind')===currentKind);});
+      var selected=b.getAttribute('data-kind')===currentKind;
+      b.classList.toggle('on',selected);b.setAttribute('aria-pressed',selected?'true':'false');});
     var ep=q('#gmEpisodes');if(ep)ep.style.display=(currentKind==='episodes'?'block':'none');
   };
   function groupMetric(x){
@@ -473,26 +508,24 @@ GROUP_ADMIN_JS = r"""<script>
     currentKind=(g.kind==='episodes')?'episodes':'qualities';
     var items=itemsFrom(g);
     open(g.manual?'✏️ Edit Group #'+g.num:'💾 Save as Permanent Group',
-      '<div class="gmlabel">GROUP NAME</div>'+
-      '<input class="gminput" id="gmName" value="'+esc(g.name)+'" placeholder="Movie / series name">'+
-      '<div class="gmlabel">ADD TO AN EXISTING GROUP (name or #number)</div>'+
+      '<div class="gmedit">'+
+      '<section class="gmedit-section"><label class="gmlabel" for="gmName">GROUP NAME</label>'+
+      '<input class="gminput" id="gmName" value="'+esc(g.name)+'" placeholder="Movie / series name"></section>'+
+      '<section class="gmedit-section">'+kindHtml(g)+episodesHtml(g)+'</section>'+
+      '<section class="gmedit-section"><div class="gmlabel">MASTER THUMBNAIL</div><div class="gmthumbs" id="gmThumbs">'+thumbsHtml(g)+'</div>'+
+      '<div class="gmrow"><button type="button" class="gmbtn alt" onclick="document.getElementById(\'gmFile\').click()">📸 Custom upload</button>'+
+      '<input type="file" accept="image/*" id="gmFile" hidden onchange="gUpload(this)">'+
+      (g.manual?'<button class="gmbtn alt" onclick="gClearCustom()">↩️ Remove custom</button>':'')+'</div></section>'+
+      '<section class="gmedit-section"><div class="gmlabel">FILES ('+items.length+')</div><div class="gmlist">'+membersHtml(items,g.manual?String(g.gid):'')+'</div></section>'+
+      '<details class="gmedit-section"><summary>Add to an existing group</summary>'+
+      '<label class="gmlabel" for="gmFind">SEARCH BY NAME OR #NUMBER</label>'+
       '<input class="gminput" id="gmFind" placeholder="Search… e.g. #12 or a name" oninput="gFind(this.value)">'+
       '<div class="gmresults" id="gmResults"></div>'+
-      '<div class="gmchosen" id="gmChosen">'+(targetGid?'✓ Group #'+esc(targetGid):'')+'</div>'+
-      kindHtml(g)+episodesHtml(g)+
-      '<div class="gmlabel">MASTER THUMBNAIL</div><div class="gmthumbs" id="gmThumbs">'+thumbsHtml(g)+'</div>'+
-      '<div class="gmrow"><label class="gmbtn alt" style="cursor:pointer">📸 Custom upload'+
-      '<input type="file" accept="image/*" id="gmFile" style="display:none" onchange="gUpload(this)"></label>'+
-      (g.manual?'<button class="gmbtn alt" onclick="gClearCustom()">↩️ Remove custom</button>':'')+'</div>'+
-      '<div class="gmlabel">FILES ('+items.length+')</div>'+membersHtml(items,g.manual?String(g.gid):'')+
-      '<div class="gmrow"><button class="gmbtn" id="gmSave" onclick="gSave()">'+
-        (g.manual?'💾 Save Changes (name / type / thumbnail / files)':'💾 Save Group')+'</button>'+
+      '<div class="gmchosen" id="gmChosen">'+(targetGid?'✓ Group #'+esc(g.num):'')+'</div></details>'+
+      '<div class="gmedit-actions"><button class="gmbtn" id="gmSave" onclick="gSave()">'+
+        (g.manual?'💾 Save Changes':'💾 Save Group')+'</button>'+
       (g.manual?'<button class="gmbtn danger" onclick="gUngroup(\''+jse(g.gid)+'\')">🗑️ Ungroup</button>':'')+
-      '<button class="gmbtn alt" onclick="gClose()">Cancel</button></div>'+
-      '<div class="gmnote">Saving a changed <b>GROUP NAME</b> updates the group name in the database '+
-      '(its #number stays the same). Use <b>GROUP TYPE</b> to say whether it holds qualities of one file or '+
-      'episodes of a series — the card shows <i>3 QUALITIES</i> or <i>12 EPISODES</i> accordingly, and no individual '+
-      'size or duration appears on the group. A new quality with the same title joins automatically via auto_keys.</div>');
+      '<button class="gmbtn alt" onclick="gClose()">Cancel</button></div></div>');
     if(targetGid)gFind('#'+targetGid);
   };
   window.gFind=function(v){
