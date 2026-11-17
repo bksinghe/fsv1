@@ -163,7 +163,7 @@ def clean_url(value, allow_tg=True) -> str:
     if not v:
         return ""
     if allow_tg and v.startswith("TG_ID:"):
-        return v[:300]
+        return v if len(v) <= 518 else ""
     if not _URL_RE.match(v):
         if _SCHEME_RE.match(v):
             return ""
@@ -345,6 +345,7 @@ background-size:200% 100%;animation:catShimmer 1.5s infinite linear}
 .cat-poster{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;
 transition:opacity .35s ease,transform .5s cubic-bezier(.25,1,.5,1)}
 .cat-poster.on{opacity:1}
+.cat-poster-failed{visibility:hidden}
 .cat-card:hover .cat-poster{transform:scale(1.08)}
 .cat-ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
 font-size:34px;color:var(--mut);opacity:.55}
@@ -590,6 +591,27 @@ animation:none!important;transition:none!important;opacity:1!important;transform
 # ─────────────────────────────────────────────────────────────
 # 🧠 SHARED JS — listing + inline editor (one code path for both kinds)
 # ─────────────────────────────────────────────────────────────
+# Defined before image markup so even an immediately failing cached request is handled.
+CATALOG_IMAGE_JS = r"""<script>
+window.catPosterFail=function(img){
+  const base=img.dataset.posterSrc || img.getAttribute('src') || '';
+  if(!base)return;
+  img.dataset.posterSrc=base;
+  const delays=[1500,3000,6000,10000];
+  const n=Number(img.dataset.posterRetry||0);
+  if(n>=delays.length){
+    img.classList.add('cat-poster-failed');
+    img.alt='Poster unavailable';
+    return;
+  }
+  img.dataset.posterRetry=String(n+1);
+  setTimeout(()=>{
+    if(!img.isConnected || img.classList.contains('on'))return;
+    img.src=base+(base.includes('?')?'&':'?')+'retry=true&t='+Date.now();
+  },delays[n]);
+};
+</script>"""
+
 CATALOG_JS = r"""
 <script>
 const CFG = __CFG__;
@@ -620,17 +642,14 @@ function cardHTML(it){
       <button class="cat-edit" onclick="event.stopPropagation();openEditor(this.closest('.cat-card').dataset.id)">✏️ Edit</button>
       <button class="cat-del" onclick="event.stopPropagation();removeItem(this.closest('.cat-card').dataset.id)">🗑 Delete</button>
     </div>` : '';
-  /* ✅ Poster and Text share exactly the same markup — in Text mode only
-     `.vm-img`/`.vm-overlay` are hidden by CSS (web/mode_assets.py).
-     `ViewMode.imgAttrs()` supplies data-src instead of src in Text mode,
-     so no thumbnail request is made. There is no separate render branch. */
+  /* Post covers also load in text view; other images follow ViewMode. */
   const img = src
-    ? `<img class="cat-poster vm-img" ${ViewMode.imgAttrs(esc(src))} alt="" loading="lazy"
-          onload="this.classList.add('on')" onerror="this.remove()">`
-    : '<div class="cat-ph vm-ph vm-overlay">🖼️</div>';
-  return `<div class="cat-card rv-enter vm-card" data-id="${id}" onclick="openDetail(this.dataset.id)">
+    ? `<img class="cat-poster vm-img" onload="this.classList.add('on')" onerror="catPosterFail(this)"
+          ${ViewMode.imgAttrs(esc(src),CFG.kind==='posts')} alt="" loading="lazy">`
+    : '';
+  return `<div class="cat-card rv-enter vm-card ${CFG.kind==='posts'?'vm-show-cover':''}" data-id="${id}" onclick="openDetail(this.dataset.id)">
     <div class="cat-poster-wrap vm-poster">
-      ${img}
+      <div class="cat-ph vm-ph vm-overlay" aria-hidden="true">🖼️</div>${img}
       <div class="cat-badge vm-chip">${esc(catLabel(it.category))}</div>
       <div class="cat-grad vm-overlay"><div class="cat-name">${esc(it.title)}</div></div>${admin}
     </div>
@@ -1293,7 +1312,7 @@ def build_listing_page(kind: str, role: str, tg_id: int):
     )
     return app_page(
         f"{cfg['label']} - Fast Finder",
-        f"<style>{CATALOG_CSS}</style>" + _listing_body(kind, role) + js,
+        f"<style>{CATALOG_CSS}</style>" + CATALOG_IMAGE_JS + _listing_body(kind, role) + js,
         tg_id=tg_id, role=role, active_tab=kind,
     )
 
@@ -1406,7 +1425,7 @@ def _detail_body(kind: str, role: str, item: dict) -> str:
         '🎬 Add Videos</a>' if admin else ""
     )
     hero_img = (
-        f'<img class="cat-hero-img" src="{esc(src)}" alt="" onerror="this.style.visibility=\'hidden\'">'
+        f'<img class="cat-hero-img" onerror="catPosterFail(this)" src="{esc(src, quote=True)}" alt="Cover image">'
         if src else '<div class="cat-hero-img" style="display:flex;align-items:center;'
                     'justify-content:center;font-size:44px">🖼️</div>'
     )
@@ -1473,7 +1492,7 @@ def build_detail_page(kind: str, role: str, tg_id: int, item: dict):
     js = DETAIL_JS.replace("__DETAIL_CFG__", json.dumps(detail_cfg, ensure_ascii=False))
     return app_page(
         f"{item.get('title') or cfg['singular']} - Fast Finder",
-        (f"<style>{CATALOG_CSS}</style>" + _detail_body(kind, role, item)
+        (f"<style>{CATALOG_CSS}</style>" + CATALOG_IMAGE_JS + _detail_body(kind, role, item)
          + js + PLAYER_MODAL_HTML + PLAYER_JS
          + ((FILE_EDIT_HTML + FILE_EDIT_JS) if role == "admin" else "")),
         tg_id=tg_id, role=role, active_tab=kind,
