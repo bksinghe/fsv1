@@ -164,6 +164,7 @@ Variables that are actually used in code (`API_ID`, `API_HASH`, `BOT_TOKEN`, `AD
 | `MAX_WEB_RESULTS` | `21` | Results per page (3×7 on desktop); configurable via env |
 | `WEB_SESSION_TTL` | `604800` | Login cookie lifetime in seconds (7 days) |
 | `WEB_STREAM_TTL` | `21600` | Web stream link lifetime (6 hours) |
+| `DELETE_ARCHIVE_CHANNEL` | unset | Private channel ID for copies of individually deleted files. Add the bot as an admin with post permission; do not include this channel in `INDEX_CHANNELS`. Web file deletes and PM `/delete` fail safely if archival fails or this is unset. `/deleteall` remains a separate bulk operation and does not archive files. |
 | `CATALOG_STORAGE_CHANNEL` | `BIN_CHANNEL` | Telegram channel for Post/Actor cover images. If `BIN_CHANNEL` is also in `INDEX_CHANNELS`, use a separate private channel so covers do not appear in file search |
 | `THUMB_BROWSER_CACHE` | `604800` | How long the browser caches a poster in seconds (7 days) |
 | `THUMB_FETCH_CONCURRENCY` | `6` | Download concurrency for files that **already have a `TG_ID:`** (first-time probing is always 1) |
@@ -312,3 +313,7 @@ Fixed by matching the real API (quality is derived inside `save_file()`, and `up
 `Procfile` / `Dockerfile` / `render.yaml` still run `python bot.py`; the web app comes up on `0.0.0.0:PORT` as soon as the bot starts. No extra service or dependency was added (everything is stdlib plus the existing `aiohttp`/`pymongo`/`hydrogram`).
 
 > ⚠️ Old unsigned watch/download links are disabled by default for security. If such links are still in circulation, set `ALLOW_UNSIGNED_LINKS=True` temporarily.
+
+### Archive before deleting files
+
+Set `DELETE_ARCHIVE_CHANNEL` to a private Telegram channel ID (for example `-100...`), add the bot as an administrator with permission to post, and keep the archive channel out of `INDEX_CHANNELS`. A web single-file delete first sends a copy using the stored Telegram file ID, then deletes its database record. In bot PM, reply to a video/document with `/delete` to do the same, or use `/delete keyword` to archive and delete matches one at a time; it stops on the first failure. Because the database does not store source message IDs, this is a media copy rather than a Telegram forward. If archiving fails, that file remains indexed. `/deleteall` is not covered and does not archive files. A database failure after a successful archive can leave an extra copy in the archive.

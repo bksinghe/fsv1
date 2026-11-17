@@ -83,6 +83,11 @@ if not BIN_CHANNEL:
     exit()
 BIN_CHANNEL = int(BIN_CHANNEL)
 
+# Private destination for copies of individually deleted indexed files.
+# No fallback to LOG_CHANNEL: it may have different visibility or retention.
+_delete_archive_channel = environ.get("DELETE_ARCHIVE_CHANNEL", "").strip()
+DELETE_ARCHIVE_CHANNEL = int(_delete_archive_channel) if _delete_archive_channel else None
+
 # 📚 Cover images and avatars for Posts / Actors are uploaded to this Telegram channel.
 # If BIN_CHANNEL is also in INDEX_CHANNELS (so covers do not appear in file search),
 # set a separate private channel id here; otherwise BIN_CHANNEL is used by default.

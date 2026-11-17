@@ -22,6 +22,7 @@ import asyncio
 import logging
 import re
 import time
+from urllib.parse import quote
 from collections import defaultdict
 
 from aiohttp import web
@@ -590,6 +591,40 @@ async def api_group_list(req):
         limit = 25
     groups = await store.list(req.query.get("q", ""), limit)
     return _json({"ok": True, "groups": groups})
+
+
+@group_routes.get("/api/group/preview")
+async def api_group_preview(req):
+    """Resolve an exact target group ID and its master poster for admin confirmation."""
+    if not await _admin(req):
+        return _denied()
+    raw = str(req.query.get("id") or "").strip().lstrip("#").strip()
+    gid = _fid(raw)
+    if not gid or gid != raw:
+        return _json({"ok": False, "error": "Invalid group ID"}, 400)
+    try:
+        group = await store.get(gid)
+        if not group:
+            return _json({"ok": False, "error": "Group not found"}, 404)
+        members = [str(m) for m in (group.get("members") or [])]
+        docs = {str(d.get("_id") or ""): d for d in await store.files_by_ids(members)}
+        variants = []
+        for fid in members:
+            doc = docs.get(fid)
+            if not doc:
+                continue
+            ref = str(doc.get("thumb_url") or doc.get("thumb_file_id") or "")
+            width, height = doc.get("width"), doc.get("height")
+            resolution = f"{width}×{height}" if width and height else ""
+            _, height = quality_label(resolution, doc.get("file_name"), doc.get("quality"))
+            variants.append({"qh": height, "thumb": "/api/thumb?file_id=" + quote(fid, safe="") + "&v=" + thumb_version(fid, ref)})
+        variants.sort(key=lambda v: v["qh"])
+        return _json({"ok": True, "group": {"id": str(group["_id"]),
+            "num": group.get("num", ""), "name": str(group.get("name") or "Untitled group"),
+            "count": len(group.get("members") or []), "thumb": _group_thumb_url(group, variants)}})
+    except Exception:
+        logger.exception("Group preview failed")
+        return _json({"ok": False, "error": "Group preview unavailable"}, 503)
 
 
 @group_routes.post("/api/group/save")

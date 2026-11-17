@@ -1,5 +1,6 @@
 import asyncio
 import time
+import html
 from datetime import datetime
 from hydrogram import Client, filters, enums
 from hydrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
@@ -8,10 +9,12 @@ from hydrogram.errors import MessageNotModified, MessageIdInvalid, BadRequest, L
 from info import ADMINS, LOG_CHANNEL
 from database.ia_filterdb import (
     db_count_documents,
-    delete_files,
+    find_delete_batch,
+    unpack_new_file_id,
     delete_all_files,
 )
 from database.stats_db import snapshot
+from database.delete_archive import archive_and_delete, ArchiveDeleteError
 from utils import fmt, temp
 
 
@@ -107,41 +110,41 @@ async def stats_cmd(bot, message):
 # 🗑 DELETE FILES COMMAND
 # ======================================================
 
-@Client.on_message(filters.command("delete") & filters.user(ADMINS))
+@Client.on_message(filters.private & filters.command("delete") & filters.user(ADMINS))
 async def delete_cmd(bot, message):
-    if len(message.command) < 2:
+    """Reply to one media file, or archive matching files one at a time."""
+    reply = getattr(message, "reply_to_message", None)
+    media = (getattr(reply, "document", None) or getattr(reply, "video", None)) if reply else None
+    key = message.text.split(" ", 1)[1].strip() if len(message.command) >= 2 else ""
+    if not media and len(key) < 2:
         return await message.reply(
-            "❌ <b>Usage:</b> <code>/delete keyword</code>\n\n"
-            "This will delete all files matching the keyword."
+            "Reply to a video/document with /delete, or use /delete keyword to archive and delete matching files."
         )
-
-    key = message.text.split(" ", 1)[1].strip()
-    msg = await message.reply(f"⏳ Deleting files for `{key}`...")
-    
+    msg = await message.reply("⏳ Archiving before deleting…")
+    count = 0
     try:
-        count = await delete_files(key)
-        await msg.edit(
-            f"✅ <b>Files Deleted</b>\n\n"
-            f"🗑 Deleted: <code>{count}</code> files\n"
-            f"🔍 Keyword: <code>{key}</code>\n"
-            f"🕒 Time: <code>{fmt(datetime.utcnow())}</code>"
-        )
-        
-        # Log to channel
-        try:
-            await bot.send_message(
-                LOG_CHANNEL,
-                f"🗑 <b>Files Deleted</b>\n\n"
-                f"👤 Admin: {message.from_user.mention}\n"
-                f"🔍 Keyword: <code>{key}</code>\n"
-                f"🗑 Deleted: <code>{count}</code> files\n"
-                f"🕒 Time: <code>{fmt(datetime.utcnow())}</code>"
-            )
-        except:
-            pass
-            
-    except Exception as e:
-        await msg.edit(f"❌ Error: {e}")
+        if media:
+            fid = unpack_new_file_id(media.file_id)
+            if not fid or not await archive_and_delete(bot, fid):
+                return await msg.edit("❌ File not found in the database.")
+            count = 1
+        else:
+            after = ""
+            while True:
+                page = await find_delete_batch(key, after)
+                if not page:
+                    break
+                for doc in page:
+                    fid = str(doc["_id"])
+                    if await archive_and_delete(bot, fid):
+                        count += 1
+                after = str(page[-1]["_id"])
+        await msg.edit(f"✅ Archived and deleted <code>{count}</code> file(s).")
+    except Exception as exc:
+        # Stop on the first error. Files already archived/deleted stay deleted;
+        # the failed file and all later files are left in the database.
+        text = str(exc) if isinstance(exc, ArchiveDeleteError) else "Database or network error; operation stopped."
+        await msg.edit(f"❌ Stopped after <code>{count}</code> file(s). {html.escape(text)}")
 
 
 # ======================================================

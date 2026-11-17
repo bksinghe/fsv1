@@ -94,6 +94,16 @@ bottom:auto;gap:5px;padding:0;background:none;flex:0 0 auto;flex-wrap:wrap}
    `.vadmin`/`.gadmin` still open on poster click only. */
 .vm-grid.mode-text .vm-actions.vm-always{opacity:1;visibility:visible;
 transform:none;pointer-events:all}
+/* Light-mode group chips, where text mode removes the poster backdrop. */
+html.light .vm-grid.mode-text .gcard .gposter .vtag{background:#f0f2f7;color:#334155;border-color:#d5dbe6;backdrop-filter:none}
+html.light .vm-grid.mode-text .gcard .gposter .vtag.blue{background:#e8f0ff;color:#24589c;border-color:#c1d4f4}
+html.light .vm-grid.mode-text .gcard .gposter .vtag.gold{background:#fff4d8;color:#805400;border-color:#edd9a4}
+html.light .vm-grid.mode-text .gcard .gposter .vtag.gdur{background:#e6f6ec;color:#17663a;border-color:#bee2ca}
+html.light .vm-grid.mode-text .gcard .gposter .gkind{background:#f2edfb;color:#61448e;border-color:#d8cbea;backdrop-filter:none}
+html.light .vm-grid.mode-text .gcard .gposter .gqchip{background:#e8f5ff;color:#075985;border-color:#9bd1ef}
+html.light .vm-grid.mode-text .gcard .gposter .gqchip.ep{background:#f3e8ff;color:#6b21a8;border-color:#d5b9ee}
+html.light .vm-grid.mode-text .gcard .gposter .gqchip.more{background:#f1f3f6;color:#475569;border-color:#d7dce3}
+html.light .vm-grid.mode-text .gcard .gposter .gqchip i{color:inherit}
 /* disable the dim pseudo-overlay on images; detail chips always remain */
 .vm-grid.mode-text .vm-card.admin-active .vm-poster::after,
 .vm-grid.mode-text .vm-card.gactive .vm-poster::after{display:none}

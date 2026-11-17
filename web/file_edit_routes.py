@@ -34,6 +34,7 @@ import info as _info
 from info import BIN_CHANNEL
 from utils import temp, get_size
 from database import ia_filterdb as ia
+from database.delete_archive import archive_and_delete, ArchiveDeleteError
 from database.group_db import (
     store as group_store, title_key, series_key, normal_kind, KIND_EPISODES,
 )
@@ -429,8 +430,11 @@ async def api_file_delete(req):
     fid = _file_id(data.get("file_id"))
     if not fid:
         return _json({"ok": False, "error": "Invalid file id"}, 400)
-    if not await ia.delete_file_by_id(fid):
+    try:
+        deleted = await archive_and_delete(getattr(temp, "BOT", None), fid)
+    except ArchiveDeleteError as exc:
+        return _json({"ok": False, "error": str(exc)}, 503)
+    if not deleted:
         return _json({"ok": False, "error": "File not found"}, 404)
     invalidate_thumb(fid)
-    await _group_cleanup(fid)
     return _json({"ok": True, "deleted": fid})

@@ -49,7 +49,7 @@ The same **features** are here, but with a completely different and smaller stru
   main `/search` page**: `PLAYER_MODAL_HTML` + `PLAYER_JS` from `web.web_assets` are
   included on both detail pages, and cards use `data-fid`/`data-name` with a delegated
   click/keyboard handler calling `window.play(fid, name)` → the same
-  `POST /api/stream` → signed `<video>` + Player page / Download / Copy link.
+  `POST /api/stream` → signed `<video>` + Download / Copy link.
   no new tab, no separate player UI, no duplicate JS.
 * **🖼️ Direct gallery upload** — v5's `<input multiple>` form now lives on the detail
   tab itself; a JSON response is rendered in place (v5 reloaded), and uploads go to
