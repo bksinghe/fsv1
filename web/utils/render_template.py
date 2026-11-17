@@ -8,6 +8,7 @@ requests work through that link too. The thumbnail is also shown as the poster.
 import html
 
 from web.utils.media_info import get_media_info
+from database.ia_filterdb import unpack_new_file_id
 
 WATCH_HTML = """<!DOCTYPE html>
 <html lang="en">
@@ -29,6 +30,11 @@ header{{display:flex;align-items:center;gap:10px;padding:14px 5%;border-bottom:1
 .wrap{{max-width:1000px;margin:22px auto;padding:0 16px 40px}}
 .player{{background:#000;border:1px solid var(--line);border-radius:12px;overflow:hidden}}
 video{{display:block;width:100%;aspect-ratio:16/9;background:#000}}
+.choices{{margin-top:14px;padding:14px;background:var(--card);border:1px solid var(--line);border-radius:10px}}
+.choices[hidden]{{display:none}} .choices h2{{font-size:13px;color:var(--mut);margin-bottom:10px}}
+.choices-list{{display:flex;flex-wrap:wrap;gap:8px;max-height:180px;overflow:auto}}
+.choices button{{background:#242430;color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:9px 12px;cursor:pointer}}
+.choices button.active{{background:var(--red);border-color:var(--red)}}
 .info{{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:16px}}
 .name{{font-size:17px;font-weight:700;flex:1;min-width:200px;word-break:break-word}}
 .btn{{display:inline-block;background:var(--red);color:#fff;font-weight:800;font-size:13px;
@@ -46,16 +52,47 @@ padding:11px 20px;border-radius:8px;text-decoration:none}}
       Your browser does not support HTML5 video.
     </video>
   </div>
+  <section class="choices" id="choices" data-file-id="{file_id}" hidden aria-label="Episodes and qualities"><h2>Episodes &amp; qualities</h2><div class="choices-list"></div></section>
   <div class="info">
-    <div class="name">{file_name}</div>
-    <a class="btn" href="{src}" download>⬇ Download</a>
+    <div class="name" id="name">{file_name}</div>
+    <a class="btn" id="download" href="{src}" download>⬇ Download</a>
     <a class="btn ghost" href="/search">🔎 Back to Search</a>
   </div>
-  <div class="note">This link is valid for a limited time. Seeking uses HTTP Range requests.</div>
+  <div class="note" id="note">This link is valid for a limited time. Seeking uses HTTP Range requests.</div>
 </div>
 <script>
 const v=document.querySelector('video');
 v.addEventListener('loadedmetadata',()=>{{v.play().catch(()=>{{}})}});
+const box=document.querySelector('#choices'), list=box.querySelector('.choices-list');
+let fid=box.dataset.fileId, request=0, items=[];
+function render(){{
+  list.replaceChildren(); box.hidden=items.length<2;
+  items.forEach(item=>{{
+    const b=document.createElement('button'); b.type='button';
+    b.textContent=[item.episode,item.quality].filter(Boolean).join(' · ') || item.name;
+    b.title=item.name; b.className=item.file_id===fid?'active':'';
+    b.setAttribute('aria-pressed',item.file_id===fid?'true':'false');
+    b.addEventListener('click',()=>select(item)); list.appendChild(b);
+  }});
+}}
+async function select(item){{
+  const seq=++request; fid=item.file_id; render();
+  v.pause(); v.removeAttribute('src'); v.querySelectorAll('source').forEach(s=>s.remove()); v.load();
+  document.querySelector('#name').textContent='Preparing '+item.name+'…';
+  document.querySelector('#download').removeAttribute('href');
+  try{{
+    const r=await fetch('/api/stream',{{method:'POST',credentials:'same-origin',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{file_id:fid}})}});
+    const d=await r.json(); if(seq!==request)return;
+    if(!r.ok || !d.stream)throw Error(d.error||'Stream unavailable');
+    document.querySelector('#name').textContent=item.name;
+    document.querySelector('#download').href=d.download;
+    document.querySelector('#note').textContent='Signed link · '+d.expires_in+' seconds valid · Range/seek supported';
+    v.poster=d.poster||''; v.src=d.stream; v.load();
+    history.replaceState(null,'',d.watch);
+  }}catch(e){{if(seq===request)document.querySelector('#note').textContent=String(e.message||e)}}
+}}
+if(fid)fetch('/api/player/group?file_id='+encodeURIComponent(fid),{{credentials:'same-origin'}})
+  .then(r=>r.ok?r.json():null).then(d=>{{if(d&&Array.isArray(d.items)){{items=d.items;render()}}}}).catch(()=>{{}});
 </script>
 </body>
 </html>"""
@@ -72,10 +109,13 @@ border-radius:8px;text-decoration:none;font-weight:800}}</style></head>
 <a href="{src}" download>⬇ Direct Download</a></div></body></html>"""
 
 
-async def media_watch(message_id: int, query: str = "", poster: str = ""):
+async def media_watch(message_id: int, query: str = "", poster: str = "", file_id: str = ""):
     info = await get_media_info(message_id)
     if not info:
         return "<h2 style='color:#fff;text-align:center;padding:60px'>❌ File Not Found</h2>"
+
+    if not file_id:
+        file_id = unpack_new_file_id(info.file_id)
 
     src = f"/download/{message_id}"
     if query:
@@ -104,4 +144,5 @@ async def media_watch(message_id: int, query: str = "", poster: str = ""):
         src=src,
         mime=mime,
         poster=safe_poster,
+        file_id=html.escape(file_id[:512], quote=True),
     )

@@ -1005,7 +1005,7 @@ cursor:pointer;font-family:inherit}
 display:none;align-items:center;justify-content:center;padding:16px}
 .modal.open{display:flex}
 .mcard{background:var(--bg2);border:1px solid var(--line);border-radius:14px;
-width:100%;max-width:940px;overflow:hidden;box-shadow:0 20px 70px rgba(0,0,0,.7)}
+width:100%;max-width:940px;max-height:95vh;overflow-y:auto;box-shadow:0 20px 70px rgba(0,0,0,.7)}
 .mhead{display:flex;align-items:center;gap:10px;padding:12px 16px;
 border-bottom:1px solid var(--line)}
 .mtitle{flex:1;font-weight:800;font-size:14px;overflow:hidden;
@@ -1014,6 +1014,11 @@ text-overflow:ellipsis;white-space:nowrap}
 line-height:1}
 .video-wrap{background:#000;aspect-ratio:16/9}
 video{width:100%;height:100%;display:block;background:#000}
+.pchoices{padding:12px 16px;border-top:1px solid var(--line)}
+.pchoices[hidden]{display:none}.pchoices-title{font-size:12px;font-weight:800;color:var(--mut);margin-bottom:8px}
+.pchoices-list{display:flex;gap:8px;flex-wrap:wrap;max-height:145px;overflow-y:auto}
+.pchoices button{background:var(--bg3);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:8px 11px;cursor:pointer;text-align:left;font:inherit;font-size:12px}
+.pchoices button.active{border-color:var(--red);background:var(--red);color:white}
 .mactions{display:flex;gap:8px;flex-wrap:wrap;padding:13px 16px}
 .mactions a,.mactions button{background:var(--bg3);border:1px solid var(--line);
 color:var(--txt);border-radius:7px;padding:9px 14px;font-size:12px;font-weight:800;
@@ -1311,6 +1316,7 @@ PLAYER_MODAL_HTML = """<div class="modal" id="modal" onclick="if(event.target===
     <div class="mhead"><div class="mtitle" id="pTitle">Loading stream…</div>
       <button class="xbtn" onclick="closePlayer()">✕</button></div>
     <div class="video-wrap"><video id="player" controls playsinline></video></div>
+    <section class="pchoices" id="pChoices" hidden aria-label="Episodes and qualities"><div class="pchoices-title">Episodes &amp; qualities</div><div class="pchoices-list" id="pChoicesList"></div></section>
     <div class="mactions">
       <a class="red" id="pWatch" href="#" target="_blank" rel="noopener">▶ Player page</a>
       <a id="pDl" href="#">⬇ Download</a>
@@ -1324,19 +1330,42 @@ PLAYER_MODAL_HTML = """<div class="modal" id="modal" onclick="if(event.target===
 PLAYER_JS = r"""<script>
 (function(){
   const q = s => document.querySelector(s);
-  let currentWatch = '';
-  window.play = async function(fid, name){
+  let currentWatch = '', seq = 0, items = [];
+  function renderChoices(fid){
+    const box=q('#pChoices'), list=q('#pChoicesList');
+    list.replaceChildren(); box.hidden=items.length<2;
+    items.forEach(item=>{
+      const b=document.createElement('button'); b.type='button';
+      b.className=item.file_id===fid?'active':'';
+      b.setAttribute('aria-pressed', item.file_id===fid?'true':'false');
+      b.textContent=[item.episode,item.quality].filter(Boolean).join(' · ') || item.name;
+      b.title=item.name; b.addEventListener('click',()=>window.play(item.file_id,item.name,items));
+      list.appendChild(b);
+    });
+  }
+  window.play = async function(fid, name, context){
     const modal=q('#modal'), v=q('#player');
     if(!modal || !v) return;
+    const request=++seq;
+    items=Array.isArray(context)?context:[]; renderChoices(fid);
+    currentWatch=''; q('#pWatch').removeAttribute('href'); q('#pDl').removeAttribute('href');
     q('#pTitle').textContent='⏳ '+name;
     q('#pNote').textContent='Preparing the streaming link…';
     modal.classList.add('open');
-    v.pause(); v.removeAttribute('src');
+    v.pause(); v.removeAttribute('src'); v.load();
+    if(!items.length){
+      fetch('/api/player/group?file_id='+encodeURIComponent(fid),{credentials:'same-origin'})
+        .then(r=>r.ok?r.json():null).then(d=>{
+          if(request===seq && d && Array.isArray(d.items)){items=d.items;renderChoices(fid)}
+        }).catch(()=>{});
+    }
     try{
       const r=await fetch('/api/stream',{method:'POST',credentials:'same-origin',
         headers:{'Content-Type':'application/json'},body:JSON.stringify({file_id:fid})});
+      if(request!==seq) return;
       if(r.status===401){location.href='/login?err='+encodeURIComponent('Session expired. Please sign in again.');return}
       const d=await r.json();
+      if(request!==seq) return;
       if(!d.stream){q('#pTitle').textContent='❌ '+(d.error||'Stream unavailable');
         q('#pNote').textContent='This file could not be streamed right now.';return}
       currentWatch=location.origin+d.watch;
@@ -1348,10 +1377,11 @@ PLAYER_JS = r"""<script>
       v.src=d.stream;
       v.load();
       const pr=v.play(); if(pr && typeof pr.catch==='function') pr.catch(()=>{});
-    }catch(e){q('#pTitle').textContent='❌ Stream error';
+    }catch(e){if(request!==seq)return;q('#pTitle').textContent='❌ Stream error';
       q('#pNote').textContent=String(e.message||e)}
   };
   window.closePlayer = function(){
+    ++seq; items=[]; currentWatch='';
     const v=q('#player'); if(!v) return;
     v.pause(); v.removeAttribute('src'); v.load();
     const m=q('#modal'); if(m) m.classList.remove('open');
@@ -1511,16 +1541,21 @@ async function load(reset){
     if(seq===searchSeq){loading=false;$('#srow').classList.remove('loading')}
   }
 }
+function playerGroupContext(el){
+  const card=el.closest('.gcard'), g=card && window.groupGet && window.groupGet(card.dataset.gkey);
+  if(!g || !Array.isArray(g.variants)) return null;
+  return g.variants.map(v=>({file_id:v.file_id,name:v.name,episode:g.kind==='episodes'?(v.el||''):'',quality:v.ql==='?'?'':(v.ql||'')}));
+}
 $('#grid').addEventListener('click',e=>{
   const el=e.target.closest('.vcard[data-fid]');if(!el)return;
-  play(decodeURIComponent(el.dataset.fid),el.dataset.name);
+  play(decodeURIComponent(el.dataset.fid),el.dataset.name,playerGroupContext(el));
 });
 document.addEventListener('keydown',e=>{
   if(e.key!=='Enter'&&e.key!==' ')return;
   const a=document.activeElement;
   const el=a&&a.closest?a.closest('.vcard[data-fid]'):null;
   if(!el)return;
-  e.preventDefault();play(decodeURIComponent(el.dataset.fid),el.dataset.name);
+  e.preventDefault();play(decodeURIComponent(el.dataset.fid),el.dataset.name,playerGroupContext(el));
 });
 
 ViewMode.apply();

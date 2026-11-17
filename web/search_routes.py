@@ -25,7 +25,8 @@ from database.ia_filterdb import (
     get_recent_files,
     get_file_details,
 )
-from database.group_db import duration_seconds
+from database.group_db import (duration_seconds, store, quality_label, episode_identity,
+                               episode_label, clean_episode_map, normal_kind, KIND_EPISODES)
 from web.group_routes import group_cards, filter_group_cards
 from stream_security import sign_params
 from web.web_assets import get_auth, search_page, vcard_meta
@@ -217,7 +218,7 @@ async def _tunnel_stream(fid: str, doc: dict) -> dict:
     ttl = max(60, int(expiry - now))
     signed = sign_params(msg_id, ttl)
     poster = _thumb_url(doc)
-    watch = f"/watch/{msg_id}?{signed}&poster={quote(poster, safe='')}"
+    watch = f"/watch/{msg_id}?{signed}&poster={quote(poster, safe='')}&file_id={quote(fid, safe='')}"
     download = f"/download/{msg_id}?{signed}"
     return {
         "file_id": fid,
@@ -228,6 +229,41 @@ async def _tunnel_stream(fid: str, doc: dict) -> dict:
         "poster": poster,
         "expires_in": ttl,
     }
+
+
+@search_routes.get("/api/player/group")
+async def api_player_group(req):
+    """List existing group members without issuing streaming links."""
+    role, _ = await get_auth(req)
+    if not role:
+        return _unauthorized()
+    fid = str(req.query.get("file_id") or "").strip()
+    if not fid or len(fid) > 512:
+        return web.json_response({"error": "Invalid file_id"}, status=400)
+    try:
+        groups = await store.by_members([fid])
+        if not groups:
+            return web.json_response({"items": []})
+        group = groups[0]
+        ids = [str(m) for m in (group.get("members") or [])]
+        docs = {str(d.get("_id")): d for d in await store.files_by_ids(ids)}
+        emap = clean_episode_map(group.get("episode_map"))
+        items = []
+        for i, member in enumerate(ids):
+            doc = docs.get(member)
+            if not doc:
+                continue
+            name = str(doc.get("file_name") or "Untitled")
+            episode = emap.get(member) or episode_identity(name)
+            if not episode and normal_kind(group.get("kind")) == KIND_EPISODES:
+                episode = episode_label(name, i)[0]
+            quality, _ = quality_label(doc.get("height"), name, doc.get("quality"))
+            items.append({"file_id": member, "name": name, "episode": episode,
+                          "quality": "" if quality == "?" else quality})
+        return web.json_response({"items": items if len(items) > 1 else []})
+    except Exception:
+        logger.exception("Player group lookup failed")
+        return web.json_response({"error": "Group temporarily unavailable"}, status=503)
 
 
 @search_routes.post("/api/stream")
