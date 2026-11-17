@@ -449,7 +449,18 @@ border-radius:16px;padding:24px;margin-bottom:24px;animation:catFade .5s ease bo
 @keyframes catFade{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
 .cat-hero-img{width:220px;max-width:100%;aspect-ratio:2/3;border-radius:12px;object-fit:cover;
 background:var(--bg3);border:1px solid var(--line)}
-.cat-hero-info{flex:1;min-width:240px}
+.cat-hero-cover{position:relative;display:block;flex:0 0 220px;width:220px;max-width:100%;padding:0;
+border:0;border-radius:12px;background:none;cursor:zoom-in;color:#fff;text-align:left}
+.cat-hero-cover .cat-hero-img{display:block;width:100%}
+.cat-hero-cover:focus-visible{outline:2px solid var(--red);outline-offset:4px}
+.cat-hero-zoom{position:absolute;right:10px;bottom:10px;background:rgba(0,0,0,.8);color:#fff;
+border:1px solid rgba(255,255,255,.4);border-radius:8px;padding:6px 9px;font-size:12px;font-weight:800}
+.cat-hero-info{flex:1;min-width:0}
+@media(max-width:600px){
+  .cat-hero{padding:16px;gap:18px}
+  .cat-hero-cover,.cat-hero > .cat-hero-img{flex:0 1 100%;width:100%;max-width:360px;margin:0 auto}
+  .cat-hero-info{flex-basis:100%}
+}
 .cat-hero-title{font-size:28px;font-weight:900;letter-spacing:-1px;margin-bottom:10px}
 .cat-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
 .cat-chip{background:var(--bg3);border:1px solid var(--line);border-radius:20px;padding:4px 10px;
@@ -470,6 +481,10 @@ align-items:center;justify-content:center;padding:20px;opacity:0;transition:opac
 .cat-lightbox img{max-width:94%;max-height:88vh;border-radius:10px;transform:scale(.94);
 transition:transform .3s cubic-bezier(.34,1.3,.64,1)}
 .cat-lightbox.show img{transform:scale(1)}
+.cat-lightbox-close{position:absolute;top:max(16px,env(safe-area-inset-top));right:16px;
+width:44px;height:44px;border:1px solid rgba(255,255,255,.5);border-radius:50%;
+background:rgba(0,0,0,.75);color:#fff;font-size:26px;cursor:pointer;z-index:1}
+.cat-lightbox-close:focus-visible{outline:2px solid var(--red);outline-offset:3px}
 .cat-related{display:flex;flex-direction:column;gap:8px}
 .cat-related a{display:flex;justify-content:space-between;gap:10px;background:var(--bg3);
 border:1px solid var(--line);border-radius:8px;padding:10px 13px;font-size:12px;font-weight:700}
@@ -1225,14 +1240,22 @@ async function deleteGallery(idx){
     GALLERY.splice(idx,1); renderGallery(); toast('🗑 Image removed');
   }catch(e){ toast('Delete failed','err'); }
 }
+let lightReturnFocus=null, lightCloseTimer=null;
 function openLight(src){
   const l=document.getElementById('catLight');
+  clearTimeout(lightCloseTimer);
+  lightReturnFocus=document.activeElement;
   l.querySelector('img').src=src; l.classList.add('open');
+  l.setAttribute('aria-hidden','false');
+  l.querySelector('.cat-lightbox-close').focus();
   requestAnimationFrame(()=>l.classList.add('show'));
 }
 function closeLight(){
-  const l=document.getElementById('catLight'); l.classList.remove('show');
-  setTimeout(()=>l.classList.remove('open'),250);
+  const l=document.getElementById('catLight');
+  if(!l.classList.contains('open'))return;
+  l.classList.remove('show'); l.setAttribute('aria-hidden','true');
+  if(lightReturnFocus && lightReturnFocus.focus)lightReturnFocus.focus();
+  lightCloseTimer=setTimeout(()=>l.classList.remove('open'),250);
 }
 async function deleteDetail(id){
   if(!confirm('Delete this item?')) return;
@@ -1468,7 +1491,10 @@ def _detail_body(kind: str, role: str, item: dict) -> str:
         '🎬 Add Videos</a>' if admin else ""
     )
     hero_img = (
+        '<button type="button" class="cat-hero-cover" aria-label="Enlarge poster" '
+        'onclick="openLight(this.firstElementChild.currentSrc || this.firstElementChild.src)">'
         f'<img class="cat-hero-img" onerror="catPosterFail(this)" src="{esc(src, quote=True)}" alt="Cover image">'
+        '<span class="cat-hero-zoom" aria-hidden="true">🔍 Enlarge</span></button>'
         if src else '<div class="cat-hero-img" style="display:flex;align-items:center;'
                     'justify-content:center;font-size:44px">🖼️</div>'
     )
@@ -1509,7 +1535,7 @@ def _detail_body(kind: str, role: str, item: dict) -> str:
     <div class="cat-galgrid" id="catGallery">{gal_html}</div>
   </section>
 </div></div>
-<div class="cat-lightbox" id="catLight" onclick="if(event.target===this)closeLight()"><img src="" alt=""></div>
+<div class="cat-lightbox" id="catLight" role="dialog" aria-label="Image preview" aria-hidden="true" onclick="if(event.target===this)closeLight()"><button type="button" class="cat-lightbox-close" aria-label="Close image preview" onclick="closeLight()">×</button><img src="" alt="Enlarged image"></div>
 <div class="cat-toast" id="catToast"></div>"""
 
 def build_detail_page(kind: str, role: str, tg_id: int, item: dict):
