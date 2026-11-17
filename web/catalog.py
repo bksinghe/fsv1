@@ -622,7 +622,7 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let state = {q:'', cat:'all',
              offset:0, page:1, hasNext:false, req:0, items:{}, editing:null, dirty:false,
-             flash:null, gallery:[]};
+             flash:null, gallery:[], uploadSeq:0, uploadPending:false, uploadError:false, saving:false};
 /* 🖼️📄 Poster/Text state + persistence: web/mode_assets.py → window.ViewMode */
 
 function imgSrc(v){
@@ -788,7 +788,7 @@ function editorHTML(){
     <div class="cat-mfoot">
       <span class="cat-dirty" id="fDirty" style="display:none">● Unsaved changes</span>
       <button class="cat-btn ghost" type="button" id="fDelete" onclick="deleteFromEditor()" style="display:none">🗑 Delete</button>
-      <button class="cat-btn" type="button" onclick="saveEditor()">💾 Save</button>
+      <button class="cat-btn" type="button" id="catSave" onclick="saveEditor()">💾 Save</button>
     </div>
   </div></div>`;
 }
@@ -880,6 +880,8 @@ function setPreview(v){
 }
 async function openEditor(id, focus){
   state.editing = id || null; state.dirty = false;
+  state.uploadSeq++; state.uploadPending=false; state.uploadError=false; state.saving=false;
+  $('#fUploadNote').textContent=''; $('#fUpload').value=''; $('#catSave').disabled=false;
   let it = id ? state.items[id] : null;
   if(id && !it){
     try{
@@ -922,6 +924,7 @@ function closeEditor(force){
   const m = $('#catModal'); m.classList.remove('show');
   setTimeout(()=>m.classList.remove('open'), 220);
   state.editing = null; state.dirty = false;
+  state.uploadSeq++; state.uploadPending=false; state.uploadError=false;
 }
 function collect(){
   const links = Array.from(document.querySelectorAll('#fLinks .cat-linkrow')).map(r=>{
@@ -944,10 +947,13 @@ function collect(){
   };
 }
 async function saveEditor(){
+  if(state.saving)return;
+  if(state.uploadPending){toast('Wait for the cover image upload to finish', 'err');return;}
+  if(state.uploadError){toast('Cover upload failed. Retry it or enter an image URL before saving.', 'err');return;}
   const payload = collect();
   if(!payload.title){ toast('A title is required', 'err'); $('#fTitle').focus(); return; }
   const btn = document.querySelector('#catModal .cat-mfoot .cat-btn:last-child');
-  btn.disabled = true; btn.textContent = '⏳ Saving…';
+  state.saving=true; btn.disabled = true; btn.textContent = '⏳ Saving…';
   try{
     const r = await fetch(`/api/catalog/${CFG.kind}/save`, {method:'POST',
       headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
@@ -959,7 +965,7 @@ async function saveEditor(){
     toast('✅ Saved');
     await load(true);
   }catch(e){ toast('⚠️ '+e.message, 'err'); }
-  finally{ btn.disabled = false; btn.textContent = '💾 Save'; }
+  finally{ state.saving=false; btn.disabled = false; btn.textContent = '💾 Save'; }
 }
 async function removeItem(id){
   const it = state.items[id];
@@ -982,16 +988,27 @@ async function deleteFromEditor(){
 }
 async function uploadImage(input){
   if(!input.files || !input.files[0]) return;
-  const note = $('#fUploadNote'); note.textContent = '⏳ Uploading…';
+  if(state.saving){toast('Wait for the post to finish saving', 'err');input.value='';return;}
+  const seq=++state.uploadSeq;
+  state.uploadPending=true;state.uploadError=false;markDirty();
+  const note = $('#fUploadNote'); note.textContent = '⏳ Uploading… please wait before saving';
+  $('#catSave').disabled=true;
   const fd = new FormData(); fd.append('image', input.files[0]);
   try{
     const r = await fetch('/api/catalog/upload', {method:'POST', body:fd});
     const d = await r.json();
-    if(!d.ok) throw new Error(d.error || 'Upload failed');
+    if(seq!==state.uploadSeq)return;
+    if(!r.ok || !d.ok || typeof d.value!=='string' || !d.value.startsWith('TG_ID:') || d.value.length<=6)
+      throw new Error(d.error || 'Upload failed');
     $('#fImage').value = d.value; setPreview(d.value); markDirty();
-    note.textContent = '✅ Saved to Telegram';
-  }catch(e){ note.textContent = '⚠️ '+e.message+' (paste a URL instead)'; }
-  input.value = '';
+    note.textContent = '✅ Uploaded — press Save to store the post';
+  }catch(e){
+    if(seq!==state.uploadSeq)return;
+    state.uploadError=true;
+    note.textContent = '⚠️ '+e.message+' — retry or enter an image URL before saving';
+  }finally{
+    if(seq===state.uploadSeq){state.uploadPending=false;$('#catSave').disabled=false;input.value='';}
+  }
 }
 async function pickMedia(){
   const q = $('#fPickerQ').value.trim();
@@ -1030,7 +1047,12 @@ document.addEventListener('keydown', e => {
 });
 document.addEventListener('input', e => {
   if(e.target.closest('#catModal')) markDirty();
-  if(e.target.id === 'fImage') setPreview(e.target.value);
+  if(e.target.id === 'fImage'){
+    // A manually entered URL supersedes any pending/failed upload.
+    state.uploadSeq++; state.uploadPending=false; state.uploadError=false;
+    $('#catSave').disabled=state.saving; $('#fUploadNote').textContent='';
+    setPreview(e.target.value);
+  }
 });
 
 /* ── wiring ── */
