@@ -461,12 +461,12 @@ border:1px solid rgba(255,255,255,.4);border-radius:8px;padding:6px 9px;font-siz
   .cat-hero-cover,.cat-hero > .cat-hero-img{flex:0 1 100%;width:100%;max-width:360px;margin:0 auto}
   .cat-hero-info{flex-basis:100%}
 }
-.cat-hero-title{font-size:28px;font-weight:900;letter-spacing:-1px;margin-bottom:10px}
+.cat-hero-title{font-size:28px;font-weight:900;letter-spacing:-1px;margin-bottom:10px;overflow-wrap:anywhere}
 .cat-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
 .cat-chip{background:var(--bg3);border:1px solid var(--line);border-radius:20px;padding:4px 10px;
 font-size:11px;font-weight:800;color:var(--mut)}
 .cat-chip.red{background:var(--red);border-color:var(--red);color:#fff}
-.cat-body-txt{font-size:14px;line-height:1.7;color:var(--txt);white-space:pre-wrap;margin-bottom:18px}
+.cat-body-txt{font-size:14px;line-height:1.7;color:var(--txt);white-space:pre-wrap;overflow-wrap:anywhere;margin-bottom:18px}
 .cat-links{display:flex;gap:9px;flex-wrap:wrap}
 .cat-links a{background:var(--bg3);border:1px solid var(--line);border-radius:8px;padding:9px 14px;
 font-size:12px;font-weight:800;color:var(--txt);transition:transform .16s,border-color .16s,color .16s}
@@ -528,7 +528,9 @@ background:var(--bg3);cursor:zoom-in}
 .cat-galitem img.on{opacity:1}.cat-galitem:hover img{transform:scale(1.06)}
 .cat-galdel{position:absolute;top:7px;right:7px;background:rgba(160,8,8,.9);border:0;color:#fff;
 border-radius:6px;padding:4px 8px;font-size:10px;font-weight:800;cursor:pointer;opacity:0;
-transition:opacity .2s}.cat-galitem:hover .cat-galdel{opacity:1}
+transition:opacity .2s}.cat-galitem:hover .cat-galdel,.cat-galitem:focus-within .cat-galdel{opacity:1}
+.cat-galitem:focus-visible{outline:2px solid var(--red);outline-offset:2px}
+@media(hover:none){.cat-galitem .cat-galdel{opacity:1;min-width:36px;min-height:36px}}
 .cat-lib{margin-top:26px}
 .cat-lib-title{font-size:14px;font-weight:900;margin-bottom:12px;letter-spacing:-.2px}
 
@@ -1197,7 +1199,7 @@ function mediaPage(step){
 function renderGallery(){
   const box=document.getElementById('catGallery'); if(!box) return;
   box.innerHTML=GALLERY.length ? GALLERY.map((src,i)=>
-      '<div class="cat-galitem rv-enter" data-idx="'+i+'" data-src="'+esc(src)+'" '
+      '<div class="cat-galitem rv-enter" role="button" tabindex="0" aria-label="Enlarge image" data-idx="'+i+'" data-src="'+esc(src)+'" '
       +'onclick="openLight(this.dataset.src)">'
       +'<img src="'+esc(src)+'" alt="" loading="lazy" '
       +'onload="this.classList.add(\'on\')" onerror="this.remove()">'
@@ -1268,8 +1270,17 @@ document.querySelectorAll('.vposter img,.cat-galitem img').forEach(img=>{
   img.addEventListener('load',()=>img.classList.add('on'));
 });
 document.addEventListener('keydown',e=>{
-  if(e.key==='Escape'){ closeLight(); if(window.closePlayer) window.closePlayer(); }
+  const light=document.getElementById('catLight');
+  if(light.classList.contains('open') && light.getAttribute('aria-hidden')==='false'){
+    if(e.key==='Escape'){e.preventDefault();closeLight();}
+    else if(e.key==='Tab'){e.preventDefault();light.querySelector('.cat-lightbox-close').focus();}
+    return;
+  }
+  if(e.key==='Escape'){ if(window.closePlayer) window.closePlayer(); }
   const focused=document.activeElement||{};
+  if((e.key==='Enter'||e.key===' ') && focused.classList && focused.classList.contains('cat-galitem')){
+    e.preventDefault();openLight(focused.dataset.src);return;
+  }
   if(focused.closest && focused.closest('#feModal')) return;  // ✏️ skip tab-nav while the editor modal is open
   if((e.key==='Enter'||e.key===' ') && focused.classList && focused.classList.contains('vcard')){
     e.preventDefault(); playCard(focused); return;
@@ -1460,9 +1471,9 @@ def _detail_body(kind: str, role: str, item: dict) -> str:
                 if admin else ""
             )
             gal_html += (
-                f'<div class="cat-galitem rv-enter" data-idx="{i}" data-src="{esc(u)}" '
+                f'<div class="cat-galitem rv-enter" role="button" tabindex="0" aria-label="Enlarge image" data-idx="{i}" data-src="{esc(u)}" '
                 f'onclick="openLight(this.dataset.src)">'
-                f'<img src="{esc(u)}" alt="" loading="lazy" onerror="this.remove()">{del_btn}</div>'
+                f'<img src="{esc(u)}" alt="" loading="lazy" onload="this.classList.add(&quot;on&quot;)" onerror="this.remove()">{del_btn}</div>'
             )
     else:
         gal_html = f'<div class="cat-gempty">{esc(cfg["galleryEmpty"])}</div>'

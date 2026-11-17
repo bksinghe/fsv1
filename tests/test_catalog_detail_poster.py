@@ -13,9 +13,18 @@ class CatalogDetailPosterTests(unittest.TestCase):
         self.assertIn('aria-label="Enlarge poster"', SOURCE)
         self.assertIn('openLight(this.firstElementChild.currentSrc || this.firstElementChild.src)', SOURCE)
         self.assertIn('aria-label="Close image preview"', SOURCE)
-        self.assertIn("if(e.key==='Escape'){ closeLight()", SOURCE)
+        self.assertIn("if(e.key==='Escape'){e.preventDefault();closeLight();}", SOURCE)
         self.assertIn('lightReturnFocus.focus()', SOURCE)
         self.assertIn('if src else', SOURCE)
+
+    def test_mobile_gallery_and_image_preview_accessibility(self):
+        self.assertIn('@media(hover:none){.cat-galitem .cat-galdel{opacity:1;', SOURCE)
+        self.assertIn('.cat-galitem:focus-within .cat-galdel{opacity:1}', SOURCE)
+        self.assertEqual(SOURCE.count('role="button" tabindex="0" aria-label="Enlarge image"'), 2)
+        self.assertIn('onload="this.classList.add(&quot;on&quot;)"', SOURCE)
+        self.assertIn("focused.classList.contains('cat-galitem')", SOURCE)
+        self.assertIn("else if(e.key==='Tab'){e.preventDefault();light.querySelector('.cat-lightbox-close').focus();}", SOURCE)
+        self.assertIn('overflow-wrap:anywhere', SOURCE)
 
     def test_cover_markup_escapes_source_and_placeholder_has_no_zoom(self):
         tree = ast.parse(SOURCE)
@@ -36,3 +45,7 @@ class CatalogDetailPosterTests(unittest.TestCase):
                 self.assertIn('class="cat-lightbox-close"', out)
                 empty = env['_detail_body'](kind, 'user', {'title': 'Test'})
                 self.assertNotIn('class="cat-hero-cover"', empty)
+                gallery = env['_detail_body'](kind, 'admin', {'title': 'Test', 'gallery': ['https://x.test/photo.jpg']})
+                self.assertIn('role="button" tabindex="0" aria-label="Enlarge image"', gallery)
+                self.assertIn('class="cat-galdel"', gallery)
+                self.assertIn('onload="this.classList.add(&quot;on&quot;)"', gallery)
