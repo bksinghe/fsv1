@@ -15,10 +15,7 @@ from utils import get_readable_time, log_error
 LOCK = asyncio.Lock()
 CANCEL = False
 
-# 📌 Channels a manual run is indexing right now.
-#    plugins/channel.py imports this set and skips live auto-indexing for
-#    them, so the manual loop and the live handler never write the same
-#    file at the same time.
+# 📌 Channels currently being manually indexed.
 ACTIVE_INDEXES = set()
 
 # =====================================================
@@ -65,7 +62,14 @@ async def send_log(bot, text):
 # ENTRY POINT
 # forward / link → DIRECT CONFIRMATION
 # =====================================================
-@Client.on_message(filters.private & filters.user(ADMINS) & filters.incoming)
+def is_index_request(_, __, message):
+    return bool(
+        (message.text and message.text.startswith("https://t.me"))
+        or (message.forward_from_chat and message.forward_from_chat.type == enums.ChatType.CHANNEL)
+    )
+
+
+@Client.on_message(filters.private & filters.user(ADMINS) & filters.incoming & filters.create(is_index_request), group=-1)
 async def start_index(bot, message):
     if LOCK.locked():
         return await message.reply("⏳ Indexing already running")
@@ -107,6 +111,7 @@ async def start_index(bot, message):
         f"📊 **Last Message:** `{last_msg_id}`",
         reply_markup=btn
     )
+    message.stop_propagation()
 
 
 # =====================================================
@@ -115,6 +120,8 @@ async def start_index(bot, message):
 @Client.on_callback_query(filters.regex("^idx#"))
 async def index_callback(bot, query):
     global CANCEL
+    if not query.from_user or query.from_user.id not in ADMINS:
+        return await query.answer("Admins only", show_alert=True)
     data = query.data.split("#")
 
     # idx#close = ❌ CANCEL of the confirmation, idx#cancel = 🛑 STOP
@@ -124,12 +131,13 @@ async def index_callback(bot, query):
             await query.message.edit("❌ Cancelled")
         return
 
+    if LOCK.locked():
+        return await query.answer("Indexing already running", show_alert=True)
+
     _, _, chat_id, last_id = data
-    chat = await bot.get_chat(int(chat_id))
-
-    await query.message.edit("⚡ Indexing started…")
-
     async with LOCK:
+        chat = await bot.get_chat(int(chat_id))
+        await query.message.edit("⚡ Indexing started…")
         CANCEL = False
         await index_worker(
             bot,
@@ -148,13 +156,14 @@ async def index_worker(bot, status, chat_id, last_msg_id, channel_title):
     saved = dup = err = nomedia = 0
     processed = 0
 
-    # Resume: continue from the last message the previous run reached
-    old_resume_id = await get_resume(chat_id)
-    stop_id = old_resume_id or 0
+    # Older runs could advance the checkpoint despite fetch/save errors (or
+    # skip live posts). Re-scan the full range so those holes can be repaired.
+    # save_file is idempotent and updates already indexed files.
+    stop_id = 0
 
     current_id = last_msg_id
 
-    # 🛑 Live posts of this channel are auto-indexed again once the run ends
+    # Track the active run for diagnostics.
     ACTIVE_INDEXES.add(chat_id)
 
     try:
@@ -167,9 +176,8 @@ async def index_worker(bot, status, chat_id, last_msg_id, channel_title):
             except FloodWait as e:
                 await asyncio.sleep(e.value)
                 continue
-            except Exception:
-                current_id -= 1
-                continue
+            except Exception as e:
+                raise RuntimeError(f"Could not fetch message {current_id}: {e}") from e
 
             processed += 1
 
@@ -223,6 +231,7 @@ async def index_worker(bot, status, chat_id, last_msg_id, channel_title):
                 dup += 1
             else:
                 err += 1
+                raise RuntimeError(f"Could not save message {current_id}; retry indexing")
 
             current_id -= 1
 
@@ -265,8 +274,10 @@ async def index_worker(bot, status, chat_id, last_msg_id, channel_title):
 # =====================================================
 # STOP
 # =====================================================
-@Client.on_callback_query(filters.regex("^idx#cancel"))
+@Client.on_callback_query(filters.regex("^idx#cancel"), group=1)
 async def stop_index(bot, query):
     global CANCEL
+    if not query.from_user or query.from_user.id not in ADMINS:
+        return await query.answer("Admins only", show_alert=True)
     CANCEL = True
     await query.answer("Stopping…", show_alert=True)
