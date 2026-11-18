@@ -440,7 +440,12 @@ FILE_EDIT_JS = r"""<script>
       const sz=c.querySelector('.vsize');
       if(sz) sz.outerHTML=vcardSize(f);
       const im=c.querySelector('.vimg');
-      if(im && f.thumb){ im.src=f.thumb; im.classList.remove('hidden'); }
+      if(im && f.thumb){
+        im.dataset.thumb=f.thumb; im.dataset.src=f.thumb; im.dataset.retry='0';
+        im.classList.remove('hidden','on');
+        const poster=im.closest('.vposter'); if(poster)poster.classList.remove('no-thumb');
+        if(!window.ViewMode || !window.ViewMode.deferInText(im,f.thumb))im.src=f.thumb;
+      }
     });
   }
   function setPoster(f){
@@ -1576,7 +1581,8 @@ function thumbFail(img){
       if(!img.isConnected||img.classList.contains('on'))return;
       const base=img.dataset.thumb||img.getAttribute('src')||'';
       if(!base)return;
-      img.src=base+(base.includes('?')?'&':'?')+'retry=true&t='+Date.now();
+      const url=base+(base.includes('?')?'&':'?')+'retry=true&t='+Date.now();
+      if(!window.ViewMode.deferInText(img,url))img.src=url;
     },delays[n]);
     return;
   }

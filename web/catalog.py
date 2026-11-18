@@ -632,7 +632,8 @@ window.catPosterFail=function(img){
   img.dataset.posterRetry=String(n+1);
   setTimeout(()=>{
     if(!img.isConnected || img.classList.contains('on'))return;
-    img.src=base+(base.includes('?')?'&':'?')+'retry=true&t='+Date.now();
+    const url=base+(base.includes('?')?'&':'?')+'retry=true&t='+Date.now();
+    if(!window.ViewMode || !window.ViewMode.deferInText(img,url))img.src=url;
   },delays[n]);
 };
 </script>"""

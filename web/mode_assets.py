@@ -148,6 +148,14 @@ window.ViewMode=(function(){
     return (isText()?'data-src="'+u+'"':'src="'+u+'"')+
            ' data-thumb="'+u+'" data-retry="0"';
   }
+  /* Only cards in a mode-controlled grid defer retries or editor updates.
+     Detail-page and admin-modal previews are intentionally independent. */
+  function deferInText(img,url){
+    if(!isText() || !img.closest || !img.closest('.vm-grid'))return false;
+    img.dataset.src=url;
+    img.removeAttribute('src');
+    return true;
+  }
   function apply(){
     Array.prototype.forEach.call(document.querySelectorAll('.vm-grid'),function(g){
       g.classList.toggle('mode-text',isText());
@@ -191,7 +199,7 @@ window.ViewMode=(function(){
     bind();apply();
   }
   return {init:init,set:set,get:get,isText:isText,apply:apply,
-          imgAttrs:imgAttrs,storageFor:storageFor,options:VALID.slice(),
+          imgAttrs:imgAttrs,deferInText:deferInText,storageFor:storageFor,options:VALID.slice(),
           defaultMode:DEFAULT};
 })();
 /* Small alias for older inline handlers / tests — logic stays inside ViewMode */
