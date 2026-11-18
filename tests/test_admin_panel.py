@@ -53,12 +53,8 @@ UNDOCUMENTED_ON_PURPOSE = (
     "/warmup_thumbs",
 )
 
-# Counters the 🌐 WEB section must keep showing
-EXPECTED_WEB_STATS = (
-    "WEB STATISTICS", "Server", "URL", "Port", "Web Uptime",
-    "Web Accounts", "Live Sessions", "Posts", "Profiles",
-    "Catalog Groups", "Posters", "Thumb Queue",
-)
+# Counters displayed in the compact screenshot-style report.
+EXPECTED_WEB_STATS = ("WEB STATISTICS", "Web Accounts", "Posts", "Profiles", "Groups", "Posters")
 
 
 def stats_source():
@@ -135,13 +131,13 @@ class TestDashboardContent(unittest.TestCase):
         self.dashboard = stats_source()
 
     def test_stats_are_still_shown(self):
-        for stat in ("Users", "Groups", "Indexed Files", "Premium Users",
+        for stat in ("Users", "Groups", "Total Files", "Premium",
                      "DB Size", "Uptime"):
             with self.subTest(stat=stat):
                 self.assertIn(stat, self.dashboard)
 
     def test_web_stats_are_shown(self):
-        """/stats also reports the web app (site state, accounts, catalog)."""
+        """/stats also reports web accounts and catalog counters."""
         for stat in EXPECTED_WEB_STATS:
             with self.subTest(stat=stat):
                 self.assertIn(stat, self.dashboard)

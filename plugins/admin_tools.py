@@ -60,39 +60,31 @@ async def safe_answer(query, text="", alert=False):
 #    the web "Database Stats" page uses.
 # ======================================================
 
-def _row(emoji, label, value):
-    return f"{emoji} <b>{label}</b>: <code>{value}</code>\n"
+def _stat_value(value):
+    """Escape database-derived values before inserting them into Telegram HTML."""
+    return html.escape(str(value))
 
 
 async def build_stats():
     s = await snapshot()
-    queue = s["thumb_queue"]
-    groups = (
-        f"{s['groups']} (🎞️ {s['quality_groups']} · "
-        f"📺 {s['episode_groups']} · 🎬 {s['episodes_total']} eps)"
-    )
-
+    value = _stat_value
     return (
-        "📊 <b>BOT STATISTICS</b>\n\n"
-        + _row("👤", "Users", s["users"])
-        + _row("👥", "Groups", s["chats"])
-        + _row("📦", "Indexed Files", s["files"])
-        + _row("💎", "Premium Users", s["premium"])
-        + _row("🗃", "DB Size", s["db_size"])
-        + _row("⏱", "Uptime", s["uptime"])
-        + "\n🌐 <b>WEB STATISTICS</b>\n\n"
-        + _row("🖥", "Server", s["web_state"])
-        + _row("🔗", "URL", s["url"])
-        + _row("🔌", "Port", s["port"])
-        + _row("⏱", "Web Uptime", s["web_uptime"])
-        + _row("🧑‍💻", "Web Accounts", s["web_accounts"])
-        + _row("🔓", "Live Sessions", s["live_sessions"])
-        + _row("📝", "Posts", s["posts"])
-        + _row("🎭", "Profiles", s["actors"])
-        + _row("🗂", "Catalog Groups", groups)
-        + _row("🖼", "Posters", s["thumbnails"])
-        + _row("⏳", "Thumb Queue", queue.get("queued", 0))
-        + "\n" + _row("🔄", "Updated", s["now"])
+        "<blockquote>📊 <b>BOT STATISTICS</b></blockquote>\n"
+        f"<blockquote>👤 <b>Users:</b> <code>{value(s['users'])}</code>  "
+        f"👥 <b>Groups:</b> <code>{value(s['chats'])}</code>\n"
+        f"📦 <b><i>Total Files:</i></b> <code>{value(s['files'])}</code></blockquote>\n"
+        f"<blockquote>💎 <b>Premium:</b> <code>{value(s['premium'])}</code>\n"
+        f"🗃 <b>DB Size:</b> <code>{value(s['db_size'])}</code></blockquote>\n"
+        f"<blockquote>⏱ <b>Uptime:</b> <code>{value(s['uptime'])}</code></blockquote>\n\n"
+        "<blockquote>🌐 <b>WEB STATISTICS</b></blockquote>\n\n"
+        f"<blockquote>🧑‍💻 <b>Web Accounts:</b> <code>{value(s['web_accounts'])}</code></blockquote>\n"
+        f"<blockquote>📝 <b>Posts:</b> <code>{value(s['posts'])}</code></blockquote>\n"
+        f"<blockquote>🎭 <b>Profiles:</b> <code>{value(s['actors'])}</code></blockquote>\n"
+        f"<blockquote>🗂 <b>Groups:</b> <b><i>{value(s['groups'])}</i></b></blockquote>\n"
+        f"<b><i>(🎞️ {value(s['quality_groups'])} · 📺 {value(s['episode_groups'])} · "
+        f"🎬 {value(s['episodes_total'])} eps)</i></b>\n"
+        f"<blockquote>🖼 <b>Posters:</b> <code>{value(s['thumbnails'])}</code></blockquote>\n\n"
+        f"<blockquote>🔄 <b>Updated:</b> <code>{value(s['now'])}</code></blockquote>"
     )
 
 
