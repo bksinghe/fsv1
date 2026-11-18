@@ -287,18 +287,25 @@ async def get_recent_files(offset: int = 0, max_results: int = 30):
         return [], "", 0
 
 
-async def update_file_meta(file_id: str, meta: dict) -> bool:
-    """Backfill real metadata (thumb id/duration/dimensions) found by the thumbnail engine."""
+async def update_file_meta(file_id: str, meta: dict, expected_thumb: dict = None) -> bool:
+    """Atomically backfill metadata, optionally only if the poster has not changed."""
     if not file_id or not meta:
         return False
+    query = {"_id": file_id}
+    if expected_thumb is not None:
+        # None matches missing or null legacy fields. Reject a concurrent admin
+        # edit/reset instead of overwriting it with an older probe result.
+        for key in ("thumb_url", "thumb_file_id", "thumb_verified", "thumb_source", "is_thumb_permanent"):
+            query[key] = expected_thumb.get(key)
     try:
-        await asyncio.to_thread(
-            collection.update_one, {"_id": file_id}, {"$set": meta}
-        )
-        cache_clear()          # no stale document in the search cache
+        result = await asyncio.to_thread(collection.update_one, query, {"$set": meta})
+        if not result.matched_count:
+            logger.warning("Thumbnail metadata update did not match %s (deleted or changed)", file_id[:16])
+            return False
+        cache_clear()
         return True
-    except Exception as e:
-        logger.debug(f"update_file_meta skipped: {e}")
+    except Exception:
+        logger.exception("Thumbnail metadata update failed for %s", file_id[:16])
         return False
 
 

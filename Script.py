@@ -85,7 +85,8 @@ class script(object):
         "• /delete – Reply to file or use keyword (archive first)\n"
         "• /deleteall – ALL files (confirmation)\n\n"
 
-        "🖼 /warmup_thumbs – posters + metadata\n\n"
+        "🖼 /warmup_thumbs – posters + metadata\n"
+        "• /warmup_thumbs retry_no_thumb – retry missing posters\n\n"
 
         "👥 <b>Group Only</b> <i>(not in PM)</i>\n"
         "• /search on|off – group file search\n"

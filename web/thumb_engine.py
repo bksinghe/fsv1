@@ -28,8 +28,8 @@ Learned from v5 (`JoneySin/v5`), implemented the fsv1 way:
   * 🆕 **Never save a fake "NO IMAGE" thumbnail to the DB**: download the candidate
     bytes → check magic/dimensions/variance/markers with `web/image_validate.py`
     → permanently re-upload via Telegram `send_photo` (v5 warmup's approach).
-    Anything that fails is rejected and marked `NO_THUMB`; a placeholder never
-    becomes a `TG_ID:`. An admin's `thumb_source:"web"` poster is never overwritten.
+    Only conclusively missing/rejected thumbnails become `NO_THUMB`; temporary
+    download/upload failures remain retryable. Admin poster edits are protected.
 """
 
 import asyncio
@@ -80,7 +80,7 @@ _probe_queue: asyncio.Queue = asyncio.Queue()
 _queued = set()                 # file ids — prevents duplicate enqueues
 _MAX_QUEUE = 2000
 _worker_task = None
-# fid -> asyncio.Task: identical concurrent requests share one download
+# (fid, thumbnail id) -> asyncio.Task: identical concurrent requests share one download
 _INFLIGHT = {}
 # Small byte-bounded hot cache: repeatedly requested, already-saved Telegram IDs
 # otherwise still incur a Telegram download on every browser/cache miss.
@@ -123,14 +123,14 @@ def is_no_thumb(doc) -> bool:
     return str((doc or {}).get("thumb_url") or "") == "NO_THUMB"
 
 
-def _cache_get(key: str):
+def _cache_get(key):
     data = _THUMB_CACHE.pop(key, None)
     if data is not None:
         _THUMB_CACHE[key] = data
     return data
 
 
-def _cache_put(key: str, data: bytes) -> None:
+def _cache_put(key, data: bytes) -> None:
     global _THUMB_CACHE_BYTES
     if not _THUMB_CACHE_MAX_BYTES or len(data) > _THUMB_CACHE_MAX_BYTES:
         return
@@ -149,11 +149,13 @@ def invalidate_thumb(fid: str) -> None:
     global _THUMB_CACHE_BYTES
     if not fid:
         return
-    _INFLIGHT.pop(f"dl:{fid}", None)
+    for key in list(_INFLIGHT):
+        if isinstance(key, tuple) and key[0] == fid:
+            _INFLIGHT.pop(key, None)
     _queued.discard(fid)
-    cached = _THUMB_CACHE.pop(fid, None)
-    if cached is not None:
-        _THUMB_CACHE_BYTES -= len(cached)
+    for key in list(_THUMB_CACHE):
+        if isinstance(key, tuple) and key[0] == fid:
+            _THUMB_CACHE_BYTES -= len(_THUMB_CACHE.pop(key))
 
 
 def thumb_queue_state() -> dict:
@@ -297,8 +299,8 @@ async def _upload_thumb(data: bytes) -> str:
     """✅ v5 warmup: fresh-upload the validated image to the storage channel.
 
     Telegram's `send_photo` only accepts a genuine image ⇒ this id is permanent
-    (a transient thumb file_reference cannot expire). Fail-soft: if the bot lacks
-    the method, the validated original id is used instead.
+    (a transient thumb file_reference cannot expire). If it fails, the probe
+    remains retryable rather than saving a short-lived fallback id.
     """
     bot = getattr(temp, "BOT", None)
     if not bot or not data:
@@ -317,17 +319,15 @@ async def _upload_thumb(data: bytes) -> str:
 
 
 async def _real_thumb_bytes(thumb_ids):
-    """Download + validate every candidate → `(bytes, info)` or `(None, {})`.
-
-    Anything fake / "NO IMAGE" / blank / tiny is rejected;
-    `_STATS['rejected']` counts it so it appears in the `/warmup_thumbs` report.
-    """
+    """Return (bytes, info, download_failed), keeping transient failures distinct."""
+    download_failed = False
     for tid in thumb_ids:
         if not _valid_thumb_ref(tid):
             _STATS["rejected"] += 1
             continue
         data = await _download_thumb(tid)
         if not data:
+            download_failed = True
             continue
         ok, info = validate_thumb(
             data,
@@ -339,8 +339,8 @@ async def _real_thumb_bytes(thumb_ids):
             _STATS["rejected"] += 1
             logger.info(f"[thumb] rejected fake poster ({info['reason']}): {tid[:16]}")
             continue
-        return data, {"ref": tid, **info}
-    return None, {}
+        return data, {"ref": tid, **info}, False
+    return None, {}, download_failed
 
 
 async def get_image_bytes(telegram_file_id: str):
@@ -352,7 +352,8 @@ async def _read_doc(fid: str):
     return await asyncio.to_thread(
         collection.find_one, {"_id": fid},
         {"thumb_url": 1, "thumb_file_id": 1, "thumb_verified": 1,
-         "thumb_source": 1, "meta_v": 1, "quality": 1, "file_name": 1},
+         "thumb_source": 1, "is_thumb_permanent": 1, "meta_v": 1,
+         "quality": 1, "file_name": 1, "file_size": 1},
     )
 
 
@@ -378,7 +379,10 @@ async def probe_file(fid: str, force: bool = False):
         probed = False
         flooded = False
         try:
-            doc = await _read_doc(fid) or {}
+            doc = await _read_doc(fid)
+            if doc is None:
+                _STATS["failed"] += 1
+                return None
             raw = str(doc.get("thumb_url") or "")
             custom = str(doc.get("thumb_source") or "") == "web"   # protect the admin poster
             verified = bool(doc.get("thumb_verified"))
@@ -386,7 +390,7 @@ async def probe_file(fid: str, force: bool = False):
             need_meta = force or _meta_version(doc) < META_V
             need_thumb = force or (
                 (not raw.startswith("TG_ID:") and raw != "NO_THUMB")
-                or (raw.startswith("TG_ID:") and not verified)
+                or (raw.startswith("TG_ID:") and (not verified or doc.get("is_thumb_permanent") is False))
             )
             if custom:
                 need_thumb = False        # never overwrite a custom poster
@@ -398,6 +402,8 @@ async def probe_file(fid: str, force: bool = False):
 
             bot = getattr(temp, "BOT", None)
             if bot is None:
+                _STATS["failed"] += 1
+                logger.warning("[thumb] bot unavailable for %s; retry later", fid[:16])
                 return None
 
             for attempt in range(THUMB_PROBE_ATTEMPTS):
@@ -417,67 +423,86 @@ async def probe_file(fid: str, force: bool = False):
                         _add_flood_penalty()
                     continue
 
-                media, thumb_ids = _extract_media(msg)
-                file_name = str(doc.get("file_name") or "")
-                meta = {}
+                try:
+                    media, thumb_ids = _extract_media(msg)
+                    file_name = str(doc.get("file_name") or "")
+                    meta = {}
 
-                # 1️⃣ True metadata — from the same message + a file-bytes probe (free backfill)
-                if need_meta and media:
-                    try:
-                        probed_meta = await probe_telegram_media(
-                            bot, media, file_name=file_name,
-                            file_size=int(doc.get("file_size") or 0),
-                        )
-                    except Exception as e:
-                        logger.debug(f"[probe] {fid[:16]} media probe skipped: {e}")
-                        probed_meta = {}
-                    meta.update(build_media_meta(media, probed_meta, file_name, doc))
-                    need_meta = False       # do not repeat the range fetch on the next attempt
+                    if need_meta and media:
+                        try:
+                            probed_meta = await probe_telegram_media(
+                                bot, media, file_name=file_name,
+                                file_size=int(doc.get("file_size") or 0),
+                            )
+                        except Exception as e:
+                            logger.debug("[probe] %s media probe skipped: %s", fid[:16], e)
+                            probed_meta = {}
+                        meta.update(build_media_meta(media, probed_meta, file_name, doc))
 
-                # 2️⃣ Real thumbnail — validate + permanent re-upload
-                #    no candidate / all fake ⇒ mark NO_THUMB immediately
-                #    (downloading the same placeholder 5 times is pointless).
-                data, info = (None, {})
-                if need_thumb:
-                    data, info = await _real_thumb_bytes(thumb_ids)
+                    data = None
+                    thumb_changed = False
+                    retryable_failure = False
+                    if need_thumb:
+                        data, info, download_failed = await _real_thumb_bytes(thumb_ids)
+                        if data:
+                            permanent = await _upload_thumb(data)
+                            if permanent and _valid_thumb_ref(permanent):
+                                meta.update({
+                                    "thumb_url": f"TG_ID:{permanent}",
+                                    "thumb_file_id": permanent,
+                                    "thumb_verified": True,
+                                    "thumb_source": "probe",
+                                    "is_thumb_permanent": True,
+                                    "thumb_width": info["width"],
+                                    "thumb_height": info["height"],
+                                })
+                                thumb_changed = True
+                            else:
+                                retryable_failure = True
+                                logger.warning("[thumb] permanent upload failed for %s; retry later", fid[:16])
+                        elif download_failed:
+                            retryable_failure = True
+                            logger.warning("[thumb] thumbnail download failed for %s; retry later", fid[:16])
+                        else:
+                            meta.update({
+                                "thumb_url": "NO_THUMB", "thumb_file_id": "",
+                                "thumb_verified": False, "thumb_source": "",
+                                "is_thumb_permanent": False,
+                            })
+                            thumb_changed = True
+
+                    if meta:
+                        saved = await update_file_meta(fid, meta, expected_thumb=doc if thumb_changed else None)
+                        if not saved:
+                            _STATS["failed"] += 1
+                            return None
+                        if "meta_v" in meta:
+                            _STATS["meta"] += 1
+
+                    if retryable_failure:
+                        _STATS["failed"] += 1
+                        return None
+                    if not need_thumb:
+                        return None
                     if data:
-                        permanent = await _upload_thumb(data)
-                        chosen = permanent or info["ref"]
-                        meta.update({
-                            "thumb_url": f"TG_ID:{chosen}",
-                            "thumb_file_id": chosen,
-                            "thumb_verified": True,
-                            "thumb_source": "probe",
-                            "is_thumb_permanent": bool(permanent),
-                            "thumb_width": info["width"],
-                            "thumb_height": info["height"],
-                        })
-                    else:
-                        meta.update({
-                            "thumb_url": "NO_THUMB", "thumb_file_id": "",
-                            "thumb_verified": False, "thumb_source": "",
-                            "is_thumb_permanent": False,
-                        })
-
-                if meta:
-                    await update_file_meta(fid, meta)
-                    if "meta_v" in meta:
-                        _STATS["meta"] += 1
-
-                asyncio.create_task(_delete_later(getattr(msg, "id", 0)))
-
-                if not need_thumb:
-                    return None                    # this was a metadata-only backfill
-                if data:
-                    _STATS["ok"] += 1
-                    return data
-                # Telegram only had a fake/placeholder ⇒ save nothing to the DB
-                _STATS["no_thumb"] += 1
-                return None
+                        _STATS["ok"] += 1
+                        return data
+                    _STATS["no_thumb"] += 1
+                    return None
+                except Exception:
+                    _STATS["failed"] += 1
+                    logger.exception("[thumb] probe processing failed for %s", fid[:16])
+                    return None
+                finally:
+                    asyncio.create_task(_delete_later(getattr(msg, "id", 0)))
 
             # Every `send_cached_media` attempt failed ⇒ network/flood issue,
             # do not mark NO_THUMB (it will be retried next time).
             _STATS["failed"] += 1
+            return None
+        except Exception:
+            _STATS["failed"] += 1
+            logger.exception("[thumb] probe failed for %s", fid[:16])
             return None
         finally:
             _STATS["done"] += 1
@@ -548,10 +573,13 @@ async def get_thumb(fid: str, retry: bool = False):
     thumb_file_id = thumb_id_from_doc(doc)
 
     if thumb_file_id:
-        cached = _cache_get(fid)
+        if not custom and (not doc.get("thumb_verified") or doc.get("is_thumb_permanent") is False):
+            enqueue_probe(fid, force=True)  # verify or repair legacy temporary IDs
+        cache_key = (fid, thumb_file_id)
+        cached = _cache_get(cache_key)
         if cached is not None:
             return cached
-        key = f"dl:{fid}"
+        key = (fid, thumb_file_id)
         task = None if retry else _INFLIGHT.get(key)
         if task is None or task.done():
             task = asyncio.ensure_future(_download_thumb(thumb_file_id))
@@ -564,20 +592,26 @@ async def get_thumb(fid: str, retry: bool = False):
             task.add_done_callback(_cleanup)
         data = await asyncio.shield(task)
         if data:
+            # An admin may have changed the image while the download was in flight.
+            latest = await _read_doc(fid)
+            fields = ("thumb_url", "thumb_file_id", "thumb_verified", "thumb_source", "is_thumb_permanent")
+            if latest is None or any(latest.get(k) != doc.get(k) for k in fields):
+                return None
             ok = True if custom else validate_thumb(
                 data, min_bytes=_MIN_THUMB_BYTES,
                 min_dim=_MIN_THUMB_DIM, min_stddev=_MIN_THUMB_STDDEV,
             )[0]
             if ok:
-                _cache_put(fid, data)
+                _cache_put(cache_key, data)
                 return data
             # 💾 A fake poster was found in the DB → remove it and fetch a real one
             _STATS["rejected"] += 1
-            await update_file_meta(fid, {
+            cleared = await update_file_meta(fid, {
                 "thumb_url": "", "thumb_file_id": "",
                 "thumb_verified": False,
-            })
-            enqueue_probe(fid, force=True)
+            }, expected_thumb=doc)
+            if cleared:
+                enqueue_probe(fid, force=True)
             return None
         # stale / expired file_reference → fresh probe (still one at a time)
         enqueue_probe(fid, force=True)
