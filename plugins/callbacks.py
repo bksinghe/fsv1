@@ -2,7 +2,7 @@ import logging
 import random
 import asyncio
 
-from hydrogram import Client, enums
+from hydrogram import Client, enums, filters
 from hydrogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton,
@@ -228,61 +228,13 @@ async def safe_answer_query(query, text="", show_alert=False, max_retries=2):
 # 🔁 CALLBACK HANDLER (OPTIMIZED)
 # ======================================================
 
-@Client.on_callback_query()
+@Client.on_callback_query(filters.regex(r"^(?:help|user_cmds|admin_cmds|stream#.+)$"))
 async def cb_handler(client: Client, query: CallbackQuery):
     """Main callback query handler with comprehensive error handling"""
     
     try:
         data = query.data
         uid = query.from_user.id
-
-        # --------------------------------------------------
-        # ❗ PAGINATION (filter.py handles)
-        # --------------------------------------------------
-        if data.startswith("page#") or data == "pages":
-            await safe_answer_query(query)
-            return
-
-        # ==================================================
-        # ❌ CLOSE FILE (OWNER ONLY)
-        # ==================================================
-        if data == "close_data":
-            await safe_answer_query(query, "Closed")
-
-            # Find and cleanup user's file entry
-            target_key = None
-            for k, v in temp.FILES.items():
-                if v.get("owner") == uid:
-                    target_key = k
-                    break
-
-            if target_key:
-                mem = temp.FILES.pop(target_key, None)
-                
-                if mem:
-                    # Cancel any pending tasks
-                    if "task" in mem:
-                        try:
-                            if not mem["task"].done():
-                                mem["task"].cancel()
-                        except Exception as e:
-                            print(f"Task cancel error: {e}")
-
-                    # Delete file message
-                    if "file" in mem:
-                        await safe_delete_message(mem["file"])
-
-                    # Delete notice message
-                    if "notice" in mem:
-                        await safe_delete_message(mem["notice"])
-
-            # Delete callback message and its reply
-            await safe_delete_message(query.message)
-            
-            if query.message.reply_to_message:
-                await safe_delete_message(query.message.reply_to_message)
-            
-            return
 
         # ==================================================
         # ▶️ STREAM (OWNER + PREMIUM)
@@ -368,6 +320,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
         # 🆘 HELP (USER / ADMIN COMMANDS)
         # ==================================================
         if data == "help":
+            await safe_answer_query(query)
             try:
                 caption = script.HELP_TXT.format(query.from_user.mention)
                 buttons = help_buttons(uid in ADMINS)
@@ -390,14 +343,12 @@ async def cb_handler(client: Client, query: CallbackQuery):
                         reply_markup=buttons
                     )
                 
-                if success:
-                    await safe_answer_query(query)
-                else:
-                    await safe_answer_query(query, "⚠️ Failed to load help", show_alert=True)
+                if not success:
+                    await query.message.reply_text("⚠️ Failed to load help. Please try again.")
                     
             except Exception as e:
                 print(f"Help callback error: {e}")
-                await safe_answer_query(query, "❌ Error loading help", show_alert=True)
+                logging.getLogger(__name__).exception("Error loading help")
             
             return
 
@@ -405,6 +356,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
         # 👤 USER COMMANDS
         # ==================================================
         if data == "user_cmds":
+            await safe_answer_query(query)
             try:
                 success = await safe_edit_body(
                     query.message,
@@ -412,14 +364,12 @@ async def cb_handler(client: Client, query: CallbackQuery):
                     reply_markup=back_buttons()
                 )
                 
-                if success:
-                    await safe_answer_query(query)
-                else:
-                    await safe_answer_query(query, "⚠️ Failed to load commands", show_alert=True)
+                if not success:
+                    await query.message.reply_text("⚠️ Failed to load commands. Please try again.")
                     
             except Exception as e:
                 print(f"User commands error: {e}")
-                await safe_answer_query(query, "❌ Error loading commands", show_alert=True)
+                logging.getLogger(__name__).exception("Error loading commands")
             
             return
 
@@ -431,6 +381,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
                 await safe_answer_query(query, "⚠️ Admins only", show_alert=True)
                 return
 
+            await safe_answer_query(query)
             try:
                 success = await safe_edit_body(
                     query.message,
@@ -438,14 +389,12 @@ async def cb_handler(client: Client, query: CallbackQuery):
                     reply_markup=back_buttons()
                 )
                 
-                if success:
-                    await safe_answer_query(query)
-                else:
-                    await safe_answer_query(query, "⚠️ Failed to load commands", show_alert=True)
+                if not success:
+                    await query.message.reply_text("⚠️ Failed to load commands. Please try again.")
                     
             except Exception as e:
                 print(f"Admin commands error: {e}")
-                await safe_answer_query(query, "❌ Error loading commands", show_alert=True)
+                logging.getLogger(__name__).exception("Error loading commands")
             
             return
 

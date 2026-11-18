@@ -1,5 +1,6 @@
 import logging
 import html
+import asyncio
 import hashlib
 from math import ceil
 from time import time
@@ -260,9 +261,15 @@ async def filter_handler(client, message):
 
         # Admins have every premium right; everyone else is looked up once here
         # (the result is handed to send_results() so the 👑 crown is free)
-        user_is_premium = (
-            True if user_id in ADMINS else await check_premium(user_id, client)
-        )
+        if is_group_chat and user_id not in ADMINS:
+            user_is_premium, stg = await asyncio.gather(
+                check_premium(user_id, client), db.get_settings(message.chat.id)
+            )
+        else:
+            user_is_premium = (
+                True if user_id in ADMINS else await check_premium(user_id, client)
+            )
+            stg = await db.get_settings(message.chat.id) if is_group_chat else None
 
         # ==============================
         # 📩 PM SEARCH - CHECK PREMIUM FIRST
@@ -295,7 +302,7 @@ async def filter_handler(client, message):
         # 🚫 GROUP SEARCH - CHECK IF ENABLED
         # ==============================
         else:
-            stg = await db.get_settings(message.chat.id) or {}
+            stg = stg or {}
             
             # ✅ NEW: Check if search is disabled
             if stg.get("search") is False:

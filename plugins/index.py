@@ -91,6 +91,7 @@ async def start_index(bot, message):
         chat = await bot.get_chat(chat_id)
         if chat.type != enums.ChatType.CHANNEL:
             return await message.reply("❌ Only channels supported")
+        chat_id = chat.id  # Resolve public usernames before building callback data.
 
     except Exception as e:
         return await message.reply(f"❌ Error: `{e}`")
@@ -126,24 +127,44 @@ async def index_callback(bot, query):
     # (handled by stop_index below) — neither is a start request.
     if data[1] != "start":
         if data[1] == "close":
+            await query.answer("Cancelled")
             await query.message.edit("❌ Cancelled")
         return
 
     if LOCK.locked():
         return await query.answer("Indexing already running", show_alert=True)
+    try:
+        _, _, chat_id, last_id = data
+        chat_id, last_id = int(chat_id), int(last_id)
+        if last_id <= 0:
+            raise ValueError("invalid message ID")
+    except (TypeError, ValueError):
+        return await query.answer("Invalid index request", show_alert=True)
 
-    _, _, chat_id, last_id = data
-    async with LOCK:
-        chat = await bot.get_chat(int(chat_id))
-        await query.message.edit("⚡ Indexing started…")
-        CANCEL = False
-        await index_worker(
-            bot,
-            query.message,
-            int(chat_id),
-            int(last_id),
-            chat.title
-        )
+    # Reserve before yielding so two rapid clicks cannot start duplicate scans.
+    await LOCK.acquire()
+    CANCEL = False
+    try:
+        await query.answer("Indexing started")
+    except Exception:
+        LOCK.release()
+        raise
+    asyncio.create_task(_run_index(bot, query.message, chat_id, last_id))
+
+
+async def _run_index(bot, status, chat_id, last_id):
+    try:
+        chat = await bot.get_chat(chat_id)
+        await status.edit("⚡ Indexing started…")
+        await index_worker(bot, status, chat_id, last_id, chat.title)
+    except Exception as exc:
+        log_error("Index startup", exc)
+        try:
+            await status.edit("❌ Could not start indexing. Please try again.")
+        except Exception:
+            pass
+    finally:
+        LOCK.release()
 
 
 # =====================================================
