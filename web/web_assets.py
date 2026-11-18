@@ -1001,11 +1001,6 @@ border-radius:12px;padding:16px;box-shadow:0 4px 15px rgba(0,0,0,.10)}
 border:1.5px solid var(--line);border-radius:10px;padding:13px 16px;color:var(--txt);
 font-size:15px;font-weight:600;font-family:inherit;outline:none;transition:border-color .18s}
 .sinput:focus{border-color:var(--red)}
-.spin{display:none;position:absolute;right:16px;top:50%;transform:translateY(-50%);
-width:17px;height:17px;border:2px solid var(--line);border-top-color:var(--red);
-border-radius:50%;animation:spin .6s linear infinite}
-.srow.loading .spin{display:block}
-@keyframes spin{to{transform:translateY(-50%) rotate(360deg)}}
 .main{padding:18px 4% 60px;max-width:1700px;margin:0 auto}
 .search-pagination{display:flex;justify-content:center;align-items:center;gap:12px;margin:28px auto 0}
 .search-pagination[hidden]{display:none}
@@ -1082,8 +1077,7 @@ font-weight:700;color:var(--mut);gap:10px;flex-wrap:wrap}
 .links a:hover{color:var(--red)}
 .hr{border:0;border-top:1px solid var(--line);margin:24px 0}
 /* 📱 mobile filter row (search + both buttons) → one rule in FILTER_CSS */
-@media(max-width:520px){.spin{display:none!important}
-.auth-card{padding:24px}.vgrid{gap:8px}}
+@media(max-width:520px){.auth-card{padding:24px}.vgrid{gap:8px}}
 
 """
 
@@ -1491,7 +1485,6 @@ SEARCH_BODY = """<div class="search-zone">
     <div class="srow" id="srow">
       <div class="qwrap">
         <input class="sinput" id="q" type="search" aria-label="Search files" placeholder="Search movies, series or file names..." autocomplete="off">
-        <div class="spin"></div>
       </div>
       __FILTER_BUTTONS__
     </div>
@@ -1569,13 +1562,6 @@ function cardHTML(f,topLevel){
 }
 window.cardHTML=cardHTML;
 function card(f){return cardHTML(f,true)}
-/* Shimmer placeholders while a fresh result batch is being fetched — the GitHub
-   reference shows a shimmering poster box, then reveals the real cards in a wave. */
-function skeletons(){
-  return Array.from({length:6},()=>'<div class="vcard rv-skel vm-card">'
-    +'<div class="vposter vm-poster"></div><div class="vbody vm-body">'
-    +'<div class="rv-line"></div><div class="rv-line short"></div></div></div>').join('');
-}
 // Like v5's reloadThumb(fileId): first-time posters come from a serial warmup queue
 // one at a time, so on a 404 we retry gradually with `retry=true&t=...` —
 // as ids are locked into the DB, the posters appear automatically.
@@ -1621,7 +1607,7 @@ async function load(reset){
     if(searchController)searchController.abort();
     searchController=new AbortController();searchSeq++;loading=false;
     nextOffset=0;hasMore=true;sourceMore=true;pendingCards=[];seenGroups=Object.create(null);pages=[];pageIndex=0;
-    $('#grid').innerHTML=skeletons();updatePages();
+    $('#grid').innerHTML='<div class="state" role="status">Loading results…</div>';updatePages();
   }else{
     if(loading)return;
     if(pageIndex+1<pages.length){
