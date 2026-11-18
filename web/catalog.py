@@ -661,12 +661,11 @@ function catLabel(v){
 function cardHTML(it){
   const id = esc(it.id), src = imgSrc(it.image);
   const tags = (it.tags||[]).slice(0,2).map(t=>'#'+t).join(' ');
-  /* Catalog covers stay visible and clickable in text view. */
   const img = src
     ? `<img class="cat-poster vm-img" onload="this.classList.add('on')" onerror="catPosterFail(this)"
-          ${ViewMode.imgAttrs(esc(src),true)} alt="" loading="lazy">`
+          ${ViewMode.imgAttrs(esc(src))} alt="" loading="lazy">`
     : '';
-  return `<div class="cat-card rv-enter vm-card vm-show-cover" data-id="${id}" role="link" tabindex="0" aria-label="Open ${esc(it.title)}" onclick="openDetail(this)">
+  return `<div class="cat-card rv-enter vm-card" data-id="${id}" role="link" tabindex="0" aria-label="Open ${esc(it.title)}" onclick="openDetail(this)">
     <div class="cat-poster-wrap vm-poster">
       <div class="cat-ph vm-ph vm-overlay" aria-hidden="true">🖼️</div>${img}
       <div class="cat-badge vm-chip">${esc(catLabel(it.category))}</div>
