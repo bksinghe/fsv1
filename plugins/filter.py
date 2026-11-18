@@ -349,7 +349,8 @@ async def filter_handler(client, message):
             offset=0,
             source_chat_id=source_chat_id,
             is_pm=is_pm,
-            premium=user_is_premium
+            premium=user_is_premium,
+            reply_msg=message
         )
     
     except Exception as e:
@@ -419,6 +420,17 @@ def build_nav(search, offset, next_offset, results_per_page, source_chat_id, own
     return InlineKeyboardMarkup([nav]) if nav else None
 
 
+async def _send_new(client, chat_id, reply_msg, text, **kwargs):
+    """Send a NEW message; quote-reply to the user's message when we have it."""
+    if reply_msg is not None:
+        try:
+            return await reply_msg.reply_text(text, quote=True, **kwargs)
+        except Exception as e:
+            # e.g. the user already deleted their message → fall back to a plain send
+            logging.getLogger(__name__).debug("quote reply failed, sending plain: %s", e)
+    return await client.send_message(chat_id, text, **kwargs)
+
+
 async def send_results(
     client,
     chat_id,
@@ -429,7 +441,8 @@ async def send_results(
     is_pm,
     message=None,
     tried_fallback=False,
-    premium=None
+    premium=None,
+    reply_msg=None
 ):
     try:
         # Determine results per page based on PM or Group
@@ -457,7 +470,8 @@ async def send_results(
                         source_chat_id,
                         is_pm,
                         message,
-                        True
+                        True,
+                        reply_msg=reply_msg
                     )
             except Exception as e:
                 print(f"Fallback suggestion error: {e}")
@@ -466,7 +480,9 @@ async def send_results(
             text = f"❌ <b>No results found for:</b>\n<code>{search}</code>"
             if message:
                 return await message.edit_text(text, parse_mode=enums.ParseMode.HTML)
-            return await client.send_message(chat_id, text, parse_mode=enums.ParseMode.HTML)
+            return await _send_new(
+                client, chat_id, reply_msg, text, parse_mode=enums.ParseMode.HTML
+            )
 
         # ==============================
         # 📄 PAGE INFO
@@ -500,8 +516,10 @@ async def send_results(
             update_message_activity(message.id)
         else:
             # Send new message
-            msg = await client.send_message(
+            msg = await _send_new(
+                client,
                 chat_id,
+                reply_msg,
                 text,
                 reply_markup=markup,
                 disable_web_page_preview=True,
