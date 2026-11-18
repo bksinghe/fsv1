@@ -65,6 +65,9 @@ _MIN_THUMB_STDDEV = float(getattr(_info, "THUMB_MIN_STDDEV", 6.0))
 # ── Concurrency control (no thumbnail data is stored here) ─────────────────
 # Limited concurrency for downloading files that already have a known TG_ID
 _download_sem = asyncio.Semaphore(THUMB_FETCH_CONCURRENCY)
+# Pillow may allocate substantial temporary buffers: never decode more than one
+# thumbnail at once, even when multiple downloads finish concurrently.
+_validation_sem = asyncio.Semaphore(1)
 # ⚠️ FIRST-TIME PROBE: only ONE file at a time (v5 warmup "single-bot safe")
 _probe_lock = asyncio.Lock()
 
@@ -80,7 +83,7 @@ _probe_queue: asyncio.Queue = asyncio.Queue()
 _queued = set()                 # file ids — prevents duplicate enqueues
 _MAX_QUEUE = 2000
 _worker_task = None
-# (fid, thumbnail id) -> asyncio.Task: identical concurrent requests share one download
+# (fid, thumbnail id, custom) -> task: requests share download and validation
 _INFLIGHT = {}
 # Small byte-bounded hot cache: repeatedly requested, already-saved Telegram IDs
 # otherwise still incur a Telegram download on every browser/cache miss.
@@ -318,6 +321,32 @@ async def _upload_thumb(data: bytes) -> str:
         return ""
 
 
+async def _validate_thumb_async(data):
+    """Keep Pillow work off the event loop and bound image decode concurrency."""
+    async with _validation_sem:
+        task = asyncio.create_task(asyncio.to_thread(
+            validate_thumb, data, min_bytes=_MIN_THUMB_BYTES,
+            min_dim=_MIN_THUMB_DIM, min_stddev=_MIN_THUMB_STDDEV,
+        ))
+        try:
+            return await asyncio.shield(task)
+        except asyncio.CancelledError:
+            # to_thread cannot be stopped; hold the semaphore until it finishes.
+            await task
+            raise
+
+
+async def _download_checked_thumb(thumb_file_id, custom):
+    """Share both the download and its validation across concurrent requests."""
+    data = await _download_thumb(thumb_file_id)
+    if not data:
+        return None, False
+    if custom:  # admin uploads were validated separately at upload time
+        return data, True
+    ok, _ = await _validate_thumb_async(data)
+    return data, ok
+
+
 async def _real_thumb_bytes(thumb_ids):
     """Return (bytes, info, download_failed), keeping transient failures distinct."""
     download_failed = False
@@ -329,12 +358,7 @@ async def _real_thumb_bytes(thumb_ids):
         if not data:
             download_failed = True
             continue
-        ok, info = validate_thumb(
-            data,
-            min_bytes=_MIN_THUMB_BYTES,
-            min_dim=_MIN_THUMB_DIM,
-            min_stddev=_MIN_THUMB_STDDEV,
-        )
+        ok, info = await _validate_thumb_async(data)
         if not ok:
             _STATS["rejected"] += 1
             logger.info(f"[thumb] rejected fake poster ({info['reason']}): {tid[:16]}")
@@ -551,7 +575,7 @@ def enqueue_probe(fid: str, force: bool = False) -> bool:
 
 
 async def get_thumb(fid: str, retry: bool = False):
-    """Poster bytes or None. There is no persistent RAM cache.
+    """Poster bytes or None; a bounded LRU cache is shared within the process.
 
     * `TG_ID:` present → download directly (identical requests share one task)
     * `NO_THUMB`       → return None immediately, no Telegram call (as in v5)
@@ -575,14 +599,16 @@ async def get_thumb(fid: str, retry: bool = False):
     if thumb_file_id:
         if not custom and (not doc.get("thumb_verified") or doc.get("is_thumb_permanent") is False):
             enqueue_probe(fid, force=True)  # verify or repair legacy temporary IDs
-        cache_key = (fid, thumb_file_id)
+        cache_key = (fid, thumb_file_id, custom)
         cached = _cache_get(cache_key)
         if cached is not None:
             return cached
-        key = (fid, thumb_file_id)
-        task = None if retry else _INFLIGHT.get(key)
+        key = cache_key
+        # Retry requests also join an in-flight attempt; they start a fresh one
+        # only after the preceding download/validation has finished.
+        task = _INFLIGHT.get(key)
         if task is None or task.done():
-            task = asyncio.ensure_future(_download_thumb(thumb_file_id))
+            task = asyncio.ensure_future(_download_checked_thumb(thumb_file_id, custom))
             _INFLIGHT[key] = task
 
             def _cleanup(_t, k=key, t=task):
@@ -590,17 +616,13 @@ async def get_thumb(fid: str, retry: bool = False):
                     _INFLIGHT.pop(k, None)
 
             task.add_done_callback(_cleanup)
-        data = await asyncio.shield(task)
+        data, ok = await asyncio.shield(task)
         if data:
             # An admin may have changed the image while the download was in flight.
             latest = await _read_doc(fid)
             fields = ("thumb_url", "thumb_file_id", "thumb_verified", "thumb_source", "is_thumb_permanent")
             if latest is None or any(latest.get(k) != doc.get(k) for k in fields):
                 return None
-            ok = True if custom else validate_thumb(
-                data, min_bytes=_MIN_THUMB_BYTES,
-                min_dim=_MIN_THUMB_DIM, min_stddev=_MIN_THUMB_STDDEV,
-            )[0]
             if ok:
                 _cache_put(cache_key, data)
                 return data

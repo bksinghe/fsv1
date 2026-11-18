@@ -181,7 +181,7 @@ Variables that are actually used in code (`API_ID`, `API_HASH`, `BOT_TOKEN`, `AD
 | `CATALOG_STORAGE_CHANNEL` | `BIN_CHANNEL` | Telegram channel for Post/Actor cover images. If `BIN_CHANNEL` is also in `INDEX_CHANNELS`, use a separate private channel so covers do not appear in file search |
 | `THUMB_BROWSER_CACHE` | `604800` | How long the browser caches a poster in seconds (7 days) |
 | `THUMB_FETCH_CONCURRENCY` | `6` | Download concurrency for files that **already have a `TG_ID:`** (first-time probing is always 1) |
-| `THUMB_CACHE_BYTES` | `16777216` | Maximum process-RAM thumbnail hot cache (16 MiB, LRU; set `0` to disable). Speeds up repeat loads of saved `TG_ID:` posters without storing image bytes in MongoDB |
+| `THUMB_CACHE_BYTES` | `16777216` | Maximum process-RAM thumbnail hot cache (default and hard cap 16 MiB, LRU; set a smaller byte value or `0` to disable). Speeds up repeat loads without storing image bytes in MongoDB |
 | `THUMB_PROBE_GAP_MIN` / `THUMB_PROBE_GAP_MAX` | `3.0` / `5.0` | Random anti-flood gap between first-time probes in seconds, like the v5 warmup. **~20 sends/min per chat is Telegram's limit**, so the gap must stay ≥3s — tune here (no code change) if `/warmup_thumbs` still reports FloodWait |
 | `THUMB_PROBE_ATTEMPTS` | `5` | Maximum `send_cached_media` attempts per file |
 | `THUMB_FLOOD_EXTRA` | `10` | Extra buffer added to the seconds Telegram reports on FLOOD_WAIT |
@@ -204,6 +204,10 @@ Variables that are actually used in code (`API_ID`, `API_HASH`, `BOT_TOKEN`, `AD
 > When no thumbnail exists, the card shows a graceful placeholder (never a fake poster).
 >
 ### Thumbnail retry and recovery
+
+Pillow validation runs off the event loop and is limited to one image at a time;
+concurrent requests for the same poster share the download and validation. The
+16 MiB cache cap is unchanged for low-memory hosts.
 
 Temporary Telegram download or storage-channel upload failures are reported as errors,
 not as `NO_THUMB`, and can be retried. A verified probe poster is saved only after a

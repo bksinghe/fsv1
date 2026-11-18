@@ -25,7 +25,7 @@ class CandidateTests(unittest.IsolatedAsyncioTestCase):
     async def test_transient_failure_does_not_mean_no_thumbnail(self):
         env = {'_valid_thumb_ref': lambda x: x != 'invalid', '_STATS': stats(),
                '_download_thumb': AsyncMock(side_effect=[None, b'bad']),
-               'validate_thumb': lambda data, **kw: (False, {'reason': 'blank'}),
+               '_validate_thumb_async': AsyncMock(return_value=(False, {'reason': 'blank'})),
                '_MIN_THUMB_BYTES': 1, '_MIN_THUMB_DIM': 1, '_MIN_THUMB_STDDEV': 1,
                'logger': logging.getLogger(__name__)}
         load_functions('web/thumb_engine.py', {'_real_thumb_bytes'}, env)
@@ -38,7 +38,7 @@ class CandidateTests(unittest.IsolatedAsyncioTestCase):
     async def test_later_valid_candidate_wins_over_earlier_failure(self):
         env = {'_valid_thumb_ref': lambda x: True, '_STATS': stats(),
                '_download_thumb': AsyncMock(side_effect=[None, b'valid']),
-               'validate_thumb': lambda data, **kw: (True, {'width': 100, 'height': 150}),
+               '_validate_thumb_async': AsyncMock(return_value=(True, {'width': 100, 'height': 150})),
                '_MIN_THUMB_BYTES': 1, '_MIN_THUMB_DIM': 1, '_MIN_THUMB_STDDEV': 1,
                'logger': logging.getLogger(__name__)}
         load_functions('web/thumb_engine.py', {'_real_thumb_bytes'}, env)
@@ -166,9 +166,9 @@ class ThumbReadRaceTests(unittest.IsolatedAsyncioTestCase):
                '_cache_get': lambda key: cache.get(key), '_cache_put': lambda key, data: cache.__setitem__(key, data),
                '_INFLIGHT': {}, '_download_thumb': AsyncMock(return_value=image), '_STATS': stats(),
                'enqueue_probe': MagicMock(return_value=True), 'update_file_meta': AsyncMock(return_value=False),
-               'validate_thumb': lambda data, **kw: (False, {}),
+               '_validate_thumb_async': AsyncMock(return_value=(False, {})),
                '_MIN_THUMB_BYTES': 1, '_MIN_THUMB_DIM': 1, '_MIN_THUMB_STDDEV': 1}
-        load_functions('web/thumb_engine.py', {'get_thumb', 'is_no_thumb', 'thumb_id_from_doc'}, env)
+        load_functions('web/thumb_engine.py', {'get_thumb', 'is_no_thumb', 'thumb_id_from_doc', '_download_checked_thumb'}, env)
         return env, cache
 
     async def test_old_inflight_download_not_cached_after_admin_changes_poster(self):
