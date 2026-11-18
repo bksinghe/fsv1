@@ -1514,6 +1514,8 @@ __GROUP_ADMIN_HTML__
 const $=s=>document.querySelector(s);
 const esc=window.escapeHTML;
 const SEARCH_PAGE_SIZE=21;
+const SEARCH_CACHE_SCOPE=__SEARCH_CACHE_SCOPE__;
+const SEARCH_CACHE_KEY='ff_search_preview_v1', SEARCH_CACHE_TTL=5*60*1000, SEARCH_CACHE_MAX=256*1024;
 let curQ='',nextOffset=0,loading=false,hasMore=true,sourceMore=true,pendingCards=[],seenGroups=Object.create(null),pages=[],pageIndex=0;
 let debounce=null,searchController=null,searchSeq=0;
 /* 🖼️📄 Poster/Text comes entirely from `web/mode_assets.py` (SITE_JS → window.ViewMode) —
@@ -1583,6 +1585,28 @@ function thumbFail(img){
   const p=img.closest('.vposter,.gposter');if(p)p.classList.add('no-thumb');
 }
 
+// One bounded, tab-local preview; never cache thumbnails or signed links.
+function readSearchPreview(){
+  if(!SEARCH_CACHE_SCOPE)return null;
+  try{
+    const raw=sessionStorage.getItem(SEARCH_CACHE_KEY);
+    if(!raw||raw.length>SEARCH_CACHE_MAX)return null;
+    const c=JSON.parse(raw),age=Date.now()-c.time;
+    if(c.scope!==SEARCH_CACHE_SCOPE||c.mode!==groupMode||typeof c.query!=='string'||
+       !Number.isFinite(age)||age<0||age>SEARCH_CACHE_TTL||!Array.isArray(c.cards)||
+       c.cards.length>SEARCH_PAGE_SIZE){sessionStorage.removeItem(SEARCH_CACHE_KEY);return null}
+    return c;
+  }catch(e){return null}
+}
+function writeSearchPreview(query,mode,cards){
+  if(!SEARCH_CACHE_SCOPE)return;
+  try{
+    const value=JSON.stringify({scope:SEARCH_CACHE_SCOPE,mode,query,cards,time:Date.now()});
+    if(value.length<=SEARCH_CACHE_MAX)sessionStorage.setItem(SEARCH_CACHE_KEY,value);
+    else sessionStorage.removeItem(SEARCH_CACHE_KEY);
+  }catch(e){} // Storage may be disabled or full; fresh search still works.
+}
+function clearSearchPreview(){try{sessionStorage.removeItem(SEARCH_CACHE_KEY)}catch(e){}}
 function updatePages(){
   $('#searchPagination').hidden=!pages.length;
   $('#searchPrev').disabled=loading||pageIndex===0;
@@ -1601,13 +1625,21 @@ function prevPage(){
   pageIndex--;$('#searchStatus').textContent='';renderPage();
   $('#grid').scrollIntoView({behavior:'smooth',block:'start'});
 }
-async function load(reset){
+async function load(reset,restorePreview=false){
   // Reset aborts old queries; page changes retain prior results on failure.
+  let preview=null;
   if(reset){
+    if(restorePreview){
+      preview=readSearchPreview();
+      if(preview){curQ=preview.query;$('#q').value=curQ}
+    }
     if(searchController)searchController.abort();
     searchController=new AbortController();searchSeq++;loading=false;
     nextOffset=0;hasMore=true;sourceMore=true;pendingCards=[];seenGroups=Object.create(null);pages=[];pageIndex=0;
-    $('#grid').innerHTML='<div class="state" role="status">Loading results…</div>';updatePages();
+    $('#grid').innerHTML=preview
+      ? (preview.cards.map(f=>cardHTML(f,false)).join('') || '<div class="state">🔍 No files found.</div>')
+      : '<div class="state" role="status">Loading results…</div>';
+    updatePages();
   }else{
     if(loading)return;
     if(pageIndex+1<pages.length){
@@ -1621,7 +1653,7 @@ async function load(reset){
   let cursor=nextOffset,more=sourceMore,buffer=pendingCards.slice(),
       seen=Object.assign(Object.create(null),seenGroups),list=[];
   loading=true;$('#srow').classList.add('loading');updatePages();
-  $('#searchStatus').textContent='';
+  $('#searchStatus').textContent=preview?'Showing saved results while refreshing…':'';
   try{
     // Grouping works on raw batches; keep full-sized batches and buffer any
     // extra cards instead of shrinking the last request and splitting groups.
@@ -1640,7 +1672,7 @@ async function load(reset){
         credentials:'same-origin',signal:controller.signal
       });
       if(seq!==searchSeq)return;
-      if(r.status===401){location.href='/login?err='+encodeURIComponent('Session expired. Please sign in again.');return}
+      if(r.status===401){clearSearchPreview();$('#grid').innerHTML='';location.href='/login?err='+encodeURIComponent('Session expired. Please sign in again.');return}
       if(!r.ok)throw new Error(`HTTP ${r.status}`);
       const d=await r.json();if(seq!==searchSeq)return;
       buffer.push(...(d.results||[]));
@@ -1653,12 +1685,17 @@ async function load(reset){
     }
     if(seq!==searchSeq)return;
     nextOffset=cursor;sourceMore=more;pendingCards=buffer;hasMore=more||buffer.length>0;seenGroups=seen;
-    if(list.length||!pages.length){pages.push(list);pageIndex=pages.length-1;renderPage();}
+    $('#searchStatus').textContent='';
+    if(list.length||!pages.length){
+      pages.push(list);pageIndex=pages.length-1;renderPage();
+      if(reset)writeSearchPreview(query,mode,list);
+    }
     else {$('#searchStatus').textContent='No more results.';updatePages();}
     if(!reset && list.length)$('#grid').scrollIntoView({behavior:'smooth',block:'start'});
   }catch(e){
     if(e.name==='AbortError'||seq!==searchSeq)return;
-    if(reset)$('#grid').innerHTML=`<div class="state">⚠️ Search could not be loaded.<br>${esc(e.message||e)}</div>`;
+    if(reset && preview)$('#searchStatus').textContent='Showing saved results. Could not refresh; please try again.';
+    else if(reset)$('#grid').innerHTML=`<div class="state">⚠️ Search could not be loaded.<br>${esc(e.message||e)}</div>`;
     else $('#searchStatus').textContent='Could not load the next page. Please try again.';
   }finally{
     if(seq===searchSeq){loading=false;$('#srow').classList.remove('loading');updatePages()}
@@ -1718,14 +1755,14 @@ async function refreshProgress(){
 document.addEventListener('progresschange',refreshProgress);
 refreshProgress();
 ViewMode.apply();
-load(true);
+load(true,true);
 </script>
 __PLAYER_JS__
 __FILE_EDIT_JS__
 __GROUP_ADMIN_JS__"""
 
 
-def search_page(tg_id: int, role: str):
+def search_page(tg_id: int, role: str, cache_scope: str = ""):
     """The app shell + search body with a v5-style sidebar.
 
     * Sign Out only in the sidebar footer (not the topbar).
@@ -1740,6 +1777,7 @@ def search_page(tg_id: int, role: str):
         for sp in SEARCH_FILTERS
     )
     body = (SEARCH_BODY
+            .replace("__SEARCH_CACHE_SCOPE__", json.dumps(cache_scope))
             .replace("__FILTER_BUTTONS__", filter_buttons(search_filters))
             .replace("__PLAYER_MODAL__", PLAYER_MODAL_HTML)
             .replace("__PLAYER_JS__", PLAYER_JS)

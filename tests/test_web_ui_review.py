@@ -44,7 +44,7 @@ function el(){return {innerHTML:'',textContent:'',disabled:false,hidden:false,cl
 const els={'#grid':el(),'#searchPagination':el(),'#searchPrev':el(),'#searchNext':el(),'#searchPage':el(),'#srow':el(),'#searchStatus':el()};
 const $=s=>els[s];const SEARCH_PAGE_SIZE=21;
 let curQ='',nextOffset=0,loading=false,hasMore=true,sourceMore=true,pendingCards=[],seenGroups=Object.create(null),pages=[],pageIndex=0,searchController=null,searchSeq=0,groupMode='all';
-const card=x=>x.name;const esc=x=>String(x);const RevealCards={reveal(){}};
+const readSearchPreview=()=>null,writeSearchPreview=()=>{},clearSearchPreview=()=>{};const card=x=>x.name;const esc=x=>String(x);const RevealCards={reveal(){}};
 let replies=[];const fetch=()=>Promise.resolve(replies.shift());
 """ + code + r"""
 (async()=>{
@@ -74,7 +74,7 @@ function el(){return {innerHTML:'',textContent:'',disabled:false,hidden:false,cl
 const els={'#grid':el(),'#searchPagination':el(),'#searchPrev':el(),'#searchNext':el(),'#searchPage':el(),'#srow':el(),'#searchStatus':el()};
 const $=s=>els[s],SEARCH_PAGE_SIZE=21;
 let curQ='',nextOffset=0,loading=false,hasMore=true,sourceMore=true,pendingCards=[],seenGroups=Object.create(null),pages=[],pageIndex=0,searchController=null,searchSeq=0,groupMode='all';
-const card=x=>x.name,esc=String,RevealCards={reveal(){}};let resolve;
+const readSearchPreview=()=>null,writeSearchPreview=()=>{},clearSearchPreview=()=>{};const card=x=>x.name,esc=String,RevealCards={reveal(){}};let resolve;
 const fetch=()=>new Promise(r=>resolve=r);
 """ + code + r"""
 (async()=>{
