@@ -124,50 +124,10 @@ border-radius:8px;text-decoration:none;font-weight:800}}</style></head>
 <a href="{src}" download>⬇ Direct Download</a></div></body></html>"""
 
 
-MINI_WATCH_HTML = """<!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="color-scheme" content="dark">
-<meta name="referrer" content="no-referrer">
-<title>{title}</title>
-<script defer src="https://telegram.org/js/telegram-web-app.js"></script>
-<style>
-*{{box-sizing:border-box}} body{{margin:0;background:#101017;color:#fff;
-font-family:system-ui,-apple-system,Segoe UI,sans-serif}}
-main{{max-width:720px;margin:auto;padding:16px 12px 24px}}
-h1{{font-size:15px;line-height:1.4;overflow-wrap:anywhere;margin:0 0 12px}}
-video{{display:block;width:100%;aspect-ratio:16/9;background:#000;border-radius:10px}}
-.actions{{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}}
-a{{color:#fff;text-decoration:none;background:#d31221;border-radius:8px;padding:10px 14px;font-weight:700;font-size:13px}}
-.note{{font-size:12px;line-height:1.5;color:#aaa;margin:14px 0 0}}
-</style></head><body><main>
-<h1>{file_name}</h1>
-<video controls playsinline preload="metadata" poster="{poster}">
-<source src="{src}">Your device does not support this video.</video>
-<div class="actions"><a href="{src}" download>⬇ Download</a></div>
-<p class="note">If the video cannot play, your device may not support its format. Use Download instead.</p>
-</main><script>document.addEventListener('DOMContentLoaded',function(){{
-  if(window.Telegram && window.Telegram.WebApp)window.Telegram.WebApp.ready();
-}});</script>
-</body></html>"""
-
-
-def _mini_ready_page(page: str) -> str:
-    """Unblock Telegram's loading indicator even on an unsupported-file page."""
-    sdk = '<script defer src="https://telegram.org/js/telegram-web-app.js"></script>'
-    ready = ("<script>document.addEventListener('DOMContentLoaded',function(){"
-             "if(window.Telegram && window.Telegram.WebApp)window.Telegram.WebApp.ready();"
-             "});</script>")
-    return page.replace('</head>', sdk + '</head>', 1).replace('</body>', ready + '</body>', 1)
-
-
-async def media_watch(message_id: int, query: str = "", poster: str = "", file_id: str = "", mini: bool = False):
+async def media_watch(message_id: int, query: str = "", poster: str = "", file_id: str = ""):
     info = await get_media_info(message_id)
     if not info:
-        error = "<h2 style='color:#fff;text-align:center;padding:60px'>❌ File Not Found</h2>"
-        if mini:
-            return _mini_ready_page("<!DOCTYPE html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'></head><body style='background:#101017'>" + error + "</body></html>")
-        return error
+        return "<h2 style='color:#fff;text-align:center;padding:60px'>❌ File Not Found</h2>"
 
     if not file_id:
         file_id = unpack_new_file_id(info.file_id)
@@ -191,10 +151,9 @@ async def media_watch(message_id: int, query: str = "", poster: str = "", file_i
     safe_poster = html.escape(safe_poster, quote=True)
 
     if not is_video:
-        page = UNSUPPORTED_HTML.format(file_name=name, src=src)
-        return _mini_ready_page(page) if mini else page
+        return UNSUPPORTED_HTML.format(file_name=name, src=src)
 
-    return (MINI_WATCH_HTML if mini else WATCH_HTML).format(
+    return WATCH_HTML.format(
         title=f"Watch {name}",
         file_name=name,
         src=src,
