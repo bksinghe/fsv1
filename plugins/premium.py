@@ -11,7 +11,8 @@ from hydrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Callback
 
 from info import ADMINS, IS_PREMIUM, PRE_DAY_AMOUNT, UPI_ID, UPI_NAME, RECEIPT_SEND_USERNAME
 from database.users_chats_db import db
-from utils import is_premium, fmt, get_expiry_datetime
+from database.payment_db import decide_payment
+from utils import is_premium, fmt, get_expiry_datetime, temp
 
 
 # ======================================================
@@ -720,19 +721,6 @@ async def cancel_payment(_, query: CallbackQuery):
 # 🛂 ADMIN APPROVAL
 # ======================================================
 
-async def update_user_premium(uid, plan_txt, amount):
-    """Approve a purchase: the plan text (e.g. "7 Days") carries the duration"""
-    duration = parse_duration(plan_txt)
-    if not duration:
-        return False
-
-    return await apply_premium(
-        uid, plan_txt, amount,
-        duration=normalise_duration(duration),
-        extend=True, by="purchase",
-    )
-
-
 @Client.on_callback_query(filters.regex("^pay_ok#"))
 async def approve_payment(client, query: CallbackQuery):
     if query.from_user.id not in ADMINS:
@@ -745,13 +733,26 @@ async def approve_payment(client, query: CallbackQuery):
     except Exception as e:
         return await query.answer(f"❌ Invalid data: {e}", show_alert=True)
 
-    result = await update_user_premium(uid, plan_txt, amount)
-    if not result:
-        return await query.message.edit_caption(
-            query.message.caption + "\n\n❌ **FAILED** - Invalid plan duration"
-        )
+    duration = parse_duration(plan_txt)
+    if not duration:
+        return await query.answer("❌ Invalid plan duration", show_alert=True)
+    try:
+        result = await decide_payment(uid, query.message.chat.id, query.message.id,
+                                      "approved", plan_txt, amount, normalise_duration(duration))
+    except Exception:
+        logging.getLogger(__name__).exception("Payment approval could not be recorded")
+        return await query.answer("❌ Approval could not be recorded. Please retry.", show_alert=True)
+    if result['decision'] == 'approved':
+        # A previously cached non-premium result must not delay access for 10 minutes.
+        temp.PREMIUM.pop(uid, None)
+    if result['status'] != 'applied':
+        return await query.answer(f"⚠️ This receipt was already {result['decision']}.", show_alert=True)
 
-    expire_dt, invoice = result
+    expire_dt, invoice = result['expire'], result['invoice']
+    try:
+        await query.answer("✅ Payment Approved Successfully!", show_alert=True)
+    except Exception:
+        logging.getLogger(__name__).debug("Approval callback answer failed", exc_info=True)
 
     await notify_user(
         client, uid,
@@ -767,10 +768,12 @@ Enjoy your premium benefits! ✨
 """
     )
 
-    await query.message.edit_caption(
-        stamp_receipt(query.message.caption, "✅ **APPROVED**", query.from_user.username)
-    )
-    await query.answer("✅ Payment Approved Successfully!", show_alert=True)
+    try:
+        await query.message.edit_caption(
+            stamp_receipt(query.message.caption, "✅ **APPROVED**", query.from_user.username)
+        )
+    except Exception:
+        logging.getLogger(__name__).exception("Approved receipt could not be updated")
 
 
 @Client.on_callback_query(filters.regex("^pay_no#"))
@@ -784,6 +787,18 @@ async def reject_payment(client, query: CallbackQuery):
         logging.getLogger(__name__).debug("reject_payment: optional operation failed", exc_info=True)
         return await query.answer("❌ Invalid data", show_alert=True)
 
+    try:
+        result = await decide_payment(uid, query.message.chat.id, query.message.id, "rejected")
+    except Exception:
+        logging.getLogger(__name__).exception("Payment rejection could not be recorded")
+        return await query.answer("❌ Rejection could not be recorded. Please retry.", show_alert=True)
+    if result['status'] != 'applied':
+        return await query.answer(f"⚠️ This receipt was already {result['decision']}.", show_alert=True)
+
+    try:
+        await query.answer("❌ Payment Rejected", show_alert=True)
+    except Exception:
+        logging.getLogger(__name__).debug("Rejection callback answer failed", exc_info=True)
     await notify_user(
         client, uid,
         """
@@ -794,7 +809,9 @@ Please contact support or try again with correct details.
 """
     )
 
-    await query.message.edit_caption(
-        stamp_receipt(query.message.caption, "❌ **REJECTED**", query.from_user.username)
-    )
-    await query.answer("❌ Payment Rejected", show_alert=True)
+    try:
+        await query.message.edit_caption(
+            stamp_receipt(query.message.caption, "❌ **REJECTED**", query.from_user.username)
+        )
+    except Exception:
+        logging.getLogger(__name__).exception("Rejected receipt could not be updated")
