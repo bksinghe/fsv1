@@ -1,13 +1,15 @@
 import logging
 import random
 import asyncio
+from urllib.parse import urlsplit
 
 from hydrogram import Client, enums, filters
 from hydrogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton,
     CallbackQuery,
-    InputMediaPhoto
+    InputMediaPhoto,
+    WebAppInfo,
 )
 from hydrogram.errors import (
     MessageNotModified,
@@ -288,18 +290,21 @@ async def cb_handler(client: Client, query: CallbackQuery):
                 watch = f"{URL}watch/{msg.id}?{signed}"
                 download = f"{URL}download/{msg.id}?{signed}"
 
-                success = await safe_edit_markup(
-                    query.message,
-                    InlineKeyboardMarkup(
-                        [
-                            [
-                                InlineKeyboardButton("▶️ Watch Online", url=watch),
-                                InlineKeyboardButton("⬇️ Fast Download", url=download)
-                            ],
-                            [InlineKeyboardButton("❌ Close", callback_data="close_data")]
-                        ]
-                    )
-                )
+                rows = []
+                # Telegram supports inline Web App buttons in private bot chats,
+                # and requires an HTTPS public URL. Preserve the normal links too.
+                if (getattr(query.message.chat, "type", None) == enums.ChatType.PRIVATE
+                        and urlsplit(watch).scheme.lower() == "https"
+                        and urlsplit(watch).hostname):
+                    rows.append([InlineKeyboardButton(
+                        "▶️ Play in Telegram", web_app=WebAppInfo(url=watch + "&mini=1")
+                    )])
+                rows.extend([
+                    [InlineKeyboardButton("▶️ Watch Online", url=watch),
+                     InlineKeyboardButton("⬇️ Fast Download", url=download)],
+                    [InlineKeyboardButton("❌ Close", callback_data="close_data")],
+                ])
+                success = await safe_edit_markup(query.message, InlineKeyboardMarkup(rows))
                 
                 if success:
                     await safe_answer_query(query, "✅ Links ready")

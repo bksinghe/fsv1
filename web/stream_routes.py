@@ -74,6 +74,7 @@ async def watch_handler(request):
                 query=_signed_query(request),
                 poster=request.query.get("poster", ""),
                 file_id=request.query.get("file_id", ""),
+                mini=request.query.get("mini") == "1",
             ),
             content_type="text/html",
             charset="utf-8",

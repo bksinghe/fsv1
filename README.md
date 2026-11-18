@@ -93,6 +93,12 @@ The help menu (`/start` → 👨‍🚒 Help) is the **only** place commands are
 
 ---
 
+## ▶️ Telegram Mini App player
+
+For a private bot chat with an HTTPS `URL`, the **Watch / Download** action also offers **Play in Telegram**. It opens a compact Telegram Mini App using the same signed `/watch` player and Range-enabled `/download` stream; the existing browser player and download buttons remain available. HTTP installations and other chat types retain the original buttons. The video must use a format and codec supported by the device's Telegram WebView; use Download if it does not play.
+
+This is the existing 24-hour signed bearer-link security model, not Telegram-user-bound authentication: anyone with the signed URL can use it until expiry. Do not share it. The Mini App loads Telegram's official Web App script for `ready()`; playback itself uses the existing server. Bot/API access, HTTPS, and actual device compatibility must be verified in Telegram.
+
 ## 🔐 Payment receipt decisions
 
 Each Telegram payment receipt is identified by its admin-chat ID and message ID. Approve/reject is recorded in the user's premium MongoDB document; approval writes the receipt decision, updated plan and invoice atomically in that same document, with majority read/write concern. Repeated clicks, concurrent administrators, retries after an uncertain database response, and bot restarts cannot grant the same recorded receipt twice. Approve and Reject compete for the same decision; only the first successful decision takes effect. Different receipts use a compare-and-set retry so their concurrent approvals extend the latest plan.
