@@ -75,7 +75,8 @@ class Database:
             self.warns.create_index([("user_id", 1), ("chat_id", 1)])
             self.premium.create_index("id", unique=True)
             self.reminders.create_index([("sent", 1), ("remind_at", 1)])
-        except:
+        except Exception:
+            logging.getLogger(__name__).debug("_create_indexes: optional operation failed", exc_info=True)
             pass
 
     # =========================

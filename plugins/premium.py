@@ -1,3 +1,4 @@
+import logging
 import qrcode
 import secrets
 import asyncio
@@ -609,7 +610,8 @@ async def duration_selected(client, query: CallbackQuery):
 
         try:
             await query.message.delete()
-        except:
+        except Exception:
+            logging.getLogger(__name__).debug("duration_selected: optional operation failed", exc_info=True)
             pass
 
     except Exception as e:
@@ -743,7 +745,8 @@ async def reject_payment(client, query: CallbackQuery):
 
     try:
         uid = int(query.data.split("#")[1])
-    except:
+    except Exception:
+        logging.getLogger(__name__).debug("reject_payment: optional operation failed", exc_info=True)
         return await query.answer("❌ Invalid data", show_alert=True)
 
     await notify_user(

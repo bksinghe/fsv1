@@ -1,3 +1,4 @@
+import logging
 import os
 import aiohttp
 import asyncio
@@ -112,7 +113,8 @@ class Progress:
                 f"⏳ {eta}s left"
             )
             self.last = now
-        except:
+        except Exception:
+            logging.getLogger(__name__).debug("update: optional operation failed", exc_info=True)
             pass
 
 # Upload to GoFile
@@ -345,7 +347,8 @@ async def start_upload(bot, msg, uid):
         if file_path and os.path.exists(file_path):
             try:
                 os.remove(file_path)
-            except:
+            except Exception:
+                logging.getLogger(__name__).debug("start_upload: optional operation failed", exc_info=True)
                 pass
         UPLOAD_STATE.pop(uid, None)
 

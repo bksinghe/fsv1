@@ -24,7 +24,7 @@ function elem(){return {children:[],hidden:false,isConnected:true,classList:{tog
  appendChild(x){this.children.push(x)},replaceChildren(){this.children=[]},
  addEventListener(){},removeEventListener(){},setAttribute(){}}}
 global.document={createElement:elem,addEventListener(){}};
-global.window={};
+global.window={escapeHTML:s=>String(s==null?'':s)};
 global.fetch=()=>Promise.resolve({ok:true,json:()=>Promise.resolve({ok:true,group:{id:'12',num:12,name:'Group',count:2,thumb:'/api/thumb?file_id=a'}})});
 ''' + js + r'''
 (async()=>{

@@ -1,3 +1,4 @@
+import logging
 import time
 import asyncio
 
@@ -24,11 +25,6 @@ ACTIVE_INDEXES = set()
 resume_col = media_db["index_resume"]
 
 
-async def get_resume(chat_id):
-    doc = await asyncio.to_thread(resume_col.find_one, {"_id": chat_id})
-    return doc["last_id"] if doc else None
-
-
 async def set_resume(chat_id, msg_id):
     await asyncio.to_thread(
         resume_col.update_one,
@@ -45,7 +41,8 @@ async def auto_delete(bot, chat_id, msg_id, delay=120):
     await asyncio.sleep(delay)
     try:
         await bot.delete_messages(chat_id, msg_id)
-    except:
+    except Exception:
+        logging.getLogger(__name__).debug("auto_delete: optional operation failed", exc_info=True)
         pass
 
 
@@ -54,7 +51,8 @@ async def send_log(bot, text):
         return
     try:
         await bot.send_message(INDEX_LOG_CHANNEL, text)
-    except:
+    except Exception:
+        logging.getLogger(__name__).debug("send_log: optional operation failed", exc_info=True)
         pass
 
 

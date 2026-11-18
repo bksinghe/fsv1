@@ -126,11 +126,10 @@ WEB_SESSION_TTL = int(environ.get('WEB_SESSION_TTL', 7 * 24 * 3600))
 # Web stream link lifetime in seconds — defaults to 6 hours
 WEB_STREAM_TTL = int(environ.get('WEB_STREAM_TTL', 6 * 3600))
 
-# 📸 Only the Telegram thumbnail file_id ("TG_ID:..." string) is stored in the DB.
-# No image bytes in the DB or in a server RAM cache — they live in the browser's HTTP cache.
-# There is no server-side RAM cache (Koyeb's free tier has 512 MB); the browser keeps
-# posters in its own HTTP cache using ETag + max-age (see below).
+# Telegram IDs live in MongoDB; browsers cache images and the process has a
+# byte-bounded hot cache. Keep the limit at or below 16 MiB on small servers.
 THUMB_BROWSER_CACHE = int(environ.get('THUMB_BROWSER_CACHE', 7 * 24 * 3600))
+THUMB_CACHE_BYTES = max(0, min(int(environ.get('THUMB_CACHE_BYTES', '16777216')), 16777216))
 # How many Telegram thumbnail downloads may run at once (only files with a known TG_ID)
 THUMB_FETCH_CONCURRENCY = max(1, min(int(environ.get('THUMB_FETCH_CONCURRENCY', '6')), 20))
 

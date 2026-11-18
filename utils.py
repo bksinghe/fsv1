@@ -1,3 +1,4 @@
+import logging
 import asyncio
 import traceback
 import time
@@ -266,7 +267,8 @@ def fast_similarity(a: str, b: str) -> int:
         if not common:
             return 0
         return min(int((len(common) / max(len(a_set), len(b_set))) * 100), 100)
-    except:
+    except Exception:
+        logging.getLogger(__name__).debug("fast_similarity: optional operation failed", exc_info=True)
         return 0
 
 
@@ -386,7 +388,8 @@ def get_size(size):
                 return f"{size:.2f} {unit}"
             size /= 1024
         return f"{size:.2f} PB"
-    except:
+    except Exception:
+        logging.getLogger(__name__).debug("get_size: optional operation failed", exc_info=True)
         return "0 B"
 
 
@@ -400,7 +403,8 @@ def get_readable_time(seconds):
                 val, seconds = divmod(seconds, sec)
                 out += f"{int(val)}{name} "
         return out.strip() or "0s"
-    except:
+    except Exception:
+        logging.getLogger(__name__).debug("get_readable_time: optional operation failed", exc_info=True)
         return "0s"
 
 

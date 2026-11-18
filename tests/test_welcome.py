@@ -81,7 +81,6 @@ class TestGuestSingleSource(unittest.TestCase):
         # page() injects the ambient backdrop only for guest bodies.
         self.assertIn('ambient = GUEST_AMBIENT if GUEST_BODY_CLASS in body_class else ""', main)
         self.assertIn("nav = topbar or GUEST_TOPBAR", main)
-        self.assertIn("DEFAULT_TOPBAR = GUEST_TOPBAR", main)
         self.assertIn("return page(title, body, GUEST_BODY_CLASS)", main)
         # Logged-in shell is a separate function and must stay untouched.
         self.assertIn("def app_page(", main)

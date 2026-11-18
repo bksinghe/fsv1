@@ -127,7 +127,8 @@ async def start_file_delivery(client: Client, message):
         # Delete /start command
         try:
             await message.delete()
-        except:
+        except Exception:
+            logging.getLogger(__name__).debug("start_file_delivery: optional operation failed", exc_info=True)
             pass
         return
     
@@ -154,7 +155,8 @@ async def start_file_delivery(client: Client, message):
     # Delete /start command
     try:
         await message.delete()
-    except:
+    except Exception:
+        logging.getLogger(__name__).debug("start_file_delivery: optional operation failed", exc_info=True)
         pass
 
 
@@ -188,7 +190,8 @@ async def schedule_file_deletion(client, sent_msg, uid, file_id):
         # Delete the file message
         try:
             await sent_msg.delete()
-        except:
+        except Exception:
+            logging.getLogger(__name__).debug("schedule_file_deletion: optional operation failed", exc_info=True)
             pass
         
         # Send resend button
@@ -207,7 +210,8 @@ async def schedule_file_deletion(client, sent_msg, uid, file_id):
         await asyncio.sleep(RESEND_EXPIRE_TIME)
         try:
             await resend.delete()
-        except:
+        except Exception:
+            logging.getLogger(__name__).debug("schedule_file_deletion: optional operation failed", exc_info=True)
             pass
             
     except asyncio.CancelledError:
@@ -316,7 +320,8 @@ async def resend_handler(client, query: CallbackQuery):
     # Delete resend message
     try:
         await query.message.delete()
-    except:
+    except Exception:
+        logging.getLogger(__name__).debug("resend_handler: optional operation failed", exc_info=True)
         pass
 
     # Resend file

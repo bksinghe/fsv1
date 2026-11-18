@@ -15,7 +15,7 @@ class CatalogCardsTests(unittest.TestCase):
         self.assertNotIn('removeItem(', section)
         self.assertIn('onclick="openDetail(this)"', section)
         self.assertIn('role="link" tabindex="0"', section)
-        self.assertIn('ViewMode.imgAttrs(esc(src),true)', section)
+        self.assertIn('ViewMode.imgAttrs(esc(src))', section)
         self.assertIn('.cat-meta{padding:8px 10px 9px;display:none;', CATALOG)
         self.assertIn('.vm-grid.mode-text .vm-body{order:-1;display:flex;', MODE)
         self.assertIn('.cat-meta-main{display:none', CATALOG)

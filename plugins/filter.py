@@ -1,3 +1,4 @@
+import logging
 import asyncio
 import hashlib
 from math import ceil
@@ -52,7 +53,8 @@ async def is_group_admin(client, chat_id, user_id):
             enums.ChatMemberStatus.ADMINISTRATOR,
             enums.ChatMemberStatus.OWNER
         )
-    except:
+    except Exception:
+        logging.getLogger(__name__).debug("is_group_admin: optional operation failed", exc_info=True)
         return False
 
 
@@ -357,7 +359,8 @@ async def filter_handler(client, message):
                 "❌ An error occurred. Please try again.",
                 quote=True
             )
-        except:
+        except Exception:
+            logging.getLogger(__name__).debug("filter_handler: optional operation failed", exc_info=True)
             pass
 
 
@@ -516,7 +519,8 @@ async def send_results(
                 await message.edit_text(error_text)
             else:
                 await client.send_message(chat_id, error_text)
-        except:
+        except Exception:
+            logging.getLogger(__name__).debug("send_results: optional operation failed", exc_info=True)
             pass
 
 
@@ -567,7 +571,8 @@ async def pagination_handler(client, query):
         log_error("Pagination handler", e)
         try:
             await query.answer("❌ An error occurred", show_alert=True)
-        except:
+        except Exception:
+            logging.getLogger(__name__).debug("pagination_handler: optional operation failed", exc_info=True)
             pass
 
 

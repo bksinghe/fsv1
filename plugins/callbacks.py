@@ -1,3 +1,4 @@
+import logging
 import random
 import asyncio
 
@@ -457,5 +458,6 @@ async def cb_handler(client: Client, query: CallbackQuery):
         print(f"Callback handler main error: {e}")
         try:
             await safe_answer_query(query, "❌ An error occurred", show_alert=True)
-        except:
+        except Exception:
+            logging.getLogger(__name__).debug("cb_handler: optional operation failed", exc_info=True)
             pass

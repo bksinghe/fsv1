@@ -37,6 +37,7 @@ from database.group_db import (
     clean_episode_map, group_kind_meta, KIND_QUALITIES, KIND_EPISODES,
 )
 from web.web_assets import get_auth
+from web.common import json_response as _json, is_admin as _admin, admin_denied as _denied
 from web.thumb_engine import get_image_bytes, image_content_type, thumb_version
 from web.image_validate import is_image_magic
 
@@ -49,19 +50,6 @@ SCAN_MAX_GROUP = 30          # a larger quality bucket is a very common name —
 SCAN_MAX_SERIES = 500        # series may contain many episodes but should still be bounded
 SCAN_STATE = {"running": False}
 _AUTO_GROUP_LOCK = asyncio.Lock()
-
-
-def _json(data, status=200):
-    return web.json_response(data, status=status)
-
-
-async def _admin(req):
-    role, _ = await get_auth(req)
-    return role == "admin"
-
-
-def _denied():
-    return _json({"ok": False, "error": "Admins only"}, 403)
 
 
 async def _body(req):

@@ -78,9 +78,6 @@ overflow:hidden;text-overflow:ellipsis;-webkit-line-clamp:1}
 .vm-grid.mode-text .vm-img,
 .vm-grid.mode-text .vm-ph,
 .vm-grid.mode-text .vm-overlay{display:none!important}
-/* Catalog covers remain visible in text view too; library images stay hidden. */
-.vm-grid.mode-text .vm-show-cover .vm-img{display:block!important;position:static;width:64px;height:96px;
-object-fit:cover;border-radius:7px;flex:none}
 /* poster box → compact inline details strip (chips/size live inside it) */
 .vm-grid.mode-text .vm-poster{position:static;display:flex;flex-wrap:wrap;
 align-items:center;gap:5px;aspect-ratio:auto;width:100%;flex:0 0 auto;
@@ -145,11 +142,19 @@ window.ViewMode=(function(){
   function key(){return cfg.storage||storageFor(cfg.kind);}
   function get(){return cur;}
   function isText(){return cur==='text';}
-  /* Text mode defers images unless a surface explicitly needs its cover visible. */
+  /* Text mode defers images until poster mode is selected. */
   function imgAttrs(url){
     var u=String(url==null?'':url);
-    return (isText()&&!arguments[1]?'data-src="'+u+'"':'src="'+u+'"')+
+    return (isText()?'data-src="'+u+'"':'src="'+u+'"')+
            ' data-thumb="'+u+'" data-retry="0"';
+  }
+  /* Only cards in a mode-controlled grid defer retries or editor updates.
+     Detail-page and admin-modal previews are intentionally independent. */
+  function deferInText(img,url){
+    if(!isText() || !img.closest || !img.closest('.vm-grid'))return false;
+    img.dataset.src=url;
+    img.removeAttribute('src');
+    return true;
   }
   function apply(){
     Array.prototype.forEach.call(document.querySelectorAll('.vm-grid'),function(g){
@@ -194,7 +199,7 @@ window.ViewMode=(function(){
     bind();apply();
   }
   return {init:init,set:set,get:get,isText:isText,apply:apply,
-          imgAttrs:imgAttrs,storageFor:storageFor,options:VALID.slice(),
+          imgAttrs:imgAttrs,deferInText:deferInText,storageFor:storageFor,options:VALID.slice(),
           defaultMode:DEFAULT};
 })();
 /* Small alias for older inline handlers / tests — logic stays inside ViewMode */

@@ -44,6 +44,8 @@ _PENDING_QUERY = {
         {"thumb_url": {"$not": re.compile(r"^TG_ID:")}},
         {"thumb_verified": {"$ne": True}},
         {"meta_v": {"$ne": META_V}},
+        {"thumb_url": re.compile(r"^TG_ID:"), "is_thumb_permanent": False,
+         "thumb_source": {"$ne": "web"}},
     ],
 }
 
@@ -71,20 +73,25 @@ async def warmup_thumbs_cmd(client, message):
     # Lazy import: the `web` package is already loaded by bot.py; this avoids a cycle.
     from web.thumb_engine import probe_file, thumb_queue_state
 
+    args = (getattr(message, "command", None) or [])[1:]
+    if args and (len(args) != 1 or args[0].lower() != "retry_no_thumb"):
+        return await message.reply("Usage: /warmup_thumbs [retry_no_thumb]")
+    retry_no_thumb = bool(args)
+    query = ({"thumb_url": "NO_THUMB", "thumb_source": {"$ne": "web"}}
+             if retry_no_thumb else _PENDING_QUERY)
     status = await message.reply(
         "⚙️ <b>Thumbnail + Metadata Warmup</b>\n\nCounting pending files…",
         parse_mode=enums.ParseMode.HTML,
     )
 
     docs = await asyncio.to_thread(
-        lambda: list(collection.find(_PENDING_QUERY, {"_id": 1, "file_name": 1}))
+        lambda: list(collection.find(query, {"_id": 1, "file_name": 1}))
     )
     total = len(docs)
     if not total:
         return await status.edit_text(
-            "✨ <b>Everything is up-to-date!</b>\n\n"
-            "Every file has a <b>verified</b> <code>TG_ID:</code> thumbnail lock, "
-            "accurate <code>meta_v</code> metadata or a <code>NO_THUMB</code> mark.",
+            "✨ No NO_THUMB records to retry." if retry_no_thumb else
+            "✨ <b>Everything is up-to-date!</b> No pending thumbnail or metadata probes.",
             parse_mode=enums.ParseMode.HTML,
         )
 
@@ -100,7 +107,7 @@ async def warmup_thumbs_cmd(client, message):
             # ⚠️ This is the serial point: global _probe_lock + 3.0–5.0s anti-flood gap
             #    (wider after a FloodWait) + FloodWait retry. The same probe writes true
             #    metadata and the verified thumbnail to the DB.
-            await probe_file(fid)
+            await probe_file(fid, force=retry_no_thumb)
         except Exception as e:
             logger.warning(f"[warmup] {fid[:16]} skipped: {e}")
             skipped += 1
@@ -136,7 +143,7 @@ async def warmup_thumbs_cmd(client, message):
         f"⚪ No real poster (NO_THUMB): <code>{no_thumb:,}</code>\n"
         f"⏳ Remaining in queue: <code>{q['queued']}</code> · Errors: <code>{failed + skipped}</code>\n"
         f"🕐 Time: <code>{int(time.time() - start)}s</code>\n\n"
-        "<i>The web UI now shows only verified posters and accurate duration/quality, "
-        "with no extra probing.</i>",
+        "<i>Temporary failures remain eligible for a later retry. "
+        "NO_THUMB retry mode can be run again if needed.</i>",
         parse_mode=enums.ParseMode.HTML,
     )
