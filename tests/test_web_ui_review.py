@@ -44,7 +44,7 @@ function el(){return {innerHTML:'',textContent:'',disabled:false,hidden:false,cl
 const els={'#grid':el(),'#searchPagination':el(),'#searchPrev':el(),'#searchNext':el(),'#searchPage':el(),'#srow':el(),'#searchStatus':el()};
 const $=s=>els[s];const SEARCH_PAGE_SIZE=21;
 let curQ='',nextOffset=0,loading=false,hasMore=true,sourceMore=true,pendingCards=[],seenGroups=Object.create(null),pages=[],pageIndex=0,searchController=null,searchSeq=0,groupMode='all';
-const skeletons=()=>'<skeleton>';const card=x=>x.name;const esc=x=>String(x);const RevealCards={reveal(){}};
+const readSearchPreview=()=>null,writeSearchPreview=()=>{},clearSearchPreview=()=>{};const card=x=>x.name;const esc=x=>String(x);const RevealCards={reveal(){}};
 let replies=[];const fetch=()=>Promise.resolve(replies.shift());
 """ + code + r"""
 (async()=>{
@@ -58,6 +58,32 @@ let replies=[];const fetch=()=>Promise.resolve(replies.shift());
  assert.equal(els['#grid'].innerHTML,'last');assert(els['#searchNext'].disabled);
  prevPage();assert.equal(els['#grid'].innerHTML,first);assert(!els['#searchNext'].disabled);
  await load(false);assert.equal(els['#grid'].innerHTML,'last');assert.equal(replies.length,0);
+})().catch(e=>{console.error(e);process.exitCode=1});
+"""
+        node_run(script)
+
+    @unittest.skipUnless(shutil.which('node'), 'Node is required')
+    def test_search_loading_is_static_and_replaced_when_results_arrive(self):
+        text = string_constant(ROOT / 'web/web_assets.py', 'SEARCH_BODY')
+        self.assertNotIn('rv-skel', text)
+        self.assertNotIn('class="spin"', text)
+        code = text[text.index('function updatePages(){'):text.index('function playerGroupContext(')]
+        script = r"""
+const assert=require('assert');
+function el(){return {innerHTML:'',textContent:'',disabled:false,hidden:false,classList:{add(){},remove(){}},scrollIntoView(){}}}
+const els={'#grid':el(),'#searchPagination':el(),'#searchPrev':el(),'#searchNext':el(),'#searchPage':el(),'#srow':el(),'#searchStatus':el()};
+const $=s=>els[s],SEARCH_PAGE_SIZE=21;
+let curQ='',nextOffset=0,loading=false,hasMore=true,sourceMore=true,pendingCards=[],seenGroups=Object.create(null),pages=[],pageIndex=0,searchController=null,searchSeq=0,groupMode='all';
+const readSearchPreview=()=>null,writeSearchPreview=()=>{},clearSearchPreview=()=>{};const card=x=>x.name,esc=String,RevealCards={reveal(){}};let resolve;
+const fetch=()=>new Promise(r=>resolve=r);
+""" + code + r"""
+(async()=>{
+ const request=load(true);
+ assert(els['#grid'].innerHTML.includes('Loading results…'));
+ assert(els['#grid'].innerHTML.includes('role="status"'));
+ assert(!els['#grid'].innerHTML.includes('rv-skel'));
+ resolve({ok:true,json:async()=>({results:[{name:'video'}],next_offset:''})});
+ await request;assert.equal(els['#grid'].innerHTML,'video');
 })().catch(e=>{console.error(e);process.exitCode=1});
 """
         node_run(script)

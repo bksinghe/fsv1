@@ -34,7 +34,7 @@ const assert=require('assert');
 function el(){return {innerHTML:'',textContent:'',disabled:false,hidden:false,classList:{add(){},remove(){}},scrollIntoView(){}}}
 const els={'#grid':el(),'#searchPagination':el(),'#searchPrev':el(),'#searchNext':el(),'#searchPage':el(),'#srow':el(),'#searchStatus':el()};
 const $=s=>els[s],SEARCH_PAGE_SIZE=21; let curQ='',nextOffset=0,loading=false,hasMore=true,sourceMore=true,pendingCards=[],seenGroups=Object.create(null),pages=[],pageIndex=0,searchController=null,searchSeq=0,groupMode='all';
-const skeletons=()=>'<loading>';const card=x=>x.name+'|';const esc=String,RevealCards={reveal(){}};
+const readSearchPreview=()=>null,writeSearchPreview=()=>{},clearSearchPreview=()=>{};const card=x=>x.name+'|';const esc=String,RevealCards={reveal(){}};
 let calls=[],replies=[];const fetch=(url)=>{calls.push(url);return Promise.resolve(replies.shift())};
 const response=(items,next)=>({ok:true,json:async()=>({results:items,next_offset:next})});
 ''' + code + r'''

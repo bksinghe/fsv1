@@ -114,7 +114,7 @@ class TestSharedFilterDropdown(unittest.TestCase):
         self.assertEqual(len(re.findall(r"^FILTER_CSS\s*=", WEB_ASSETS, re.M)), 1)
         self.assertEqual(len(re.findall(r"^FILTER_JS\s*=", WEB_ASSETS, re.M)), 1)
         self.assertIn("SITE_CSS += FILTER_CSS", WEB_ASSETS)
-        self.assertIn('filter_buttons(search_filters)', WEB_ASSETS)
+        self.assertIn('filter_buttons(SEARCH_FILTERS)', WEB_ASSETS)
         self.assertIn('filter_buttons(CATALOG_FILTERS', CATALOG)
         css = re.search(r'^CATALOG_CSS = """(.*?)"""', CATALOG, re.S | re.M)
         self.assertIsNotNone(css)
@@ -143,7 +143,7 @@ class TestCategoryAllLabel(unittest.TestCase):
         self.assertNotIn("'<option value=\"all\">📂 All</option>'", CATALOG,
                          "the label is hardcoded in the editor again")
         # the /search Group/UnGroup filter also keeps "All"
-        self.assertIn('"group": (("all", "All")', WEB_ASSETS)
+        self.assertIn('"group": (("all", "📂 All")', WEB_ASSETS)
 
     def test_09_category_options_are_unchanged_after_the_all_option(self):
         body = re.search(r"def _category_options\([\s\S]*?return \"\"\.join\(out\)",

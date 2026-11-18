@@ -27,7 +27,7 @@ class TextModeImageAudit(unittest.TestCase):
             '__GROUP_CARD_TEMPLATE__', json.dumps(constant('group_assets.py', 'GROUP_CARD_TEMPLATE')))
         search = constant('web_assets.py', 'SEARCH_BODY')
         cards = search[search.index('function imgAttrs(f)'):search.index('function card(f)')]
-        retry = search[search.index('function thumbFail(img)'):search.index('async function load(reset)')]
+        retry = search[search.index('function thumbFail(img)'):search.index('async function load(reset,')]
         editor = constant('web_assets.py', 'FILE_EDIT_JS')
         sync = editor[editor.index('function syncCard(f)'):editor.index('function setPoster(f)')]
         catalog_retry = constant('catalog.py', 'CATALOG_IMAGE_JS').replace('<script>', '').replace('</script>', '')

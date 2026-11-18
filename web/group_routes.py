@@ -1025,6 +1025,10 @@ async def api_group_scan_all(req):
         return _denied()
     if SCAN_STATE.get("running"):
         return _json({"ok": True, "started": False, "running": True})
+    # Reserve synchronously before scheduling so another request in this worker
+    # cannot start a second scan before the background coroutine gets CPU time.
+    SCAN_STATE.update(running=True, phase="Starting", scanned=0, total=0,
+                      created=0, added=0, error="", finished=0)
     asyncio.create_task(_scan_all_groups())
     return _json({"ok": True, "started": True})
 

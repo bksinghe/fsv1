@@ -913,10 +913,7 @@ FILTER_JS = r"""
 # ─────────────────────────────────────────────────────────────
 FILTER_OPTIONS = {
     "view":  VIEW_MODE_OPTIONS,
-    "group": (("all", "All"), ("group", "Group"), ("ungroup", "UnGroup")),
-    # Admins get the v5-style scan action in the same filter dropdown.
-    "group_admin": (("all", "All"), ("group", "Group"), ("ungroup", "UnGroup"),
-                    ("scan_all", "⚙️ Scan all & build groups")),
+    "group": (("all", "📂 All"), ("group", "🗂️ Group"), ("ungroup", "📄 UnGroup")),
 }
 
 # (id, options, caption, aria/title label, onchange)
@@ -1001,11 +998,6 @@ border-radius:12px;padding:16px;box-shadow:0 4px 15px rgba(0,0,0,.10)}
 border:1.5px solid var(--line);border-radius:10px;padding:13px 16px;color:var(--txt);
 font-size:15px;font-weight:600;font-family:inherit;outline:none;transition:border-color .18s}
 .sinput:focus{border-color:var(--red)}
-.spin{display:none;position:absolute;right:16px;top:50%;transform:translateY(-50%);
-width:17px;height:17px;border:2px solid var(--line);border-top-color:var(--red);
-border-radius:50%;animation:spin .6s linear infinite}
-.srow.loading .spin{display:block}
-@keyframes spin{to{transform:translateY(-50%) rotate(360deg)}}
 .main{padding:18px 4% 60px;max-width:1700px;margin:0 auto}
 .search-pagination{display:flex;justify-content:center;align-items:center;gap:12px;margin:28px auto 0}
 .search-pagination[hidden]{display:none}
@@ -1082,8 +1074,7 @@ font-weight:700;color:var(--mut);gap:10px;flex-wrap:wrap}
 .links a:hover{color:var(--red)}
 .hr{border:0;border-top:1px solid var(--line);margin:24px 0}
 /* 📱 mobile filter row (search + both buttons) → one rule in FILTER_CSS */
-@media(max-width:520px){.spin{display:none!important}
-.auth-card{padding:24px}.vgrid{gap:8px}}
+@media(max-width:520px){.auth-card{padding:24px}.vgrid{gap:8px}}
 
 """
 
@@ -1491,7 +1482,6 @@ SEARCH_BODY = """<div class="search-zone">
     <div class="srow" id="srow">
       <div class="qwrap">
         <input class="sinput" id="q" type="search" aria-label="Search files" placeholder="Search movies, series or file names..." autocomplete="off">
-        <div class="spin"></div>
       </div>
       __FILTER_BUTTONS__
     </div>
@@ -1521,6 +1511,8 @@ __GROUP_ADMIN_HTML__
 const $=s=>document.querySelector(s);
 const esc=window.escapeHTML;
 const SEARCH_PAGE_SIZE=21;
+const SEARCH_CACHE_SCOPE=__SEARCH_CACHE_SCOPE__;
+const SEARCH_CACHE_KEY='ff_search_preview_v1', SEARCH_CACHE_TTL=5*60*1000, SEARCH_CACHE_MAX=256*1024;
 let curQ='',nextOffset=0,loading=false,hasMore=true,sourceMore=true,pendingCards=[],seenGroups=Object.create(null),pages=[],pageIndex=0;
 let debounce=null,searchController=null,searchSeq=0;
 /* 🖼️📄 Poster/Text comes entirely from `web/mode_assets.py` (SITE_JS → window.ViewMode) —
@@ -1530,13 +1522,6 @@ if(!['all','group','ungroup'].includes(groupMode))groupMode='all';
 ViewMode.init({storage:ViewMode.storageFor()});
 $('#groupSel').value=groupMode;
 function setGroup(v){
-  if(v==='scan_all'){
-    // This is an admin action, not a persistent search filter. Restore the
-    // previous selection before launching the same scan used by the Group UI.
-    $('#groupSel').value=groupMode;
-    if(typeof window.gScanAll==='function')window.gScanAll();
-    return;
-  }
   groupMode=['all','group','ungroup'].includes(v)?v:'all';
   localStorage.setItem('ff_group_mode',groupMode);
   $('#groupSel').value=groupMode;doSearch()}
@@ -1569,13 +1554,6 @@ function cardHTML(f,topLevel){
 }
 window.cardHTML=cardHTML;
 function card(f){return cardHTML(f,true)}
-/* Shimmer placeholders while a fresh result batch is being fetched — the GitHub
-   reference shows a shimmering poster box, then reveals the real cards in a wave. */
-function skeletons(){
-  return Array.from({length:6},()=>'<div class="vcard rv-skel vm-card">'
-    +'<div class="vposter vm-poster"></div><div class="vbody vm-body">'
-    +'<div class="rv-line"></div><div class="rv-line short"></div></div></div>').join('');
-}
 // Like v5's reloadThumb(fileId): first-time posters come from a serial warmup queue
 // one at a time, so on a 404 we retry gradually with `retry=true&t=...` —
 // as ids are locked into the DB, the posters appear automatically.
@@ -1597,6 +1575,28 @@ function thumbFail(img){
   const p=img.closest('.vposter,.gposter');if(p)p.classList.add('no-thumb');
 }
 
+// One bounded, tab-local preview; never cache thumbnails or signed links.
+function readSearchPreview(){
+  if(!SEARCH_CACHE_SCOPE)return null;
+  try{
+    const raw=sessionStorage.getItem(SEARCH_CACHE_KEY);
+    if(!raw||raw.length>SEARCH_CACHE_MAX)return null;
+    const c=JSON.parse(raw),age=Date.now()-c.time;
+    if(c.scope!==SEARCH_CACHE_SCOPE||c.mode!==groupMode||typeof c.query!=='string'||
+       !Number.isFinite(age)||age<0||age>SEARCH_CACHE_TTL||!Array.isArray(c.cards)||
+       c.cards.length>SEARCH_PAGE_SIZE){sessionStorage.removeItem(SEARCH_CACHE_KEY);return null}
+    return c;
+  }catch(e){return null}
+}
+function writeSearchPreview(query,mode,cards){
+  if(!SEARCH_CACHE_SCOPE)return;
+  try{
+    const value=JSON.stringify({scope:SEARCH_CACHE_SCOPE,mode,query,cards,time:Date.now()});
+    if(value.length<=SEARCH_CACHE_MAX)sessionStorage.setItem(SEARCH_CACHE_KEY,value);
+    else sessionStorage.removeItem(SEARCH_CACHE_KEY);
+  }catch(e){} // Storage may be disabled or full; fresh search still works.
+}
+function clearSearchPreview(){try{sessionStorage.removeItem(SEARCH_CACHE_KEY)}catch(e){}}
 function updatePages(){
   $('#searchPagination').hidden=!pages.length;
   $('#searchPrev').disabled=loading||pageIndex===0;
@@ -1615,13 +1615,21 @@ function prevPage(){
   pageIndex--;$('#searchStatus').textContent='';renderPage();
   $('#grid').scrollIntoView({behavior:'smooth',block:'start'});
 }
-async function load(reset){
+async function load(reset,restorePreview=false){
   // Reset aborts old queries; page changes retain prior results on failure.
+  let preview=null;
   if(reset){
+    if(restorePreview){
+      preview=readSearchPreview();
+      if(preview){curQ=preview.query;$('#q').value=curQ}
+    }
     if(searchController)searchController.abort();
     searchController=new AbortController();searchSeq++;loading=false;
     nextOffset=0;hasMore=true;sourceMore=true;pendingCards=[];seenGroups=Object.create(null);pages=[];pageIndex=0;
-    $('#grid').innerHTML=skeletons();updatePages();
+    $('#grid').innerHTML=preview
+      ? (preview.cards.map(f=>cardHTML(f,false)).join('') || '<div class="state">🔍 No files found.</div>')
+      : '<div class="state" role="status">Loading results…</div>';
+    updatePages();
   }else{
     if(loading)return;
     if(pageIndex+1<pages.length){
@@ -1635,7 +1643,7 @@ async function load(reset){
   let cursor=nextOffset,more=sourceMore,buffer=pendingCards.slice(),
       seen=Object.assign(Object.create(null),seenGroups),list=[];
   loading=true;$('#srow').classList.add('loading');updatePages();
-  $('#searchStatus').textContent='';
+  $('#searchStatus').textContent=preview?'Showing saved results while refreshing…':'';
   try{
     // Grouping works on raw batches; keep full-sized batches and buffer any
     // extra cards instead of shrinking the last request and splitting groups.
@@ -1654,7 +1662,7 @@ async function load(reset){
         credentials:'same-origin',signal:controller.signal
       });
       if(seq!==searchSeq)return;
-      if(r.status===401){location.href='/login?err='+encodeURIComponent('Session expired. Please sign in again.');return}
+      if(r.status===401){clearSearchPreview();$('#grid').innerHTML='';location.href='/login?err='+encodeURIComponent('Session expired. Please sign in again.');return}
       if(!r.ok)throw new Error(`HTTP ${r.status}`);
       const d=await r.json();if(seq!==searchSeq)return;
       buffer.push(...(d.results||[]));
@@ -1667,12 +1675,17 @@ async function load(reset){
     }
     if(seq!==searchSeq)return;
     nextOffset=cursor;sourceMore=more;pendingCards=buffer;hasMore=more||buffer.length>0;seenGroups=seen;
-    if(list.length||!pages.length){pages.push(list);pageIndex=pages.length-1;renderPage();}
+    $('#searchStatus').textContent='';
+    if(list.length||!pages.length){
+      pages.push(list);pageIndex=pages.length-1;renderPage();
+      if(reset)writeSearchPreview(query,mode,list);
+    }
     else {$('#searchStatus').textContent='No more results.';updatePages();}
     if(!reset && list.length)$('#grid').scrollIntoView({behavior:'smooth',block:'start'});
   }catch(e){
     if(e.name==='AbortError'||seq!==searchSeq)return;
-    if(reset)$('#grid').innerHTML=`<div class="state">⚠️ Search could not be loaded.<br>${esc(e.message||e)}</div>`;
+    if(reset && preview)$('#searchStatus').textContent='Showing saved results. Could not refresh; please try again.';
+    else if(reset)$('#grid').innerHTML=`<div class="state">⚠️ Search could not be loaded.<br>${esc(e.message||e)}</div>`;
     else $('#searchStatus').textContent='Could not load the next page. Please try again.';
   }finally{
     if(seq===searchSeq){loading=false;$('#srow').classList.remove('loading');updatePages()}
@@ -1732,14 +1745,14 @@ async function refreshProgress(){
 document.addEventListener('progresschange',refreshProgress);
 refreshProgress();
 ViewMode.apply();
-load(true);
+load(true,true);
 </script>
 __PLAYER_JS__
 __FILE_EDIT_JS__
 __GROUP_ADMIN_JS__"""
 
 
-def search_page(tg_id: int, role: str):
+def search_page(tg_id: int, role: str, cache_scope: str = ""):
     """The app shell + search body with a v5-style sidebar.
 
     * Sign Out only in the sidebar footer (not the topbar).
@@ -1749,12 +1762,9 @@ def search_page(tg_id: int, role: str):
       the count lives only on the `/stats` (Database Stats) page.
     """
     admin = role == "admin"
-    search_filters = tuple(
-        dict(sp, options="group_admin") if admin and sp["id"] == "groupSel" else sp
-        for sp in SEARCH_FILTERS
-    )
     body = (SEARCH_BODY
-            .replace("__FILTER_BUTTONS__", filter_buttons(search_filters))
+            .replace("__SEARCH_CACHE_SCOPE__", json.dumps(cache_scope))
+            .replace("__FILTER_BUTTONS__", filter_buttons(SEARCH_FILTERS))
             .replace("__PLAYER_MODAL__", PLAYER_MODAL_HTML)
             .replace("__PLAYER_JS__", PLAYER_JS)
             .replace("__FILE_EDIT_HTML__", FILE_EDIT_HTML if admin else "")

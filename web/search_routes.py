@@ -7,6 +7,7 @@ After login, `/search` provides:
 """
 
 import html
+import hashlib
 import logging
 import time
 from urllib.parse import quote
@@ -98,7 +99,12 @@ async def search_page_handler(req):
     role, tg_id = await get_auth(req)
     if not role:
         return web.HTTPFound("/login")
-    return search_page(tg_id, role)
+    # The cache scope is a non-reversible fingerprint, never the session cookie.
+    # A newly authenticated session cannot reuse a previous session's preview.
+    scope = hashlib.sha256(req.cookies["user_session"].encode()).hexdigest()
+    response = search_page(tg_id, role, cache_scope=scope)
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
 
 
 # ─────────────────────── SEARCH API ───────────────────────

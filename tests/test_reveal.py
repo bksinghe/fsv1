@@ -77,7 +77,8 @@ class TestSingleSource(unittest.TestCase):
         self.assertIn("CARD_CLASS:topLevel?' rv-enter':''", src)
         self.assertIn("RevealCards.reveal($('#grid'))", src)
         self.assertIn("function card(f){return cardHTML(f,true)}", src)
-        self.assertIn("class=\"vcard rv-skel vm-card\"", src)
+        self.assertNotIn("class=\"vcard rv-skel vm-card\"", src)
+        self.assertIn('Loading results…', src)
         # Each page replaces the grid and is revealed afresh.
         self.assertIn("function renderPage()", src)
         self.assertIn("list.map(card).join('')", src)
