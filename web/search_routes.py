@@ -43,12 +43,13 @@ _STREAM_CACHE = {}
 # Groups are now **permanent** (`database/group_db.py`): group_id/num,
 # members, auto_keys and excluded live in the DB. The title key also comes from
 # that one module, so the search filter, scan-all and new-quality auto-join all
-# follow the same rule. Cap the Group/UnGroup page to this many docs on large DBs.
+# follow the same rule. Cap the Group filter scan to this many docs on large DBs.
+# UnGroup reads ordinary file pages directly and is not subject to this scan cap.
 _GROUP_SCAN_LIMIT = 500
 
 
 async def _group_page(q: str, offset: int, limit: int, mode: str):
-    """Group / UnGroup — pages are **cards**, membership covers the whole query set.
+    """Group filter — pages are **cards**, membership covers the scanned query set.
 
     Reads only lightweight metadata such as file_name/_id/quality — no image
     bytes and no server-side thumbnail/RAM cache. `group_cards()` loads every
@@ -121,17 +122,19 @@ async def api_search(req):
     if group_mode not in ("all", "group", "ungroup"):
         group_mode = "all"
     try:
-        if group_mode != "all":
-            # Already grouped cards (offset = card index)
+        if group_mode == "group":
+            # Group cards are paged by card index within the bounded scan.
             results, next_offset, total = await _group_page(q, offset, limit, group_mode)
         else:
             if q:
                 docs, next_offset, total = await get_search_results(q, offset, limit)
             else:
                 docs, next_offset, total = await get_recent_files(offset, limit)
-            # 🎴 Permanent groups + same-title buckets → group-first cards.
-            # Every member of a saved group comes from the DB; offset stays raw-file based.
-            results = await group_cards([_result(d) for d in docs], normalize=_result)
+            cards = [_result(d) for d in docs]
+            # Like Actor Videos, UnGroup shows each matching file separately,
+            # including group members; it must never alter group membership.
+            # All retains the existing group-first display and raw-file offsets.
+            results = cards if group_mode == "ungroup" else await group_cards(cards, normalize=_result)
     except Exception as e:
         logger.error(f"Web search failed (q={q!r}, group={group_mode}): {e}")
         return web.json_response({"error": "Search temporarily unavailable"}, status=500)
