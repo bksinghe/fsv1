@@ -12,6 +12,7 @@ from hydrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from info import ADMINS
 from database.users_chats_db import db
 from database.ia_filterdb import get_search_results
+from database import search_expiry
 from utils import (
     get_size,
     is_premium,
@@ -26,8 +27,6 @@ from utils import (
 # Configuration
 RESULTS_PER_PAGE_PM = 12      # 12 results in private messages
 RESULTS_PER_PAGE_GROUP = 10   # 10 results in groups
-RESULT_EXPIRE_TIME = 300      # 5 minutes
-EXPIRE_DELETE_DELAY = 60      # delete after 1 min
 RATE_LIMIT = 5                # searches per minute
 RATE_LIMIT_WINDOW = 60        # seconds
 
@@ -37,11 +36,6 @@ user_search_times = defaultdict(list)
 # Callback data storage (to avoid 64-byte limit)
 if not hasattr(temp, 'callback_data'):
     temp.callback_data = {}
-
-# Track message activity for auto-expire
-if not hasattr(temp, 'message_activity'):
-    temp.message_activity = {}
-
 
 # =====================================================
 # 🔧 ADMIN CHECK HELPER
@@ -244,14 +238,6 @@ def sanitize_search(text):
 
 
 # =====================================================
-# ⏱️ UPDATE MESSAGE ACTIVITY
-# =====================================================
-def update_message_activity(message_id):
-    """Update last activity time for a message"""
-    temp.message_activity[message_id] = time()
-
-
-# =====================================================
 # 📩 MESSAGE HANDLER (✅ FULLY FIXED)
 # =====================================================
 @Client.on_message(filters.text & filters.incoming & (filters.group | filters.private))
@@ -275,9 +261,15 @@ async def filter_handler(client, message):
 
         # Admins have every premium right; everyone else is looked up once here
         # (the result is handed to send_results() so the 👑 crown is free)
-        user_is_premium = (
-            True if user_id in ADMINS else await check_premium(user_id, client)
-        )
+        if is_group_chat and user_id not in ADMINS:
+            user_is_premium, stg = await asyncio.gather(
+                check_premium(user_id, client), db.get_settings(message.chat.id)
+            )
+        else:
+            user_is_premium = (
+                True if user_id in ADMINS else await check_premium(user_id, client)
+            )
+            stg = await db.get_settings(message.chat.id) if is_group_chat else None
 
         # ==============================
         # 📩 PM SEARCH - CHECK PREMIUM FIRST
@@ -310,7 +302,7 @@ async def filter_handler(client, message):
         # 🚫 GROUP SEARCH - CHECK IF ENABLED
         # ==============================
         else:
-            stg = await db.get_settings(message.chat.id) or {}
+            stg = stg or {}
             
             # ✅ NEW: Check if search is disabled
             if stg.get("search") is False:
@@ -430,6 +422,18 @@ async def _send_new(client, chat_id, reply_msg, text, fallback_prefix="", **kwar
     return await client.send_message(chat_id, fallback_prefix + text, **kwargs)
 
 
+async def _register_expiry(message):
+    """Avoid leaving an untracked result visible if MongoDB is unavailable."""
+    try:
+        await search_expiry.register(message.chat.id, message.id)
+    except Exception:
+        logging.getLogger(__name__).exception("Could not persist search result expiry")
+        try:
+            await message.delete()
+        except Exception:
+            logging.getLogger(__name__).exception("Could not delete untracked search result")
+
+
 async def send_results(
     client,
     chat_id,
@@ -480,9 +484,11 @@ async def send_results(
             text = f"❌ <b>No results found for:</b>\n<code>{html.escape(str(search))}</code>"
             if message:
                 return await message.edit_text(text, parse_mode=enums.ParseMode.HTML)
-            return await _send_new(
+            msg = await _send_new(
                 client, chat_id, reply_msg, text, parse_mode=enums.ParseMode.HTML
             )
+            await _register_expiry(msg)
+            return msg
 
         # ==============================
         # 📄 PAGE INFO
@@ -512,8 +518,6 @@ async def send_results(
                 disable_web_page_preview=True,
                 parse_mode=enums.ParseMode.HTML
             )
-            # Update activity time
-            update_message_activity(message.id)
         else:
             # Send new message
             msg = await _send_new(
@@ -526,9 +530,7 @@ async def send_results(
                 disable_web_page_preview=True,
                 parse_mode=enums.ParseMode.HTML
             )
-            # Track for auto-expire
-            update_message_activity(msg.id)
-            asyncio.create_task(auto_expire(msg))
+            await _register_expiry(msg)
     
     except Exception as e:
         log_error("Send results", e)
@@ -570,10 +572,10 @@ async def pagination_handler(client, query):
         if query.from_user.id != owner and query.from_user.id not in ADMINS:
             return await query.answer("❌ Not your result", show_alert=True)
 
+        # The atomic touch wins only before expiry is claimed by the worker.
+        if not await search_expiry.touch(query.message.chat.id, query.message.id):
+            return await query.answer("⌛ This result has expired. Please search again.", show_alert=True)
         await query.answer()
-
-        # Update activity - user is interacting
-        update_message_activity(query.message.id)
 
         await send_results(
             client,
@@ -593,56 +595,3 @@ async def pagination_handler(client, query):
         except Exception:
             logging.getLogger(__name__).debug("pagination_handler: optional operation failed", exc_info=True)
             pass
-
-
-# =====================================================
-# ⏱ AUTO EXPIRE (SMART DELETE)
-# =====================================================
-async def auto_expire(message):
-    """
-    Auto-expire message after RESULT_EXPIRE_TIME of inactivity
-    If user clicks Next/Prev, timer resets
-    """
-    try:
-        message_id = message.id
-        
-        while True:
-            await asyncio.sleep(RESULT_EXPIRE_TIME)
-            
-            # Check if there was recent activity
-            last_activity = temp.message_activity.get(message_id, time())
-            time_since_activity = time() - last_activity
-            
-            # If activity within expire time, reset timer
-            if time_since_activity < RESULT_EXPIRE_TIME:
-                continue
-            
-            # No activity for RESULT_EXPIRE_TIME, expire now
-            break
-        
-        # Remove buttons and show expired message
-        try:
-            await message.edit_reply_markup(None)
-            await message.edit_text("⌛ <i>This result has expired.</i>")
-        except Exception as e:
-            print(f"Expire edit error: {e}")
-            # Clean up tracking
-            temp.message_activity.pop(message_id, None)
-            return
-
-        # Wait before deletion
-        await asyncio.sleep(EXPIRE_DELETE_DELAY)
-        
-        # Delete message
-        try:
-            await message.delete()
-        except Exception as e:
-            print(f"Expire delete error: {e}")
-        
-        # Clean up tracking
-        temp.message_activity.pop(message_id, None)
-    
-    except Exception as e:
-        print(f"Auto expire error: {e}")
-        # Clean up on error
-        temp.message_activity.pop(message.id, None)

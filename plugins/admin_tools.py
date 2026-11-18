@@ -103,8 +103,23 @@ async def stats_cmd(bot, message):
 # 🗑 DELETE FILES COMMAND
 # ======================================================
 
+_delete_task = None
+
+
 @Client.on_message(filters.private & filters.command("delete") & filters.user(ADMINS))
 async def delete_cmd(bot, message):
+    """Archive/delete in a single bounded background job."""
+    global _delete_task
+    if _delete_task and not _delete_task.done():
+        return await message.reply("⏳ A delete operation is already running.")
+    _delete_task = asyncio.create_task(_run_delete(bot, message))
+    def done(task):
+        if not task.cancelled() and task.exception():
+            logging.getLogger(__name__).error("Delete operation failed", exc_info=task.exception())
+    _delete_task.add_done_callback(done)
+
+
+async def _run_delete(bot, message):
     """Reply to one media file, or archive matching files one at a time."""
     reply = getattr(message, "reply_to_message", None)
     media = (getattr(reply, "document", None) or getattr(reply, "video", None)) if reply else None
@@ -144,24 +159,49 @@ async def delete_cmd(bot, message):
 # 🗑 DELETE ALL FILES COMMAND (Alternative)
 # ======================================================
 
+DELETE_ALL_PENDING = {}
+DELETE_ALL_OWNERS = set()
+
 @Client.on_message(filters.command("deleteall") & filters.user(ADMINS))
 async def delete_all_cmd(bot, message):
-    file_count = await asyncio.to_thread(db_count_documents)
-    
-    msg = await message.reply(
-        f"⚠️ <b>WARNING: Delete ALL Files</b>\n\n"
-        f"📦 Total Files: <code>{file_count}</code>\n\n"
-        f"❗ This will permanently delete ALL {file_count} files!\n\n"
-        "Reply with 'CONFIRM DELETE ALL' to proceed.",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("❌ Cancel", callback_data="close_data")]
-        ])
-    )
-    
+    owner_key = (message.chat.id, message.from_user.id)
+    if owner_key in DELETE_ALL_OWNERS:
+        return await message.reply("⚠️ A delete-all confirmation is already pending.")
+    DELETE_ALL_OWNERS.add(owner_key)
     try:
-        # Wait for confirmation reply
-        response = await bot.listen(message.chat.id, filters=filters.text, timeout=30)
-        
+        file_count = await asyncio.to_thread(db_count_documents)
+    
+        msg = await message.reply(
+            f"⚠️ <b>WARNING: Delete ALL Files</b>\n\n"
+            f"📦 Total Files: <code>{file_count}</code>\n\n"
+            f"❗ This will permanently delete ALL {file_count} files!\n\n"
+            "Reply with 'CONFIRM DELETE ALL' to proceed.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("❌ Cancel", callback_data="deleteall_cancel")]
+            ])
+        )
+
+    except BaseException:
+        DELETE_ALL_OWNERS.discard(owner_key)
+        raise
+    key = (message.chat.id, msg.id)
+    cancel = asyncio.Event()
+    DELETE_ALL_PENDING[key] = (message.from_user.id, cancel)
+    asyncio.create_task(_wait_delete_all(bot, message, msg, key, owner_key, cancel))
+
+
+async def _wait_delete_all(bot, message, msg, key, owner_key, cancel):
+    listener = asyncio.create_task(bot.listen(
+        chat_id=message.chat.id, user_id=message.from_user.id, filters=filters.text, timeout=30
+    ))
+    cancelled = asyncio.create_task(cancel.wait())
+    try:
+        done, _ = await asyncio.wait((listener, cancelled), return_when=asyncio.FIRST_COMPLETED)
+        if cancelled in done or cancel.is_set():
+            return
+        response = await listener
+        # Once confirmation wins, the cancel button must no longer claim success.
+        DELETE_ALL_PENDING.pop(key, None)
         if response.text.strip().upper() == "CONFIRM DELETE ALL":
             await response.delete()
             await msg.edit("⏳ Deleting all files...")
@@ -192,7 +232,27 @@ async def delete_all_cmd(bot, message):
     except ListenerTimeout:
         await msg.edit("❌ Deletion cancelled - timeout (30s).")
     except Exception as e:
-        await msg.edit(f"❌ Error: {e}")
+        await msg.edit(f"❌ Error: {html.escape(str(e))}")
+    finally:
+        DELETE_ALL_PENDING.pop(key, None)
+        DELETE_ALL_OWNERS.discard(owner_key)
+        for task in (listener, cancelled):
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(listener, cancelled, return_exceptions=True)
+
+
+@Client.on_callback_query(filters.regex("^deleteall_cancel$"))
+async def cancel_delete_all(_, query: CallbackQuery):
+    key = (query.message.chat.id, query.message.id)
+    pending = DELETE_ALL_PENDING.get(key)
+    if not pending:
+        return await query.answer("Confirmation expired or deletion already started", show_alert=True)
+    if query.from_user.id != pending[0]:
+        return await query.answer("Only the requesting admin can cancel", show_alert=True)
+    pending[1].set()
+    await query.answer("Cancelled")
+    await query.message.edit("❌ Deletion cancelled.")
 
 
 # ======================================================
@@ -201,5 +261,12 @@ async def delete_all_cmd(bot, message):
 
 @Client.on_callback_query(filters.regex("^close_data$"))
 async def close_callback(_, query: CallbackQuery):
-    await query.message.delete()
     await safe_answer(query, "✅ Closed")
+    # A file delivery is tracked by message ID in the recipient's PM.  Closing
+    # another menu must not cancel an unrelated file or delete its replied-to message.
+    uid = query.from_user.id
+    if query.message.chat.id == uid:
+        entry = temp.FILES.get(query.message.id)
+        if entry and entry.get("owner") == uid:
+            temp.FILES.pop(query.message.id, None)
+    await query.message.delete()

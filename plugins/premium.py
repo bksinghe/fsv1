@@ -6,11 +6,13 @@ from io import BytesIO
 from datetime import datetime, timedelta
 
 from hydrogram import Client, filters, enums
+from hydrogram.errors import ListenerTimeout
 from hydrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 
 from info import ADMINS, IS_PREMIUM, PRE_DAY_AMOUNT, UPI_ID, UPI_NAME, RECEIPT_SEND_USERNAME
 from database.users_chats_db import db
-from utils import is_premium, fmt, get_expiry_datetime
+from database.payment_db import decide_payment
+from utils import is_premium, fmt, get_expiry_datetime, temp
 
 
 # ======================================================
@@ -22,6 +24,7 @@ LISTEN_LONG = 300      # seconds to send the payment screenshot
 MAX_PLAN_DAYS = 3650   # sanity cap for /addpremium · /extendpremium
 
 active_sessions = {}   # uid -> current buy-flow step
+payment_tasks = {}     # at most one background listener per user
 
 
 # ======================================================
@@ -354,6 +357,7 @@ async def show_invoice_cb(client, query: CallbackQuery):
     if not invoices:
         return await query.answer("❌ No invoices found", show_alert=True)
 
+    await query.answer()
     text = "🧾 **Invoice History**\n\n"
     for inv in invoices[-10:][::-1]:
         text += f"• `{inv.get('id')}` | ₹{inv.get('amount')} | {inv.get('plan')}\n"
@@ -364,6 +368,7 @@ async def show_invoice_cb(client, query: CallbackQuery):
 
 @Client.on_callback_query(filters.regex("^back_to_myplan$"))
 async def back_to_myplan_cb(client, query: CallbackQuery):
+    await query.answer()
     data, status = await get_plan_data(query.from_user.id)
     if status == "admin":
         return await query.message.edit("👑 You are Admin = Lifetime Premium Access")
@@ -492,16 +497,39 @@ async def admin_remove_premium(client, message):
 # 💰 BUY FLOW
 # ======================================================
 
+def _start_payment_task(uid, coroutine):
+    task = asyncio.create_task(coroutine)
+    payment_tasks[uid] = task
+    def done(completed):
+        current = payment_tasks.get(uid) is completed
+        if current:
+            payment_tasks.pop(uid, None)
+        if not completed.cancelled():
+            error = completed.exception()
+            if error:
+                logging.getLogger(__name__).error("Payment flow failed", exc_info=error)
+                if current:
+                    active_sessions.pop(uid, None)
+    task.add_done_callback(done)
+
+
 @Client.on_callback_query(filters.regex("^buy_premium$"))
 async def buy_premium(client, query: CallbackQuery):
-    """Step 1 — ask for a number, then let the user pick a unit"""
     uid = query.from_user.id
-
-    if uid in active_sessions:
+    session = active_sessions.get(uid)
+    if session and session.get("step") != "waiting_duration":
         return await query.answer("⚠️ You already have an active payment session", show_alert=True)
-
+    # The re-enter button is only valid at the duration selection step.
+    old = payment_tasks.pop(uid, None)
+    if old and not old.done():
+        old.cancel()
     active_sessions[uid] = {"step": "waiting_number"}
+    _start_payment_task(uid, _buy_premium_flow(client, query, uid))
+    await query.answer()
 
+
+async def _buy_premium_flow(client, query, uid):
+    """Prompt and wait outside the callback dispatcher."""
     await query.message.edit(
         """
 🔢 **Enter a Number**
@@ -520,7 +548,7 @@ Then you can choose:
     )
 
     try:
-        msg = await client.listen(query.message.chat.id, timeout=LISTEN_SHORT)
+        msg = await client.listen(chat_id=query.message.chat.id, user_id=uid, timeout=LISTEN_SHORT)
 
         if msg.from_user.id != uid:
             return await _fail(client, query.message, uid, "❌ Invalid response. Please try again.")
@@ -555,7 +583,7 @@ Now select your duration:
             reply_markup=duration_buttons(num)
         )
 
-    except asyncio.TimeoutError:
+    except (asyncio.TimeoutError, ListenerTimeout):
         return await _fail(client, query.message, uid, "⏱️ Timeout! Payment cancelled.")
     except Exception as e:
         return await _fail(client, query.message, uid, f"❌ Error: {str(e)}\n\nPlease try again")
@@ -563,34 +591,38 @@ Now select your duration:
 
 @Client.on_callback_query(filters.regex("^dur#"))
 async def duration_selected(client, query: CallbackQuery):
-    """Step 2 — show the UPI QR, then wait for the payment screenshot"""
     uid = query.from_user.id
-
-    if uid not in active_sessions:
+    session = active_sessions.get(uid)
+    if not session or session.get("step") != "waiting_duration":
         return await query.answer("⚠️ Session expired. Please start again.", show_alert=True)
-
     try:
         _, num_str, unit = query.data.split("#")
         num = int(num_str)
+        if num != session.get("number"):
+            raise ValueError("number does not match session")
         plan_text, amount, days = plan_quote(unit, num)
-    except Exception:
+    except (ValueError, KeyError, TypeError):
         return await query.answer("❌ Invalid data", show_alert=True)
+    active_sessions[uid] = {"step": "waiting_screenshot", "plan_text": plan_text,
+                            "amount": amount, "days": days}
+    _start_payment_task(uid, _duration_flow(client, query, uid, plan_text, amount, days))
+    await query.answer()
 
-    active_sessions[uid] = {
-        "step": "waiting_screenshot",
-        "plan_text": plan_text,
-        "amount": amount,
-        "days": days
-    }
 
+def _payment_qr(upi_url):
+    qr = qrcode.make(upi_url)
+    bio = BytesIO()
+    qr.save(bio, "PNG")
+    bio.seek(0)
+    bio.name = "qr_code.png"
+    return bio
+
+
+async def _duration_flow(client, query, uid, plan_text, amount, days):
     # ---- UPI QR ----
     try:
         upi_url = f"upi://pay?pa={UPI_ID}&pn={UPI_NAME}&am={amount}&cu=INR"
-        qr = qrcode.make(upi_url)
-        bio = BytesIO()
-        qr.save(bio, "PNG")
-        bio.seek(0)
-        bio.name = "qr_code.png"
+        bio = await asyncio.to_thread(_payment_qr, upi_url)
 
         await query.message.reply_photo(
             bio,
@@ -619,7 +651,7 @@ async def duration_selected(client, query: CallbackQuery):
 
     # ---- Screenshot ----
     try:
-        receipt = await client.listen(query.message.chat.id, timeout=LISTEN_LONG)
+        receipt = await client.listen(chat_id=query.message.chat.id, user_id=uid, timeout=LISTEN_LONG)
 
         if receipt.from_user.id != uid:
             return await _fail(
@@ -631,7 +663,7 @@ async def duration_selected(client, query: CallbackQuery):
                 client, query.message, uid, "❌ Screenshot not received. Please send a photo."
             )
 
-    except asyncio.TimeoutError:
+    except (asyncio.TimeoutError, ListenerTimeout):
         return await _fail(
             client, query.message, uid,
             "⏱️ Timeout! Screenshot not received. Payment cancelled."
@@ -676,27 +708,18 @@ async def duration_selected(client, query: CallbackQuery):
 
 @Client.on_callback_query(filters.regex("^cancel_payment$"))
 async def cancel_payment(_, query: CallbackQuery):
-    active_sessions.pop(query.from_user.id, None)
-    await query.message.edit("❌ Payment process cancelled", reply_markup=buy_btn())
+    uid = query.from_user.id
+    active_sessions.pop(uid, None)
+    task = payment_tasks.pop(uid, None)
+    if task and not task.done():
+        task.cancel()
     await query.answer("Cancelled", show_alert=False)
+    await query.message.edit("❌ Payment process cancelled", reply_markup=buy_btn())
 
 
 # ======================================================
 # 🛂 ADMIN APPROVAL
 # ======================================================
-
-async def update_user_premium(uid, plan_txt, amount):
-    """Approve a purchase: the plan text (e.g. "7 Days") carries the duration"""
-    duration = parse_duration(plan_txt)
-    if not duration:
-        return False
-
-    return await apply_premium(
-        uid, plan_txt, amount,
-        duration=normalise_duration(duration),
-        extend=True, by="purchase",
-    )
-
 
 @Client.on_callback_query(filters.regex("^pay_ok#"))
 async def approve_payment(client, query: CallbackQuery):
@@ -710,13 +733,26 @@ async def approve_payment(client, query: CallbackQuery):
     except Exception as e:
         return await query.answer(f"❌ Invalid data: {e}", show_alert=True)
 
-    result = await update_user_premium(uid, plan_txt, amount)
-    if not result:
-        return await query.message.edit_caption(
-            query.message.caption + "\n\n❌ **FAILED** - Invalid plan duration"
-        )
+    duration = parse_duration(plan_txt)
+    if not duration:
+        return await query.answer("❌ Invalid plan duration", show_alert=True)
+    try:
+        result = await decide_payment(uid, query.message.chat.id, query.message.id,
+                                      "approved", plan_txt, amount, normalise_duration(duration))
+    except Exception:
+        logging.getLogger(__name__).exception("Payment approval could not be recorded")
+        return await query.answer("❌ Approval could not be recorded. Please retry.", show_alert=True)
+    if result['decision'] == 'approved':
+        # A previously cached non-premium result must not delay access for 10 minutes.
+        temp.PREMIUM.pop(uid, None)
+    if result['status'] != 'applied':
+        return await query.answer(f"⚠️ This receipt was already {result['decision']}.", show_alert=True)
 
-    expire_dt, invoice = result
+    expire_dt, invoice = result['expire'], result['invoice']
+    try:
+        await query.answer("✅ Payment Approved Successfully!", show_alert=True)
+    except Exception:
+        logging.getLogger(__name__).debug("Approval callback answer failed", exc_info=True)
 
     await notify_user(
         client, uid,
@@ -732,10 +768,12 @@ Enjoy your premium benefits! ✨
 """
     )
 
-    await query.message.edit_caption(
-        stamp_receipt(query.message.caption, "✅ **APPROVED**", query.from_user.username)
-    )
-    await query.answer("✅ Payment Approved Successfully!", show_alert=True)
+    try:
+        await query.message.edit_caption(
+            stamp_receipt(query.message.caption, "✅ **APPROVED**", query.from_user.username)
+        )
+    except Exception:
+        logging.getLogger(__name__).exception("Approved receipt could not be updated")
 
 
 @Client.on_callback_query(filters.regex("^pay_no#"))
@@ -749,6 +787,18 @@ async def reject_payment(client, query: CallbackQuery):
         logging.getLogger(__name__).debug("reject_payment: optional operation failed", exc_info=True)
         return await query.answer("❌ Invalid data", show_alert=True)
 
+    try:
+        result = await decide_payment(uid, query.message.chat.id, query.message.id, "rejected")
+    except Exception:
+        logging.getLogger(__name__).exception("Payment rejection could not be recorded")
+        return await query.answer("❌ Rejection could not be recorded. Please retry.", show_alert=True)
+    if result['status'] != 'applied':
+        return await query.answer(f"⚠️ This receipt was already {result['decision']}.", show_alert=True)
+
+    try:
+        await query.answer("❌ Payment Rejected", show_alert=True)
+    except Exception:
+        logging.getLogger(__name__).debug("Rejection callback answer failed", exc_info=True)
     await notify_user(
         client, uid,
         """
@@ -759,7 +809,9 @@ Please contact support or try again with correct details.
 """
     )
 
-    await query.message.edit_caption(
-        stamp_receipt(query.message.caption, "❌ **REJECTED**", query.from_user.username)
-    )
-    await query.answer("❌ Payment Rejected", show_alert=True)
+    try:
+        await query.message.edit_caption(
+            stamp_receipt(query.message.caption, "❌ **REJECTED**", query.from_user.username)
+        )
+    except Exception:
+        logging.getLogger(__name__).exception("Rejected receipt could not be updated")

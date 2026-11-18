@@ -68,8 +68,22 @@ def _progress(col_name, done, total, ok, meta, fake, elapsed):
     )
 
 
+_warmup_task = None
+
+
 @Client.on_message(filters.command("warmup_thumbs") & filters.user(ADMINS))
 async def warmup_thumbs_cmd(client, message):
+    global _warmup_task
+    if _warmup_task and not _warmup_task.done():
+        return await message.reply("⚙️ Thumbnail warmup is already running.")
+    _warmup_task = asyncio.create_task(_run_warmup(client, message))
+    def done(task):
+        if not task.cancelled() and task.exception():
+            logger.error("Thumbnail warmup failed", exc_info=task.exception())
+    _warmup_task.add_done_callback(done)
+
+
+async def _run_warmup(client, message):
     # Lazy import: the `web` package is already loaded by bot.py; this avoids a cycle.
     from web.thumb_engine import probe_file, thumb_queue_state
 

@@ -240,7 +240,7 @@ async def upload_cmd(bot, message):
     )
 
 # Callback Handler
-@Client.on_callback_query(filters.regex("^(site#|do_upload|cancel|noop)"))
+@Client.on_callback_query(filters.regex(r"^(?:site#[^#]+|do_upload|cancel|noop)$"))
 async def callback_handler(bot, query: CallbackQuery):
     uid = query.from_user.id
     state = UPLOAD_STATE.get(uid)
@@ -270,6 +270,7 @@ async def callback_handler(bot, query: CallbackQuery):
     # Cancel
     if data == "cancel":
         UPLOAD_STATE.pop(uid, None)
+        await query.answer("Cancelled")
         await query.message.edit("❌ Cancelled")
         return
     
@@ -279,6 +280,7 @@ async def callback_handler(bot, query: CallbackQuery):
             return await query.answer("⚠️ Already uploading", True)
         
         state["uploading"] = True
+        await query.answer("Starting upload")
         await query.message.edit("📥 Downloading...")
         
         asyncio.create_task(start_upload(bot, query.message, uid))

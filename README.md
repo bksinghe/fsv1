@@ -93,6 +93,18 @@ The help menu (`/start` → 👨‍🚒 Help) is the **only** place commands are
 
 ---
 
+## 🔐 Payment receipt decisions
+
+Each Telegram payment receipt is identified by its admin-chat ID and message ID. Approve/reject is recorded in the user's premium MongoDB document; approval writes the receipt decision, updated plan and invoice atomically in that same document, with majority read/write concern. Repeated clicks, concurrent administrators, retries after an uncertain database response, and bot restarts cannot grant the same recorded receipt twice. Approve and Reject compete for the same decision; only the first successful decision takes effect. Different receipts use a compare-and-set retry so their concurrent approvals extend the latest plan.
+
+Decisions from before this feature was deployed cannot be reconstructed automatically. If MongoDB is unavailable or the required unique index on premium user IDs cannot be created, decisions fail closed and the admin must retry. A failed Telegram notification or caption edit does not roll back a recorded grant; a repeated click reports the existing decision rather than granting again. Restoring an older database backup can also lose newer decision records.
+
+## ⏱️ Telegram search result cleanup
+
+New bot search results and “No results” replies are recorded in the existing MongoDB database (`search_result_expiry`); a single bounded worker checks due records rather than keeping a sleeping task and message object for every reply. After **5 minutes without pagination activity**, a result is marked expired and deleted **60 seconds later**. Checks normally run every 5 seconds, so timing may be later during a backlog or an outage. A pagination click atomically extends the deadline while the result is still active. Pending records survive a bot restart and the worker resumes them; pagination buttons from before a restart can still expire because their callback data is kept in RAM.
+
+If the expiry notice cannot be edited, deletion is still attempted. Transient deletion errors are retried with backoff; the record is retained until Telegram confirms deletion or reports the message missing. Telegram permission/access issues and prolonged MongoDB or Telegram outages can delay cleanup, so deletion cannot be guaranteed during an outage. If a new result cannot be registered in MongoDB, the bot attempts to delete that untracked message immediately. Messages sent before this feature was deployed have no stored record and cannot be recovered automatically.
+
 ## 📊 `/stats` — the admin report (button-free)
 
 `/stats` is the replacement of the old `/admin` / `/dashboard` panel: it replies with **pure text** and nothing else — 🤖 bot counters followed by 🌐 web counters. Every button the old panel carried (💎 Premium, 🗑 Files, 🔄 Refresh, ♻️ Restart, ❌ Close and, inside them, ➕ Add · ➖ Remove · ⏳ Extend · 🔍 Check User · 📊 Expiry Chart · ⏰ 3d/7d/30d · 📹 By Quality · 🗑 Delete ALL) only opened a screen that repeated a command, so admins now simply type `/addpremium`, `/extendpremium`, `/removepremium`, `/delete <keyword>`, `/deleteall` or `/warmup_thumbs`.

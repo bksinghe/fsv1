@@ -103,7 +103,7 @@ class TestButtonFreePanel(unittest.TestCase):
         """Nothing in this file may build a panel keyboard."""
         panel_markers = re.findall(r'callback_data="([^"]+)"', ADMIN_TOOLS)
         self.assertEqual(
-            sorted(panel_markers), ["close_data"],
+            sorted(panel_markers), ["deleteall_cancel"],
             "only the /deleteall cancel button may carry a callback",
         )
 
