@@ -1,4 +1,5 @@
 import logging
+import html
 import asyncio
 import hashlib
 from math import ceil
@@ -379,21 +380,19 @@ async def check_premium(user_id, client):
 
 
 def build_results_text(files, search, total, page, total_pages, source_chat_id, crown=""):
-    """Header + file list of one result page"""
+    """Compact quoted page information followed by clickable file names."""
     text = (
-        f"{crown}🔎 <b>Search:</b> <code>{search}</code>\n"
-        f"🎬 <b>Total Files:</b> <code>{total}</code>\n"
-        f"📄 <b>Page:</b> <code>{page} / {total_pages}</code>\n\n"
+        f"<blockquote><b><i>{html.escape(str(crown))}🎬 Total Files: {total}\n"
+        f"📄 Page: {page} / {total_pages}</i></b></blockquote>\n\n"
     )
 
     for f in files:
         try:
-            size = get_size(f.get("file_size", 0))
+            size = html.escape(str(get_size(f.get("file_size", 0))))
             file_id = f.get('_id', '')
-            file_name = f.get('file_name', 'Unknown')
-
+            file_name = html.escape(str(f.get('file_name', 'Unknown')))
             link = f"https://t.me/{temp.U_NAME}?start=file_{source_chat_id}_{file_id}"
-            text += f"📁 <a href='{link}'>[{size}] {file_name}</a>\n\n"
+            text += f'📁 <a href="{html.escape(link, quote=True)}"><b><i>[{size}] {file_name}</i></b></a>\n\n'
         except Exception as e:
             print(f"File list error: {e}")
             continue
@@ -420,7 +419,7 @@ def build_nav(search, offset, next_offset, results_per_page, source_chat_id, own
     return InlineKeyboardMarkup([nav]) if nav else None
 
 
-async def _send_new(client, chat_id, reply_msg, text, **kwargs):
+async def _send_new(client, chat_id, reply_msg, text, fallback_prefix="", **kwargs):
     """Send a NEW message; quote-reply to the user's message when we have it."""
     if reply_msg is not None:
         try:
@@ -428,7 +427,7 @@ async def _send_new(client, chat_id, reply_msg, text, **kwargs):
         except Exception as e:
             # e.g. the user already deleted their message → fall back to a plain send
             logging.getLogger(__name__).debug("quote reply failed, sending plain: %s", e)
-    return await client.send_message(chat_id, text, **kwargs)
+    return await client.send_message(chat_id, fallback_prefix + text, **kwargs)
 
 
 async def send_results(
@@ -471,13 +470,14 @@ async def send_results(
                         is_pm,
                         message,
                         True,
+                        premium=premium,
                         reply_msg=reply_msg
                     )
             except Exception as e:
                 print(f"Fallback suggestion error: {e}")
 
         if not files:
-            text = f"❌ <b>No results found for:</b>\n<code>{search}</code>"
+            text = f"❌ <b>No results found for:</b>\n<code>{html.escape(str(search))}</code>"
             if message:
                 return await message.edit_text(text, parse_mode=enums.ParseMode.HTML)
             return await _send_new(
@@ -521,6 +521,7 @@ async def send_results(
                 chat_id,
                 reply_msg,
                 text,
+                fallback_prefix=f"🔎 <b>Search:</b> <code>{html.escape(str(search))}</code>\n\n",
                 reply_markup=markup,
                 disable_web_page_preview=True,
                 parse_mode=enums.ParseMode.HTML
