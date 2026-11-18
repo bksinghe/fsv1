@@ -40,6 +40,48 @@ _STATS_JS = """<script>
 </script>"""
 
 
+# The scan endpoints remain admin-only; the page only supplies controls and status.
+_SCAN_JS = """<script>
+(function(){
+  var button=document.getElementById('statsGroupScan');
+  var status=document.getElementById('statsGroupScanStatus');
+  var timer=null, active=false, requestId=0;
+  function message(text){status.textContent=text;}
+  function schedule(){clearTimeout(timer);timer=setTimeout(check,3000);}
+  async function json(url,options){
+    var r=await fetch(url,options), data=await r.json();
+    if(!r.ok||data.ok===false)throw new Error(data.error||('HTTP '+r.status));
+    return data;
+  }
+  async function check(){
+    var id=++requestId;
+    try{
+      var s=await json('/api/group/scan_status',{credentials:'same-origin',cache:'no-store'});
+      if(id!==requestId)return;
+      active=!!s.running;button.disabled=active;
+      if(active){message('⏳ '+(s.phase||'Scanning')+' ('+(s.scanned||0)+' / '+(s.total||0)+')');schedule();}
+      else if(s.error)message('⚠️ Scan failed: '+s.error);
+      else if(s.finished)message('✅ Scan complete: '+(s.created||0)+' new groups, '+(s.added||0)+' files added. Refresh the page to update counts.');
+      else message('Scan the library to build or update permanent groups.');
+    }catch(e){
+      if(id!==requestId)return;
+      message('⚠️ Could not check scan status. Retrying…');
+      button.disabled=active;schedule();
+    }
+  }
+  button.addEventListener('click',async function(){
+    if(button.disabled||!confirm('Scan the whole library and build permanent groups? This can take a few minutes.'))return;
+    ++requestId;button.disabled=true;clearTimeout(timer);message('⏳ Starting scan…');
+    try{
+      await json('/api/group/scan_all',{method:'POST',credentials:'same-origin'});
+      active=true;await check();
+    }catch(e){button.disabled=false;message('⚠️ Could not start scan: '+e.message);schedule();}
+  });
+  check();
+})();
+</script>"""
+
+
 async def _stats_numbers():
     """The page and /api/db_stats read the shared counter snapshot"""
     return web_numbers(await snapshot())
@@ -72,6 +114,11 @@ async def stats_page(req):
 #statsDashboard .st-label{{font-size:9px;letter-spacing:.65px}}
 #statsDashboard .st-val{{font-size:28px;margin-bottom:5px}}
 #statsDashboard .st-sub{{font-size:10px;line-height:1.4}}
+#statsDashboard .scan-tools{{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:16px;margin:4px 0 18px;background:var(--card);border:1px solid var(--line);border-radius:11px}}
+#statsDashboard .scan-button{{padding:11px 16px;border:0;border-radius:8px;background:var(--red);color:#fff;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;min-height:42px}}
+#statsDashboard .scan-button:disabled{{opacity:.55;cursor:wait}}
+#statsDashboard .scan-button:focus-visible{{outline:2px solid var(--red);outline-offset:3px}}
+#statsDashboard .scan-status{{flex:1 1 220px;color:var(--mut);font-size:12px;line-height:1.5;overflow-wrap:anywhere}}
 @media(max-width:850px){{#statsDashboard .stat-grid{{grid-template-columns:repeat(2,minmax(0,1fr))}}}}
 @media(max-width:520px){{#statsDashboard{{padding:18px 4% 28px}}#statsDashboard .stat-hero{{padding:17px}}#statsDashboard .stat-hero-num{{font-size:34px}}#statsDashboard .st-card:nth-child(7){{grid-column:span 2}}}}
 @media(prefers-reduced-motion:reduce){{#statsDashboard .anim-card{{animation:none}}}}
@@ -136,7 +183,11 @@ async def stats_page(req):
       <div class="st-val" style="color:#7dd3fc" data-count="{s['groups']}" data-delay="520">{s['groups']:,}</div>
       <div class="st-sub">🎞️ {s['quality_groups']:,} quality groups · 📺 {s['episode_groups']:,} series groups ({s['episodes_total']:,} episodes) — every group has its own id / #number</div></div>
   </div>
-</div>{_STATS_JS}'''
+  <section class="scan-tools" aria-label="Group scan">
+    <button id="statsGroupScan" class="scan-button" type="button" disabled>⚙️ Scan &amp; Build Groups</button>
+    <div id="statsGroupScanStatus" class="scan-status" role="status" aria-live="polite">Checking scan status…</div>
+  </section>
+</div>{_STATS_JS}{_SCAN_JS}'''
 
     return app_page(
         "Database Stats - Fast Finder", body,
