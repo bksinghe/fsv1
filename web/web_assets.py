@@ -1007,11 +1007,13 @@ border-radius:50%;animation:spin .6s linear infinite}
 .srow.loading .spin{display:block}
 @keyframes spin{to{transform:translateY(-50%) rotate(360deg)}}
 .main{padding:18px 4% 60px;max-width:1700px;margin:0 auto}
-.more{display:none;margin:28px auto 0;padding:11px 30px;border-radius:8px;
-background:var(--bg3);border:1px solid var(--line);color:var(--txt);font-weight:800;
-cursor:pointer;font-family:inherit}
-.more.show{display:block}
-.more:disabled{opacity:.55;cursor:wait}
+.search-pagination{display:flex;justify-content:center;align-items:center;gap:12px;margin:28px auto 0}
+.search-pagination[hidden]{display:none}
+.search-page-btn{padding:11px 22px;border-radius:8px;background:var(--bg3);
+border:1px solid var(--line);color:var(--txt);font-weight:800;cursor:pointer;font-family:inherit}
+.search-page-btn:disabled{opacity:.45;cursor:not-allowed}
+.search-page-btn:focus-visible{outline:2px solid var(--red);outline-offset:3px}
+.search-page-label{min-width:60px;text-align:center;color:var(--mut);font-size:13px;font-weight:700}
 .continue-section{margin:0 0 24px}
 .continue-toggle{margin:10px 0 0;background:none;border:0;color:var(--red);font:inherit;font-size:12px;font-weight:800;cursor:pointer;padding:8px 0}
 .continue-head{display:flex;align-items:center;gap:8px;margin:0 0 10px;font-size:16px;font-weight:900}
@@ -1504,7 +1506,11 @@ SEARCH_BODY = """<div class="search-zone">
   </section>
   <div class="vgrid vm-grid" id="grid"></div>
   <div class="search-status" id="searchStatus" role="status" aria-live="polite"></div>
-  <button class="more" id="more" onclick="load(false)">Show more ⬇</button>
+  <nav class="search-pagination" id="searchPagination" aria-label="Search result pages" hidden>
+    <button class="search-page-btn" id="searchPrev" type="button" onclick="prevPage()">← Prev</button>
+    <span class="search-page-label" id="searchPage" aria-live="polite"></span>
+    <button class="search-page-btn" id="searchNext" type="button" onclick="load(false)">Next →</button>
+  </nav>
 </div>
 
 __PLAYER_MODAL__
@@ -1514,7 +1520,8 @@ __GROUP_ADMIN_HTML__
 <script>
 const $=s=>document.querySelector(s);
 const esc=window.escapeHTML;
-let curQ='',offset=0,loading=false,hasMore=false,seenGroups={};
+const SEARCH_PAGE_SIZE=21;
+let curQ='',nextOffset=0,loading=false,hasMore=true,sourceMore=true,pendingCards=[],seenGroups=Object.create(null),pages=[],pageIndex=0;
 let debounce=null,searchController=null,searchSeq=0;
 /* 🖼️📄 Poster/Text comes entirely from `web/mode_assets.py` (SITE_JS → window.ViewMode) —
    there is no mode logic here, just one init call. The group filter is a separate feature. */
@@ -1590,47 +1597,85 @@ function thumbFail(img){
   const p=img.closest('.vposter,.gposter');if(p)p.classList.add('no-thumb');
 }
 
+function updatePages(){
+  $('#searchPagination').hidden=!pages.length;
+  $('#searchPrev').disabled=loading||pageIndex===0;
+  $('#searchNext').disabled=loading||(!hasMore&&pageIndex>=pages.length-1);
+  $('#searchPage').textContent=pages.length?'Page '+(pageIndex+1):'';
+}
+function renderPage(){
+  const list=pages[pageIndex]||[];
+  $('#grid').innerHTML=list.map(card).join('') ||
+    '<div class="state">🔍 No files found.<br>Try another name or keyword.</div>';
+  RevealCards.reveal($('#grid'));
+  updatePages();
+}
+function prevPage(){
+  if(loading||pageIndex===0)return;
+  pageIndex--;$('#searchStatus').textContent='';renderPage();
+  $('#grid').scrollIntoView({behavior:'smooth',block:'start'});
+}
 async function load(reset){
-  // A new search supersedes the old request immediately; stale responses must
-  // never overwrite newer results. Pagination remains single-flight.
+  // Reset aborts old queries; page changes retain prior results on failure.
   if(reset){
     if(searchController)searchController.abort();
     searchController=new AbortController();searchSeq++;loading=false;
-    offset=0;hasMore=false;seenGroups={};$('#grid').innerHTML=skeletons();
-    $('#more').classList.remove('show');
-  }else if(loading||!hasMore)return;
+    nextOffset=0;hasMore=true;sourceMore=true;pendingCards=[];seenGroups=Object.create(null);pages=[];pageIndex=0;
+    $('#grid').innerHTML=skeletons();updatePages();
+  }else{
+    if(loading)return;
+    if(pageIndex+1<pages.length){
+      pageIndex++;$('#searchStatus').textContent='';renderPage();
+      $('#grid').scrollIntoView({behavior:'smooth',block:'start'});return;
+    }
+    if(!hasMore)return;
+  }
   const seq=searchSeq,controller=searchController||new AbortController();
-  const requestedOffset=offset,query=curQ,mode=groupMode;
-  loading=true;$('#srow').classList.add('loading');
-  $('#more').disabled=true;$('#searchStatus').textContent='';
+  const query=curQ,mode=groupMode;
+  let cursor=nextOffset,more=sourceMore,buffer=pendingCards.slice(),
+      seen=Object.assign(Object.create(null),seenGroups),list=[];
+  loading=true;$('#srow').classList.add('loading');updatePages();
+  $('#searchStatus').textContent='';
   try{
-    const r=await fetch(`/api/search?q=${encodeURIComponent(query)}&offset=${requestedOffset}&group=${mode}`,{
-      credentials:'same-origin',signal:controller.signal
-    });
+    // Grouping works on raw batches; keep full-sized batches and buffer any
+    // extra cards instead of shrinking the last request and splitting groups.
+    while(list.length<SEARCH_PAGE_SIZE){
+      while(buffer.length && list.length<SEARCH_PAGE_SIZE){
+        const f=buffer.shift();
+        if(f.group){
+          const k=String(f.key||f.gid||'');
+          if(k && seen[k])continue;
+          if(k)seen[k]=true;
+        }
+        list.push(f);
+      }
+      if(list.length===SEARCH_PAGE_SIZE||!more)break;
+      const r=await fetch(`/api/search?q=${encodeURIComponent(query)}&offset=${cursor}&group=${mode}&limit=${SEARCH_PAGE_SIZE}`,{
+        credentials:'same-origin',signal:controller.signal
+      });
+      if(seq!==searchSeq)return;
+      if(r.status===401){location.href='/login?err='+encodeURIComponent('Session expired. Please sign in again.');return}
+      if(!r.ok)throw new Error(`HTTP ${r.status}`);
+      const d=await r.json();if(seq!==searchSeq)return;
+      buffer.push(...(d.results||[]));
+      more=d.next_offset!=='' && d.next_offset!=null && d.next_offset!==0;
+      if(more){
+        const next=Number(d.next_offset);
+        if(!Number.isSafeInteger(next)||next<=cursor)throw new Error('Invalid pagination cursor');
+        cursor=next;
+      }
+    }
     if(seq!==searchSeq)return;
-    if(r.status===401){location.href='/login?err='+encodeURIComponent('Session expired. Please sign in again.');return}
-    if(!r.ok)throw new Error(`HTTP ${r.status}`);
-    const d=await r.json();if(seq!==searchSeq)return;
-    const list=(d.results||[]).filter(f=>{
-      if(!f.group)return true;
-      const k=String(f.key||f.gid||'');
-      if(seenGroups[k])return false;
-      seenGroups[k]=1;return true;
-    });
-    const html=list.map(card).join('');
-    if(reset)$('#grid').innerHTML=html;
-    else $('#grid').insertAdjacentHTML('beforeend',html);
-    RevealCards.reveal($('#grid'));
-    hasMore=!!d.next_offset;offset=hasMore?Number(d.next_offset):0;
-    $('#more').classList.toggle('show',hasMore);
-    if(!$('#grid').children.length)
-      $('#grid').innerHTML=`<div class="state">🔍 No files found.<br>Try another name or keyword.</div>`;
+    nextOffset=cursor;sourceMore=more;pendingCards=buffer;hasMore=more||buffer.length>0;seenGroups=seen;
+    if(list.length||!pages.length){pages.push(list);pageIndex=pages.length-1;renderPage();}
+    else {$('#searchStatus').textContent='No more results.';updatePages();}
+    if(!reset && list.length)$('#grid').scrollIntoView({behavior:'smooth',block:'start'});
   }catch(e){
     if(e.name==='AbortError'||seq!==searchSeq)return;
     if(reset)$('#grid').innerHTML=`<div class="state">⚠️ Search could not be loaded.<br>${esc(e.message||e)}</div>`;
-    else $('#searchStatus').textContent='Could not load more files. Please try again.';
+    else $('#searchStatus').textContent='Could not load the next page. Please try again.';
   }finally{
-    if(seq===searchSeq){loading=false;$('#srow').classList.remove('loading');$('#more').disabled=false}
+    if(seq===searchSeq){loading=false;$('#srow').classList.remove('loading');updatePages()}
   }
 }
 function playerGroupContext(el){
