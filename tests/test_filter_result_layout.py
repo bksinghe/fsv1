@@ -23,7 +23,7 @@ def load():
               RESULTS_PER_PAGE_PM=12, RESULTS_PER_PAGE_GROUP=10,
               get_search_results=AsyncMock(), suggest_query=Mock(return_value=None),
               build_nav=Mock(return_value='buttons'), check_premium=AsyncMock(return_value=False),
-              update_message_activity=Mock(), auto_expire=AsyncMock(), log_error=Mock())
+              _register_expiry=AsyncMock(), log_error=Mock())
     exec(compile(ast.fix_missing_locations(ast.Module(body=nodes, type_ignores=[])), '<filter>', 'exec'), ns)
     return ns
 
@@ -63,8 +63,7 @@ class FilterResultLayoutTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('<blockquote>', text)
         self.assertNotIn('Search:', text)
         self.assertTrue(self.reply.reply_text.await_args.kwargs['quote'])
-        self.ns['update_message_activity'].assert_called_once_with(10)
-        self.ns['auto_expire'].assert_awaited_once_with(self.sent)
+        self.ns['_register_expiry'].assert_awaited_once_with(self.sent)
         result = SimpleNamespace(id=55, edit_text=AsyncMock())
         await self.ns['send_results'](*self.args, message=result, premium=True)
         self.assertIn('<blockquote>', result.edit_text.await_args.args[0])
@@ -93,6 +92,7 @@ class FilterResultLayoutTests(unittest.IsolatedAsyncioTestCase):
         self.ns['get_search_results'].return_value = ([], '', 0)
         await self.ns['send_results'](*self.args, reply_msg=self.reply)
         self.assertIn('No results found', self.reply.reply_text.await_args.args[0])
+        self.ns['_register_expiry'].assert_awaited_once_with(self.sent)
         self.reply.reply_text.side_effect = asyncio.CancelledError()
         with self.assertRaises(asyncio.CancelledError):
             await self.ns['send_results'](*self.args, reply_msg=self.reply)

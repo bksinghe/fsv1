@@ -37,6 +37,7 @@ from utils import (
 )
 
 from database.users_chats_db import db
+from database.search_expiry import run_worker as search_expiry_worker
 # ❌ REMOVED: from plugins.banned import auto_unban_worker
 
 
@@ -184,6 +185,9 @@ class Bot(Client):
         # 🔁 BACKGROUND TASKS
         # ==========================
 
+        # One persistent search cleanup worker; pending records survive restarts.
+        self.search_expiry_task = asyncio.create_task(search_expiry_worker(self))
+
         # 🔥 FILE MEMORY LEAK GUARD
         asyncio.create_task(cleanup_files_memory())
 
@@ -226,6 +230,10 @@ class Bot(Client):
         logger.info(f"Bot @{me.username} started successfully")
 
     async def stop(self, *args):
+        task = getattr(self, "search_expiry_task", None)
+        if task:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
         await super().stop()
         logger.info("Bot stopped cleanly")
 
