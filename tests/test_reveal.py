@@ -78,8 +78,9 @@ class TestSingleSource(unittest.TestCase):
         self.assertIn("RevealCards.reveal($('#grid'))", src)
         self.assertIn("function card(f){return cardHTML(f,true)}", src)
         self.assertIn("class=\"vcard rv-skel vm-card\"", src)
-        # Show more appends to the same grid; the reveal runs after both branches.
-        self.assertIn("insertAdjacentHTML('beforeend',html)", src)
+        # Each page replaces the grid and is revealed afresh.
+        self.assertIn("function renderPage()", src)
+        self.assertIn("list.map(card).join('')", src)
 
     def test_05_catalog_pages_and_detail_tabs_use_it(self):
         src = FILES["catalog.py"]

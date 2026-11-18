@@ -37,25 +37,29 @@ class UIReviewTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which('node'), 'Node is required')
     def test_search_pagination_failure_keeps_previous_results_and_can_retry(self):
         text = string_constant(ROOT / 'web/web_assets.py', 'SEARCH_BODY')
-        code = text[text.index('async function load(reset){'):text.index('function playerGroupContext(')]
-        script = r'''
+        code = text[text.index('function updatePages(){'):text.index('function playerGroupContext(')]
+        script = r"""
 const assert=require('assert');
-function el(){const classes=new Set();return {innerHTML:'',textContent:'',disabled:false,children:[{}],classList:{add:x=>classes.add(x),remove:x=>classes.delete(x),toggle:(x,on)=>on?classes.add(x):classes.delete(x),contains:x=>classes.has(x)},insertAdjacentHTML(pos,html){this.innerHTML+=html}}}
-const els={'#grid':el(),'#more':el(),'#srow':el(),'#searchStatus':el()};
-const $=s=>els[s];let curQ='',offset=0,loading=false,hasMore=false,seenGroups={},searchController=null,searchSeq=0,groupMode='all';
-const skeletons=()=>'<skeleton>'; const card=x=>x.name; const esc=x=>String(x);const RevealCards={reveal(){}};
+function el(){return {innerHTML:'',textContent:'',disabled:false,hidden:false,classList:{add(){},remove(){}},scrollIntoView(){}}}
+const els={'#grid':el(),'#searchPagination':el(),'#searchPrev':el(),'#searchNext':el(),'#searchPage':el(),'#srow':el(),'#searchStatus':el()};
+const $=s=>els[s];const SEARCH_PAGE_SIZE=21;
+let curQ='',nextOffset=0,loading=false,hasMore=true,sourceMore=true,pendingCards=[],seenGroups=Object.create(null),pages=[],pageIndex=0,searchController=null,searchSeq=0,groupMode='all';
+const skeletons=()=>'<skeleton>';const card=x=>x.name;const esc=x=>String(x);const RevealCards={reveal(){}};
 let replies=[];const fetch=()=>Promise.resolve(replies.shift());
-''' + code + r'''
+""" + code + r"""
 (async()=>{
- replies.push({ok:true,json:async()=>({results:[{name:'existing'}],next_offset:10})});
- await load(true);assert.equal(els['#grid'].innerHTML,'existing');assert(els['#more'].classList.contains('show'));
+ replies.push({ok:true,json:async()=>({results:Array.from({length:21},(_,i)=>({name:'A'+i})),next_offset:'21'})});
+ await load(true);assert.equal(pages[0].length,21);assert.equal(pageIndex,0);assert(!els['#searchNext'].disabled);
+ const first=els['#grid'].innerHTML;
  replies.push({ok:false,status:503});await load(false);
- assert.equal(els['#grid'].innerHTML,'existing');assert(els['#searchStatus'].textContent.includes('try again'));
- assert(els['#more'].classList.contains('show'));assert(!els['#more'].disabled);assert.equal(offset,10);
- replies.push({ok:true,json:async()=>({results:[{name:'more'}],next_offset:0})});await load(false);
- assert.equal(els['#grid'].innerHTML,'existingmore');assert.equal(els['#searchStatus'].textContent,'');
+ assert.equal(els['#grid'].innerHTML,first);assert(els['#searchStatus'].textContent.includes('try again'));
+ assert(!els['#searchNext'].disabled);assert.equal(nextOffset,21);
+ replies.push({ok:true,json:async()=>({results:[{name:'last'}],next_offset:''})});await load(false);
+ assert.equal(els['#grid'].innerHTML,'last');assert(els['#searchNext'].disabled);
+ prevPage();assert.equal(els['#grid'].innerHTML,first);assert(!els['#searchNext'].disabled);
+ await load(false);assert.equal(els['#grid'].innerHTML,'last');assert.equal(replies.length,0);
 })().catch(e=>{console.error(e);process.exitCode=1});
-'''
+"""
         node_run(script)
 
     @unittest.skipUnless(shutil.which('node'), 'Node is required')

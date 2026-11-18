@@ -186,7 +186,7 @@ Variables that are actually used in code (`API_ID`, `API_HASH`, `BOT_TOKEN`, `AD
 
 | Var | Default | Meaning |
 |---|---|---|
-| `MAX_WEB_RESULTS` | `21` | Results per page (3×7 on desktop); configurable via env |
+| `MAX_WEB_RESULTS` | `21` | Maximum search API batch size, configurable via env. The web search page displays up to 21 distinct cards per page (grouped results count as one card) and fetches additional batches when needed. |
 | `WEB_SESSION_TTL` | `604800` | Login cookie lifetime in seconds (7 days) |
 | `WEB_STREAM_TTL` | `21600` | Web stream link lifetime (6 hours) |
 | `DELETE_ARCHIVE_CHANNEL` | unset | Private channel ID for copies of individually deleted files. Add the bot as an admin with post permission; do not include this channel in `INDEX_CHANNELS`. Web file deletes and PM `/delete` fail safely if archival fails or this is unset. `/deleteall` remains a separate bulk operation and does not archive files. |
