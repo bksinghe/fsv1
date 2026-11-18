@@ -346,10 +346,6 @@ class _MemoryGroups:
     def all(self):
         return [dict(d) for d in self.data.values()]
 
-    def insert(self, doc):
-        self.data[str(doc["_id"])] = dict(doc)
-        return dict(doc)
-
     def save(self, doc):
         self.data[str(doc["_id"])] = dict(doc)
         return dict(doc)
@@ -391,7 +387,7 @@ class GroupStore:
 
     def _insert(self, doc):
         if self.mem:
-            return self.mem.insert(doc)
+            return self.mem.save(doc)
         self.col.insert_one(doc)
         return doc
 

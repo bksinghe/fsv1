@@ -291,8 +291,7 @@ GROUP_CARD_TEMPLATE = (
 _GROUP_JS_TPL = r"""/* 🗂️ SHARED GROUP CARD — template from web/group_assets.py (Python → JS) */
 (function(){
   var TPL=__GROUP_CARD_TEMPLATE__, GD={};
-  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){
-    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  var esc=window.escapeHTML;
   /* For inline onclick="...'VALUE'...": escape HTML entities + JS quotes/backslashes */
   function js1(s){return String(s==null?'':s)
     .replace(/\\/g,'\\\\').replace(/'/g,"\\'")
@@ -445,13 +444,10 @@ GROUP_ADMIN_JS = r"""<script>
   var SEL={}, selMode=false, mode='save', current=null, targetGid='',
       thumbFid='', currentKind='qualities', scanTimer=null, targetPreview=null;
   function q(s){return document.querySelector(s);}
-  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){
-    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  var esc=window.escapeHTML;
   var jse=window.gJs||function(s){return String(s==null?'':s).replace(/'/g,"\\'");};
   var LIST=[];
-  function toast(msg,err){var t=q('#gmToast');if(!t)return;
-    t.textContent=msg;t.classList.toggle('err',!!err);t.classList.add('show');
-    clearTimeout(t._tm);t._tm=setTimeout(function(){t.classList.remove('show');},3200);}
+  function toast(msg,err){window.showSimpleToast(q('#gmToast'),msg,err);}
   function post(url,body){
     return fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify(body||{}),credentials:'same-origin'}).then(function(r){

@@ -47,6 +47,7 @@ from web.group_assets import (
 )
 from web.mode_assets import VIEW_MODE_OPTIONS, MODE_CSS, MODE_JS
 from web.reveal_assets import REVEAL_CSS, REVEAL_JS
+from web.js_utils import JS_UTILS
 from web.welcome_assets import (
     GUEST_BODY_CLASS, GUEST_TOPBAR, GUEST_AMBIENT,
     WELCOME_CSS, WELCOME_JS,
@@ -297,8 +298,7 @@ def render_vcard(**kw) -> str:
 _VCARD_JS_TPL = r"""/* 🎴 SHARED VIDEO CARD — template + chip spec from web_assets.py (Python → JS) */
 (function(){
   var TPL=__VCARD_TEMPLATE__, SPEC=__VCARD_CHIP_SPEC__;
-  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){
-    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  var esc=window.escapeHTML;
   function chips(f){
     f=f||{};
     return SPEC.map(function(c){
@@ -418,13 +418,9 @@ box-shadow:0 12px 34px rgba(0,0,0,.55);transition:transform .3s,opacity .3s;max-
 FILE_EDIT_JS = r"""<script>
 (function(){
   const q = s => document.querySelector(s);
-  const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  let current=null, crop=null, busy=false, toastTimer=null, originalGroup="", groupPreview=null;
-  function toast(msg, err){
-    const t=q('#feToast'); if(!t) return;
-    t.textContent=msg; t.classList.toggle('err',!!err); t.classList.add('show');
-    clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove('show'),3200);
-  }
+  const esc = window.escapeHTML;
+  let current=null, crop=null, busy=false, originalGroup="", groupPreview=null;
+  function toast(msg, err){ window.showSimpleToast(q('#feToast'),msg,err); }
   function isOpen(){ const m=q('#feModal'); return !!m && m.classList.contains('open'); }
   function cards(fid){
     return Array.prototype.filter.call(document.querySelectorAll('.vcard[data-fid]'),c=>{
@@ -1214,6 +1210,7 @@ function openSidebar(){var s=document.getElementById('sidebar'),o=document.getEl
 function closeSidebar(){var s=document.getElementById('sidebar'),o=document.getElementById('sbOverlay');if(s)s.classList.remove('open');if(o)o.classList.remove('open')}
 document.addEventListener('keydown',function(e){if(e.key==='Escape')closeSidebar()});
 """
+SITE_JS += JS_UTILS
 SITE_JS += FILTER_JS
 SITE_JS += VCARD_JS
 SITE_JS += GROUP_JS
@@ -1303,10 +1300,6 @@ def page(title: str, body: str, body_class: str = "", topbar: str = ""):
         f"<script>{SITE_JS}</script></head>"
         f"<body class='{body_class}'>{ambient}{nav}{body}</body></html>"
     )
-
-
-# Kept as an alias: every guest page uses the same nav from welcome_assets.py.
-DEFAULT_TOPBAR = GUEST_TOPBAR
 
 
 def form_page(title: str, inner: str, err: str = "", msg: str = "", heading: str = ""):
@@ -1515,7 +1508,7 @@ __GROUP_ADMIN_HTML__
 
 <script>
 const $=s=>document.querySelector(s);
-const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const esc=window.escapeHTML;
 let curQ='',offset=0,loading=false,hasMore=false,seenGroups={};
 let debounce=null,searchController=null,searchSeq=0;
 /* 🖼️📄 Poster/Text comes entirely from `web/mode_assets.py` (SITE_JS → window.ViewMode) —

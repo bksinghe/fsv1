@@ -1,3 +1,4 @@
+import logging
 import asyncio
 from hydrogram import Client, filters
 from hydrogram.errors import (
@@ -33,7 +34,8 @@ async def safe_react(message, emoji: str):
         try:
             await message.react(emoji)
             return True
-        except:
+        except Exception:
+            logging.getLogger(__name__).debug("safe_react: optional operation failed", exc_info=True)
             return False
     except Exception:
         return False
@@ -50,19 +52,21 @@ async def safe_log(client, text: str):
         try:
             await client.send_message(LOG_CHANNEL, text)
             return True
-        except:
+        except Exception:
+            logging.getLogger(__name__).debug("safe_log: optional operation failed", exc_info=True)
             return False
     except Exception:
         return False
 
 
-def get_media_info(message):
+def get_channel_media(message):
     try:
         media = message.document or message.video
         if not media or not getattr(media, "file_id", None):
             return None
         return media
-    except:
+    except Exception:
+        logging.getLogger(__name__).debug("get_channel_media: optional operation failed", exc_info=True)
         return None
 
 # ─────────────────────────────────────────────
@@ -75,7 +79,7 @@ async def index_new_file(bot, message):
         return
     # Keep processing live posts during a manual scan. The scan only covers
     # up to the forwarded message, so skipping newer posts creates gaps.
-    media = get_media_info(message)
+    media = get_channel_media(message)
     if not media:
         return
 
@@ -119,7 +123,7 @@ async def index_new_file(bot, message):
 async def update_caption(bot, message):
     if message.chat.id == DELETE_ARCHIVE_CHANNEL:
         return
-    media = get_media_info(message)
+    media = get_channel_media(message)
     if not media:
         return
 
@@ -147,5 +151,6 @@ async def handle_deleted_files(bot, messages):
             bot,
             f"🗑️ **Deleted Messages**\nCount: `{len(messages)}`"
         )
-    except:
+    except Exception:
+        logging.getLogger(__name__).debug("handle_deleted_files: optional operation failed", exc_info=True)
         pass

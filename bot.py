@@ -159,7 +159,8 @@ class Bot(Client):
                     await self.edit_message_text(
                         cid, mid, "✅ Bot Restarted Successfully!"
                     )
-            except:
+            except Exception:
+                logging.getLogger(__name__).debug("start: optional operation failed", exc_info=True)
                 pass
             os.remove("restart.txt")
 
@@ -206,7 +207,8 @@ class Bot(Client):
                     "🤖 Status: Online & Stable\n"
                     "⭐ Premium System: Active"
                 )
-            except:
+            except Exception:
+                logging.getLogger(__name__).debug("start: optional operation failed", exc_info=True)
                 pass
 
         # ---- log channel ----
@@ -217,7 +219,8 @@ class Bot(Client):
                 f"🕒 {ist_time()}\n"
                 "⭐ Premium auto-remove: Active"
             )
-        except:
+        except Exception:
+            logging.getLogger(__name__).debug("start: optional operation failed", exc_info=True)
             pass
 
         logger.info(f"Bot @{me.username} started successfully")

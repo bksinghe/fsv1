@@ -643,8 +643,7 @@ const CFG = __CFG__;
 const ADMIN = __ADMIN__;
 const LIMIT = 20;
 const $ = s => document.querySelector(s);
-const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
-  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const esc = window.escapeHTML;
 let state = {q:'', cat:'all',
              offset:0, page:1, hasNext:false, req:0, items:{}, editing:null, dirty:false,
              flash:null, gallery:[], uploadSeq:0, uploadPending:false, uploadError:false, saving:false};
@@ -1105,7 +1104,7 @@ load(true).then(()=>{
 
 DETAIL_JS = r"""
 <script>
-const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const esc = window.escapeHTML;
 const D = __DETAIL_CFG__;
 let GALLERY = D.gallery.slice();
 let mediaLoaded=false, mediaOffset=0, mediaNext='';

@@ -38,7 +38,8 @@ from database.delete_archive import archive_and_delete, ArchiveDeleteError
 from database.group_db import (
     store as group_store, title_key, series_key, normal_kind, KIND_EPISODES,
 )
-from web.web_assets import get_auth, vcard_is_video
+from web.web_assets import vcard_is_video
+from web.common import json_response as _json, is_admin as _admin, admin_denied as _denied
 from web.thumb_engine import thumb_version, invalidate_thumb, enqueue_probe
 
 logger = logging.getLogger(__name__)
@@ -48,10 +49,6 @@ _STORAGE_CHANNEL = getattr(_info, "CATALOG_STORAGE_CHANNEL", BIN_CHANNEL)
 _MAX_UPLOAD = 5 * 1024 * 1024
 _QUALITY_RE = re.compile(r"^[A-Za-z0-9 +.\-]{0,16}$")
 _RES_RE = re.compile(r"^(\d{1,5})[x×](\d{1,5})$", re.I)
-
-
-def _json(data, status=200):
-    return web.json_response(data, status=status)
 
 
 def _clean(value, limit=300) -> str:
@@ -151,15 +148,6 @@ def _public_file(doc, group=None, group_loaded=False) -> dict:
             and str(doc.get("thumb_source") or "") == "web"
         ),
     }
-
-
-async def _admin(req):
-    role, _ = await get_auth(req)
-    return role == "admin"
-
-
-def _denied():
-    return _json({"ok": False, "error": "Admins only"}, 403)
 
 
 def _file_id(value) -> str:

@@ -11,9 +11,9 @@ import logging
 import re
 import secrets
 import time
-from urllib.parse import quote
 
 from aiohttp import web
+from web.common import redirect as _redirect
 
 from info import WEB_SESSION_TTL
 from utils import temp
@@ -36,10 +36,6 @@ EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 REG_OTP_TTL = 300        # registration OTPs are valid for 5 minutes
 REG_MAX_TRIES = 5
 
-
-def _redirect(path, **params):
-    qs = "&".join(f"{k}={quote(str(v))}" for k, v in params.items() if v not in (None, ""))
-    return web.HTTPFound(path + (f"?{qs}" if qs else ""))
 
 
 async def _send_otp(tg_id: int, message: str) -> bool:

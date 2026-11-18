@@ -1,3 +1,4 @@
+import logging
 import asyncio
 import time
 import html
@@ -190,7 +191,8 @@ async def delete_all_cmd(bot, message):
                     f"🗑 Deleted: <code>{count}</code> files\n"
                     f"🕒 Time: <code>{fmt(datetime.utcnow())}</code>"
                 )
-            except:
+            except Exception:
+                logging.getLogger(__name__).debug("delete_all_cmd: optional operation failed", exc_info=True)
                 pass
         else:
             await msg.edit("❌ Deletion cancelled - incorrect confirmation.")

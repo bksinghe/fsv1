@@ -13,6 +13,7 @@ import re
 from urllib.parse import quote
 
 from aiohttp import web
+from web.common import redirect as _redirect
 
 from utils import temp
 from database.users_chats_db import (
@@ -67,10 +68,6 @@ _PROFILE_JS = f"""<script>
 }})();
 </script>"""
 
-
-def _redirect(path, **params):
-    qs = "&".join(f"{k}={quote(str(v))}" for k, v in params.items() if v not in (None, ""))
-    return web.HTTPFound(path + (f"?{qs}" if qs else ""))
 
 
 @profile_routes.get("/profile")

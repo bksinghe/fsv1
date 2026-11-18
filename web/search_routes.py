@@ -19,7 +19,7 @@ from info import (
     WEB_STREAM_TTL,
     THUMB_BROWSER_CACHE,
 )
-from utils import temp, get_size
+from utils import temp
 from database.ia_filterdb import (
     get_search_results,
     get_recent_files,

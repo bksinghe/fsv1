@@ -113,6 +113,7 @@ def db_count_documents() -> int:
 # ⚡ LIGHTWEIGHT CACHE
 # =====================================================
 SEARCH_CACHE: Dict[str, Tuple[Any, float]] = {}
+CACHE_GENERATION = 0
 CACHE_TTL = 30  # seconds
 MAX_CACHE_SIZE = 1000
 
@@ -140,7 +141,9 @@ def cache_set(key: str, value: Any) -> None:
 
 def cache_clear() -> None:
     """Clear entire cache"""
+    global CACHE_GENERATION
     SEARCH_CACHE.clear()
+    CACHE_GENERATION += 1
 
 # =====================================================
 # 🧠 QUALITY DETECTOR
@@ -192,6 +195,7 @@ async def get_search_results(
 
     files = []
     total = 0
+    generation = CACHE_GENERATION
 
     # ===============================================
     # METHOD 1: TEXT SEARCH (FAST & RELEVANT)
@@ -199,23 +203,16 @@ async def get_search_results(
     text_filter = {"$text": {"$search": q}}
 
     try:
-        cursor = collection.find(
-            text_filter,
-            {
-                "file_name": 1,
-                "file_size": 1,
-                "caption": 1,
-                "quality": 1,
-                **WEB_EXTRA_FIELDS,
-                "score": {"$meta": "textScore"},
-            }
-        ).sort([("score", {"$meta": "textScore"})]).skip(offset).limit(max_results)
-
-        files = list(cursor)
-        
-        if files:
-            # Count with limit for performance
-            total = collection.count_documents(text_filter, limit=10000)
+        def text_search():
+            cursor = collection.find(
+                text_filter,
+                {"file_name": 1, "file_size": 1, "caption": 1, "quality": 1,
+                 **WEB_EXTRA_FIELDS, "score": {"$meta": "textScore"}},
+            ).sort([("score", {"$meta": "textScore"})]).skip(offset).limit(max_results)
+            found = list(cursor)
+            count = collection.count_documents(text_filter, limit=10000) if found else 0
+            return found, count
+        files, total = await asyncio.to_thread(text_search)
 
     except Exception as e:
         logger.error(f"Text search error: {e}")
@@ -235,21 +232,17 @@ async def get_search_results(
             else:
                 rg_filter = {"file_name": regex}
 
-            cursor = collection.find(
-                rg_filter,
-                {"file_name": 1, "file_size": 1, "caption": 1, "quality": 1,
-                 **WEB_EXTRA_FIELDS}
-            ).skip(offset).limit(max_results)
-            
-            files = list(cursor)
-            
-            if files:
-                # Limit count for performance
-                total = min(
-                    collection.count_documents(rg_filter, limit=5000),
-                    5000
-                )
-        
+            def regex_search():
+                cursor = collection.find(
+                    rg_filter,
+                    {"file_name": 1, "file_size": 1, "caption": 1, "quality": 1,
+                     **WEB_EXTRA_FIELDS},
+                ).skip(offset).limit(max_results)
+                found = list(cursor)
+                count = min(collection.count_documents(rg_filter, limit=5000), 5000) if found else 0
+                return found, count
+            files, total = await asyncio.to_thread(regex_search)
+
         except Exception as e:
             logger.error(f"Regex search error: {e}")
 
@@ -257,8 +250,9 @@ async def get_search_results(
     next_offset = str(offset + max_results) if total > offset + max_results else ""
     
     result = (files, next_offset, total)
-    cache_set(cache_key, result)
-    
+    if generation == CACHE_GENERATION:
+        cache_set(cache_key, result)
+
     return result
 
 # =====================================================
@@ -383,29 +377,6 @@ async def find_delete_batch(query: str, after_id: str = "", limit: int = 100):
 
 
 # =====================================================
-# 🗑 DELETE FILES BY QUERY
-# =====================================================
-async def delete_files(query: str) -> int:
-    """Delete files matching query"""
-    if not query or len(query) < 2:
-        return 0
-    
-    try:
-        escaped_query = re.escape(query.strip())
-        regex = re.compile(escaped_query, re.IGNORECASE)
-        
-        res = collection.delete_many({"file_name": regex})
-        
-        # Clear cache after deletion
-        cache_clear()
-        
-        return res.deleted_count
-    
-    except Exception as e:
-        logger.error(f"Delete error: {e}")
-        return 0
-
-# =====================================================
 # 🗑 DELETE ALL FILES (DANGEROUS!)
 # =====================================================
 async def delete_all_files() -> int:
@@ -416,7 +387,7 @@ async def delete_all_files() -> int:
     """
     try:
         # Delete all documents from collection
-        res = collection.delete_many({})
+        res = await asyncio.to_thread(collection.delete_many, {})
         
         # Clear cache after deletion
         cache_clear()
@@ -439,7 +410,7 @@ async def get_file_details(file_id: str) -> Optional[Dict]:
         return None
     
     try:
-        return collection.find_one({"_id": file_id})
+        return await asyncio.to_thread(collection.find_one, {"_id": file_id})
     except Exception as e:
         logger.error(f"Get file error: {e}")
         return None
@@ -583,30 +554,47 @@ async def save_file(media) -> str:
 
         # Try insert (new file)
         try:
-            collection.insert_one(doc)
+            await asyncio.to_thread(collection.insert_one, doc)
+            cache_clear()
             await _auto_join_group(file_id, file_name, media_meta["duration"])
             return "suc"
 
         except DuplicateKeyError:
-            # File exists, update caption and quality
-            # ⚠️ If a re-indexed message has no thumbnail, do not wipe the previously
-            # saved thumb_url/thumb_file_id with an empty value.
+            # Re-index metadata without touching any existing poster. A separate
+            # conditional write fills a missing poster only if no admin/probe
+            # has saved one in the meantime.
             fresh_meta = {
                 k: v for k, v in media_meta.items()
-                if v not in (None, "", 0)
+                if k not in ("thumb_url", "thumb_file_id", "thumb_verified")
+                and v not in (None, "", 0)
             }
-            collection.update_one(
+            result = await asyncio.to_thread(
+                collection.update_one,
                 {"_id": file_id},
-                {
-                    "$set": {
-                        "caption": caption,
-                        "quality": quality,
-                        "file_size": file_size,
-                        **fresh_meta,
-                        "updated_at": datetime.utcnow()
-                    }
-                }
+                {"$set": {"caption": caption, "quality": quality,
+                          "file_size": file_size, **fresh_meta, "updated_at": datetime.utcnow()}},
             )
+            if not result.matched_count:
+                return "err"
+            cache_clear()
+            if thumb_file_id:
+                await asyncio.to_thread(
+                    collection.update_one,
+                    {"_id": file_id, "thumb_source": {"$ne": "web"},
+                     "thumb_verified": {"$ne": True},
+                     "is_thumb_permanent": {"$ne": True},
+                     "$and": [
+                         {"$or": [{"thumb_url": {"$exists": False}},
+                                  {"thumb_url": None}, {"thumb_url": ""},
+                                  {"thumb_url": "NO_THUMB"}]},
+                         {"$or": [{"thumb_file_id": {"$exists": False}},
+                                  {"thumb_file_id": None}, {"thumb_file_id": ""}]},
+                     ]},
+                    {"$set": {"thumb_url": media_meta["thumb_url"],
+                              "thumb_file_id": thumb_file_id, "thumb_verified": False,
+                              "thumb_source": "", "is_thumb_permanent": False}},
+                )
+                cache_clear()
             await _auto_join_group(file_id, file_name, media_meta["duration"])
             return "dup"
 
@@ -625,8 +613,8 @@ async def update_file_caption(file_id: str, new_caption: str) -> bool:
     try:
         cleaned_caption = clean_text(new_caption)
         
-        res = collection.update_one(
-            {"_id": file_id},
+        res = await asyncio.to_thread(
+            collection.update_one, {"_id": file_id},
             {
                 "$set": {
                     "caption": cleaned_caption,

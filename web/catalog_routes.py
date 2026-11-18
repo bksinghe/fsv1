@@ -23,11 +23,9 @@ All writes are admin-only, every input is sanitized by `catalog.normalize()`, an
 server-generated HTML strings are returned (the client renders everything).
 """
 
-import inspect
 import io
 import logging
 import re
-import sys as _sys
 from urllib.parse import quote
 
 from aiohttp import web
@@ -35,11 +33,12 @@ from aiohttp import web
 import info as _info
 from info import BIN_CHANNEL
 from utils import temp
-from database.ia_filterdb import get_search_results
+from database.ia_filterdb import get_search_results, get_file_details
 
 # Optional dedicated channel (defaults to BIN_CHANNEL in info.py).
 _STORAGE_CHANNEL = getattr(_info, "CATALOG_STORAGE_CHANNEL", BIN_CHANNEL)
 from web.web_assets import get_auth, vcard_meta
+from web.common import json_response as _json
 from web.catalog import (
     CATALOGS,
     normalize,
@@ -53,10 +52,6 @@ logger = logging.getLogger(__name__)
 catalog_routes = web.RouteTableDef()
 
 _MAX_UPLOAD = 5 * 1024 * 1024
-
-
-def _json(data, status=200):
-    return web.json_response(data, status=status)
 
 
 def _kind(req):
@@ -78,24 +73,6 @@ def _media_row(doc: dict) -> dict:
     return out
 
 
-async def _file_details(fid: str):
-    """Library doc of an attached video — falls back to `collection.find_one` when
-    `get_file_details` is missing in a stub/demo (the page never breaks)."""
-    ia = _sys.modules.get("database.ia_filterdb")
-    if ia is None:
-        return None
-    try:
-        fn = getattr(ia, "get_file_details", None)
-        if fn is not None:
-            res = fn(fid)
-            return await res if inspect.isawaitable(res) else res
-        col = getattr(ia, "collection", None)
-        return col.find_one({"_id": fid}) if col is not None else None
-    except Exception as exc:
-        logger.debug("attached video meta skipped (%s): %s", fid, exc)
-        return None
-
-
 async def _enrich_attached_videos(item: dict):
     """📌 Give Post/Actor attached videos the same size/duration/quality/res/type
     chips as `/search` and tag-results — all from `vcard_meta()`."""
@@ -103,7 +80,7 @@ async def _enrich_attached_videos(item: dict):
         fid = str(v.get("file_id") or "")
         if not fid or str(v.get("quality") or ""):
             continue
-        doc = await _file_details(fid)
+        doc = await get_file_details(fid)
         if not doc:
             continue
         meta = vcard_meta(doc)
