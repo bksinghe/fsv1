@@ -1446,19 +1446,29 @@ def _detail_body(kind: str, role: str, item: dict) -> str:
         for l in (item.get("links") or [])[:20] if l.get("value")
     )
 
-    # 📌 manually attached videos (the earlier multi-video feature is preserved)
+    # Actor pages show tag-driven Library results only. Keep stored attachments
+    # untouched; Post detail pages continue to render their attached videos.
     videos = [v for v in (item.get("videos") or [])[:50] if v.get("file_id")]
-    if videos:
-        vids_html = ""
-        for i, v in enumerate(videos):
-            fid = str(v.get("file_id") or "")
-            poster = "/api/thumb?file_id=" + quote(fid, safe="") + "&v=1"
-            label = str(v.get("label") or f"Video {i+1}")
-            vids_html += video_card_html(fid, label, poster, data=v)
-    else:
-        vids_html = (
-            '<div class="cat-vempty">🎬 No videos attached yet.'
-            f'<br><span style="font-size:11px;font-weight:600">{video_empty_hint}</span></div>'
+    attached_section = ""
+    video_badge = ""
+    if kind == "posts":
+        if videos:
+            vids_html = ""
+            for i, v in enumerate(videos):
+                fid = str(v.get("file_id") or "")
+                poster = "/api/thumb?file_id=" + quote(fid, safe="") + "&v=1"
+                label = str(v.get("label") or f"Video {i+1}")
+                vids_html += video_card_html(fid, label, poster, data=v)
+        else:
+            vids_html = (
+                '<div class="cat-vempty">🎬 No videos attached yet.'
+                f'<br><span style="font-size:11px;font-weight:600">{video_empty_hint}</span></div>'
+            )
+        video_badge = f'<span class="cat-tab-n">{len(videos)}</span>'
+        attached_section = (
+            f'<div class="cat-subhead"><h3>{videos_heading}</h3>'
+            f'<span class="cat-hint">Added in the editor · {len(videos)}</span></div>'
+            f'<div class="cat-vgrid vgrid" id="catVideos">{vids_html}</div>'
         )
 
     # 🏷️ Like v5: the main part of the Videos tab comes from "Search Tags"
@@ -1529,7 +1539,7 @@ def _detail_body(kind: str, role: str, item: dict) -> str:
         )
     add_videos_btn = (
         f'<a class="cat-btn ghost cat-tabedit" href="{cfg["base"]}?edit={item_id}&focus=videos">'
-        '🎬 Add Videos</a>' if admin else ""
+        '🎬 Add Videos</a>' if admin and kind == 'posts' else ""
     )
     hero_img = (
         '<button type="button" class="cat-hero-cover" aria-label="Enlarge poster" '
@@ -1544,7 +1554,7 @@ def _detail_body(kind: str, role: str, item: dict) -> str:
   <div class="cat-detail-toolbar"><a class="cat-btn ghost cat-back" href="{cfg['base']}">← Back</a>{admin_bar}</div>
   <div class="cat-tabs" role="tablist">
     <button class="cat-tab active" id="tab-overview" role="tab" aria-selected="true" aria-controls="cp-overview" tabindex="0" data-tab="overview" onclick="switchTab('overview')">ℹ️ Overview</button>
-    <button class="cat-tab" id="tab-videos" role="tab" aria-selected="false" aria-controls="cp-videos" tabindex="-1" data-tab="videos" onclick="switchTab('videos')">🎬 Videos <span class="cat-tab-n">{len(videos)}</span></button>
+    <button class="cat-tab" id="tab-videos" role="tab" aria-selected="false" aria-controls="cp-videos" tabindex="-1" data-tab="videos" onclick="switchTab('videos')">🎬 Videos {video_badge}</button>
     <button class="cat-tab" id="tab-gallery" role="tab" aria-selected="false" aria-controls="cp-gallery" tabindex="-1" data-tab="gallery" onclick="switchTab('gallery')">{gallery_tab} <span class="cat-tab-n">{len(gallery)}</span></button>
     <span class="cat-tabspace"></span>{add_videos_btn}
   </div>
@@ -1566,8 +1576,7 @@ def _detail_body(kind: str, role: str, item: dict) -> str:
   </section>
 
   <section class="cat-panel" id="cp-videos" role="tabpanel" aria-labelledby="tab-videos">
-    <div class="cat-subhead"><h3>{videos_heading}</h3><span class="cat-hint">Added in the editor · {len(videos)}</span></div>
-    <div class="cat-vgrid vgrid" id="catVideos">{vids_html}</div>
+    {attached_section}
     {tag_section}
   </section>
 

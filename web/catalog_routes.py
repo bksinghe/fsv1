@@ -234,7 +234,8 @@ async def _detail(req, kind, item_id):
     if not item:
         return web.Response(text="❌ Entry not found", status=404)
     item = _safe_item(kind, item)
-    await _enrich_attached_videos(item)   # 🎴 every video card gets the same chips
+    if kind == "posts":
+        await _enrich_attached_videos(item)   # Post attached cards share video chips
     return build_detail_page(kind, role, tg_id, item)
 
 
