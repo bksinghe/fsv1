@@ -28,7 +28,7 @@ from database.ia_filterdb import (
 )
 from database.group_db import (duration_seconds, store, quality_label, episode_identity,
                                episode_label, clean_episode_map, normal_kind, KIND_EPISODES)
-from web.group_routes import group_cards, filter_group_cards
+from web.group_routes import group_cards, filter_group_cards, GROUP_FILTER_LOCK
 from stream_security import sign_params
 from web.web_assets import get_auth, search_page, vcard_meta
 from web.thumb_engine import get_thumb, image_content_type, thumb_version, thumb_state
@@ -41,33 +41,23 @@ search_routes = web.RouteTableDef()
 _STREAM_CACHE = {}
 
 # ── Group / UnGroup filter ─────────────────────────────────────────
-# Groups are now **permanent** (`database/group_db.py`): group_id/num,
-# members, auto_keys and excluded live in the DB. The title key also comes from
-# that one module, so the search filter, scan-all and new-quality auto-join all
-# follow the same rule. Cap the Group filter scan to this many docs on large DBs.
-# UnGroup reads ordinary file pages directly and is not subject to this scan cap.
-_GROUP_SCAN_LIMIT = 500
-
-
 async def _group_page(q: str, offset: int, limit: int, mode: str):
-    """Group filter — pages are **cards**, membership covers the scanned query set.
+    """Group all matching file metadata before paging group cards.
 
-    Reads only lightweight metadata such as file_name/_id/quality — no image
-    bytes and no server-side thumbnail/RAM cache. `group_cards()` loads every
-    member of saved groups from the DB, even when it is outside the scan.
+    Limit 0 is an internal unlimited DB read; it does not cache the full result.
+    No thumbnail image bytes are loaded. Large libraries can use substantial RAM.
     """
-    if q:
-        scan, _, _ = await get_search_results(q, 0, _GROUP_SCAN_LIMIT)
-    else:
-        scan, _, _ = await get_recent_files(0, _GROUP_SCAN_LIMIT)
-    cards = await group_cards([_result(d) for d in scan], normalize=_result)
-    # A permanent group can contain files with different names → filter using the
-    # prepared group/single cards rather than a title count.
-    matched = filter_group_cards(cards, mode)
-    total = len(matched)
-    page = matched[offset:offset + limit]
-    next_offset = str(offset + limit) if offset + limit < total else ""
-    return page, next_offset, total
+    async with GROUP_FILTER_LOCK:
+        if q:
+            scan, _, _ = await get_search_results(q, 0, 0)
+        else:
+            scan, _, _ = await get_recent_files(0, 0)
+        cards = await group_cards([_result(d) for d in scan], normalize=_result)
+        matched = filter_group_cards(cards, mode)
+        total = len(matched)
+        page = matched[offset:offset + limit]
+        next_offset = str(offset + limit) if offset + limit < total else ""
+        return page, next_offset, total
 
 
 def _thumb_url(doc) -> str:

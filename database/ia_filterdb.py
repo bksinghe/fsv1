@@ -177,7 +177,8 @@ async def get_search_results(
     max_results: int = MAX_BTN
 ) -> Tuple[List[Dict], str, int]:
     """
-    Search files with text search + regex fallback
+    Search files with text search + regex fallback.
+    A limit of 0 means all matches for internal group scans and bypasses cache.
     Returns: (files, next_offset, total_count)
     """
     # Validate input
@@ -189,7 +190,7 @@ async def get_search_results(
     
     # Check the cache (the limit is part of the key — web pagination may ask for a different one)
     cache_key = f"{q_lower}:{offset}:{max_results}"
-    cached = cache_get(cache_key)
+    cached = cache_get(cache_key) if max_results > 0 else None
     if cached:
         return cached
 
@@ -255,10 +256,10 @@ async def get_search_results(
             logger.error(f"Regex search error: {e}")
 
     # Calculate next offset
-    next_offset = str(offset + max_results) if total > offset + max_results else ""
+    next_offset = str(offset + max_results) if max_results > 0 and total > offset + max_results else ""
     
     result = (files, next_offset, total)
-    if generation == CACHE_GENERATION:
+    if max_results > 0 and generation == CACHE_GENERATION:
         cache_set(cache_key, result)
 
     return result
@@ -282,7 +283,7 @@ async def get_recent_files(offset: int = 0, max_results: int = 30):
             )
         )
         total = await asyncio.to_thread(db_count_documents)
-        next_offset = str(offset + max_results) if offset + max_results < total else ""
+        next_offset = str(offset + max_results) if max_results > 0 and offset + max_results < total else ""
         return docs, next_offset, total
     except Exception as e:
         logger.error(f"Recent files error: {e}")

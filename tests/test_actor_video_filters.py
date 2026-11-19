@@ -1,5 +1,6 @@
 """Actor library controls reuse search filters, group cards and text mode."""
 import ast
+import asyncio
 import shutil
 import subprocess
 import unittest
@@ -82,7 +83,7 @@ class ActorFilterAPITests(unittest.IsolatedAsyncioTestCase):
                  'store':SimpleNamespace(get_item=AsyncMock(return_value={'tags':['Actor']})),
                  '_clean_id':lambda x:x,'_tag_media':self.fetch,
                  '_media_row':lambda d:{'file_id':d['_id']},'group_cards':self.group,
-                 'filter_group_cards':lambda cards,mode:[c for c in cards if c.get('group')]}
+                 'filter_group_cards':lambda cards,mode:[c for c in cards if c.get('group')], 'GROUP_FILTER_LOCK':asyncio.Lock()}
         exec(compile(ast.fix_missing_locations(ast.Module(body=[fn],type_ignores=[])),'<routes>','exec'),self.ns)
     async def request(self,**q):
         return await self.ns['api_media'](SimpleNamespace(match_info={'kind':'actors'},query=q))
@@ -95,10 +96,10 @@ class ActorFilterAPITests(unittest.IsolatedAsyncioTestCase):
         result=await self.request(id='x',group='all')
         self.assertTrue(result['results'][0]['group']);self.assertEqual(result['total'],25)
         self.group.assert_awaited_once()
-    async def test_group_uses_bounded_scan_and_group_card_pagination(self):
+    async def test_group_uses_unlimited_scan_and_group_card_pagination(self):
         result=await self.request(id='x',group='group')
         self.assertEqual(result['results'],[{'group':True,'key':'g'}]);self.assertEqual(result['total'],1)
-        self.fetch.assert_awaited_once_with({'tags':['Actor']},'',0,500)
+        self.fetch.assert_awaited_once_with({'tags':['Actor']},'',0,0)
     async def test_unauthorized_and_post_do_not_search(self):
         self.ns['get_auth'].return_value=(None,None)
         self.assertIn('error',await self.request(id='x',group='all'))

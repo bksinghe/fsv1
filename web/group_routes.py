@@ -49,6 +49,8 @@ _MAX_UPLOAD = 5 * 1024 * 1024
 SCAN_MAX_GROUP = 30          # a larger quality bucket is a very common name — do not group it
 SCAN_MAX_SERIES = 500        # series may contain many episodes but should still be bounded
 SCAN_STATE = {"running": False}
+# Full Group filter scans are memory-heavy; serialize them within each worker.
+GROUP_FILTER_LOCK = asyncio.Lock()
 _AUTO_GROUP_LOCK = asyncio.Lock()
 
 
@@ -423,11 +425,14 @@ async def group_cards(cards, normalize=None, auto_join=True):
 
     # Load the remaining members of saved groups (not found on this page) from the DB
     needed = []
+    needed_set = set()
     have = set(ids)
     for g in groups:
         for m in (g.get("members") or []):
-            if str(m) not in have and str(m) not in needed:
-                needed.append(str(m))
+            fid = str(m)
+            if fid not in have and fid not in needed_set:
+                needed.append(fid)
+                needed_set.add(fid)
     extra = []
     if needed and normalize:
         for doc in await store.files_by_ids(needed):

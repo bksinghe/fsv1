@@ -48,7 +48,7 @@ from web.catalog import (
 from web.thumb_engine import get_image_bytes, image_content_type
 from database.catalog_db import store
 from database.group_db import duration_seconds
-from web.group_routes import group_cards, filter_group_cards
+from web.group_routes import group_cards, filter_group_cards, GROUP_FILTER_LOCK
 
 logger = logging.getLogger(__name__)
 catalog_routes = web.RouteTableDef()
@@ -123,12 +123,12 @@ async def _tag_media(item: dict, custom_q: str, offset: int, limit: int):
             logger.debug(f"tag media search skipped ({terms[0]!r}): {e}")
             return [], "", terms, 0, source
 
-    # Multiple tag result sets can overlap; preserve existing bounded merge
-    # until they have a dedicated scalable deduplicated pagination strategy.
+    # For ordinary pages keep the existing bounded merge. Group filtering uses
+    # limit=0 internally to scan every matching tag and deduplicate file IDs.
     merged, seen = [], set()
     for term in terms:
         try:
-            docs = (await get_search_results(term, 0, 60))[0] or []
+            docs = (await get_search_results(term, 0, 0 if limit == 0 else 60))[0] or []
         except Exception as e:
             logger.debug(f"tag media search skipped ({term!r}): {e}")
             docs = []
@@ -138,8 +138,8 @@ async def _tag_media(item: dict, custom_q: str, offset: int, limit: int):
                 seen.add(fid)
                 merged.append(d)
     total = len(merged)
-    page = merged[offset:offset + limit]
-    nxt = str(offset + limit) if offset + limit < total else ""
+    page = merged[offset:offset + limit] if limit else merged[offset:]
+    nxt = str(offset + limit) if limit > 0 and offset + limit < total else ""
     return page, nxt, terms, total, source
 
 
@@ -363,14 +363,15 @@ async def api_media(req):
         mode = "ungroup"
     query = req.query.get("q", "")
     if mode == "group":
-        # Match the main search Group filter's bounded metadata scan. Offsets
-        # in this mode refer to group cards rather than raw files.
-        scan, _, terms, _, source = await _tag_media(item, query, 0, 500)
-        cards = await group_cards([_media_row(d) for d in scan], normalize=_media_row)
-        matched = filter_group_cards(cards, "group")
-        total = len(matched)
-        results = matched[offset:offset + limit]
-        nxt = str(offset + limit) if offset + limit < total else ""
+        # Group the full matching metadata set; offsets count group cards.
+        # The scan loads no thumbnail bytes but can use substantial RAM.
+        async with GROUP_FILTER_LOCK:
+            scan, _, terms, _, source = await _tag_media(item, query, 0, 0)
+            cards = await group_cards([_media_row(d) for d in scan], normalize=_media_row)
+            matched = filter_group_cards(cards, "group")
+            total = len(matched)
+            results = matched[offset:offset + limit]
+            nxt = str(offset + limit) if offset + limit < total else ""
     else:
         page, nxt, terms, total, source = await _tag_media(item, query, offset, limit)
         cards = [_media_row(d) for d in page]
