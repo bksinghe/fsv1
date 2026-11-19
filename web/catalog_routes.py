@@ -47,6 +47,8 @@ from web.catalog import (
 )
 from web.thumb_engine import get_image_bytes, image_content_type
 from database.catalog_db import store
+from database.group_db import duration_seconds
+from web.group_routes import group_cards, filter_group_cards
 
 logger = logging.getLogger(__name__)
 catalog_routes = web.RouteTableDef()
@@ -70,6 +72,7 @@ def _media_row(doc: dict) -> dict:
     fid = out["file_id"]
     out["thumb"] = "/api/thumb?file_id=" + quote(fid, safe="") + "&v=1"
     out["watch"] = "/setup_stream?file_id=" + quote(fid, safe="") + "&mode=watch"
+    out["duration_seconds"] = duration_seconds(doc)
     return out
 
 
@@ -354,13 +357,27 @@ async def api_media(req):
         limit = max(1, min(int(req.query.get("limit", "12")), 30))
     except ValueError:
         offset, limit = 0, 12
-    page, nxt, terms, total, source = await _tag_media(
-        item, req.query.get("q", ""), offset, limit
-    )
+    mode = (req.query.get("group") or "ungroup").strip().lower()
+    if mode not in ("all", "group", "ungroup"):
+        mode = "ungroup"
+    query = req.query.get("q", "")
+    if mode == "group":
+        # Match the main search Group filter's bounded metadata scan. Offsets
+        # in this mode refer to group cards rather than raw files.
+        scan, _, terms, _, source = await _tag_media(item, query, 0, 500)
+        cards = await group_cards([_media_row(d) for d in scan], normalize=_media_row)
+        matched = filter_group_cards(cards, "group")
+        total = len(matched)
+        results = matched[offset:offset + limit]
+        nxt = str(offset + limit) if offset + limit < total else ""
+    else:
+        page, nxt, terms, total, source = await _tag_media(item, query, offset, limit)
+        cards = [_media_row(d) for d in page]
+        results = await group_cards(cards, normalize=_media_row) if mode == "all" else cards
     return _json({
-        "results": [_media_row(d) for d in page],
+        "results": results,
         "terms": terms, "source": source, "total": total,
-        "offset": offset, "next_offset": nxt,
+        "offset": offset, "next_offset": nxt, "group": mode,
     })
 
 

@@ -68,7 +68,7 @@ from urllib.parse import quote
 
 from web.web_assets import (app_page, PLAYER_MODAL_HTML, PLAYER_JS,
                             FILE_EDIT_HTML, FILE_EDIT_JS,
-                            filter_buttons, CATALOG_FILTERS,
+                            filter_buttons, CATALOG_FILTERS, SEARCH_FILTERS,
                             render_vcard, vcard_chips, vcard_size)
 
 # ─────────────────────────────────────────────────────────────
@@ -575,7 +575,8 @@ margin:16px 0 8px;border-top:1px solid var(--line);padding-top:14px}
 padding:4px 10px;font-size:10.5px;font-weight:800;color:var(--mut)}
 .cat-tagpill b{color:var(--red)}
 .cat-mediabar{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
-.cat-mediabar .cat-search{flex:1 1 230px}
+.cat-mediabar .cat-search{flex:1 1 230px;min-width:0}
+@media(max-width:760px){.cat-mediabar .cat-search{flex:1 1 100%}}
 .cat-mediabar .cat-search input{width:100%;box-sizing:border-box;background:var(--bg3);
 border:1.5px solid var(--line);border-radius:9px;padding:11px 14px;color:var(--txt);
 font:600 13px inherit;font-family:inherit;outline:none;transition:border-color .18s,box-shadow .18s}
@@ -1107,7 +1108,13 @@ DETAIL_JS = r"""
 const esc = window.escapeHTML;
 const D = __DETAIL_CFG__;
 let GALLERY = D.gallery.slice();
-let mediaLoaded=false, mediaOffset=0, mediaNext='';
+let mediaLoaded=false, mediaOffset=0, mediaNext='', mediaSeq=0, mediaController=null;
+let mediaGroupMode=localStorage.getItem('ff_group_mode')||'all';
+if(!['all','group','ungroup'].includes(mediaGroupMode))mediaGroupMode='all';
+function setMediaGroup(v){
+  mediaGroupMode=['all','group','ungroup'].includes(v)?v:'all';
+  localStorage.setItem('ff_group_mode',mediaGroupMode);loadMedia(0);
+}
 let toastTimer=null;
 
 function imageSrc(v){
@@ -1138,15 +1145,17 @@ function switchTab(name, init){
 }
 /* ── 🏷️ v5's tag-driven Linked Media, served by fsv1's JSON API ── */
 /* 🎴 the same shared card as /search — markup/chips/size from web_assets.VCARD_* */
-function mediaCard(f){
+function mediaCard(f,topLevel){
+  const attrs=ViewMode.imgAttrs(esc(f.thumb||''));
+  const err="this.classList.add('hidden');this.closest('.vposter,.gposter').classList.add('no-thumb')";
+  if(f.group)return groupHTML(f,attrs,err,topLevel);
   return vcardHTML({
-    CARD_CLASS:' rv-enter', EXTRA_ATTRS:' data-label="1"',
+    CARD_CLASS:topLevel?' rv-enter':'', EXTRA_ATTRS:' data-label="1"',
     FID:esc(f.file_id), RAW_FID:esc(f.file_id), NAME:esc(f.name),
-    IMG_ATTRS:'src="'+esc(f.thumb)+'"',
-    IMG_ERROR:"this.classList.add('hidden');this.closest('.vposter').classList.add('no-thumb')",
-    CHIPS:vcardChips(f), SIZE:vcardSize(f)
+    IMG_ATTRS:attrs, IMG_ERROR:err, CHIPS:vcardChips(f), SIZE:vcardSize(f)
   });
 }
+window.cardHTML=mediaCard;
 /* ▶ shared player like the main page — clicking a name/card opens the small modal */
 function playCard(c){
   if(!c || !c.dataset.fid) return;
@@ -1157,27 +1166,32 @@ document.addEventListener('click',e=>{
   if(c) playCard(c);
 });
 async function loadMedia(offset){
-  if(!D.tagMedia) return;                 /* Posts must not show search-text results */
+  if(!D.tagMedia) return;
   const box=document.getElementById('catMediaResults'); if(!box) return;
-  mediaLoaded=true; mediaOffset=Math.max(0,offset||0);
+  if(mediaController)mediaController.abort();
+  mediaController=new AbortController();const seq=++mediaSeq,requested=Math.max(0,offset||0);
+  mediaLoaded=true;
   const q=(document.getElementById('catMediaQ')||{}).value||'';
-  const info=document.getElementById('catMediaInfo');
+  const mode=mediaGroupMode,info=document.getElementById('catMediaInfo');
   if(info) info.textContent='⏳ Searching the Library…';
   try{
     const r=await fetch('/api/catalog/'+D.kind+'/media?id='+encodeURIComponent(D.id)
-      +'&q='+encodeURIComponent(q.trim())+'&offset='+mediaOffset+'&limit='+D.limit);
-    const d=await r.json();
-    mediaNext=d.next_offset||'';
-    const cards=(d.results||[]).map(mediaCard);
+      +'&q='+encodeURIComponent(q.trim())+'&offset='+requested+'&limit='+D.limit+'&group='+mode,
+      {credentials:'same-origin',signal:mediaController.signal});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const d=await r.json();if(seq!==mediaSeq)return;
+    mediaOffset=requested;mediaNext=d.next_offset||'';
+    const cards=(d.results||[]).map(f=>mediaCard(f,true));
     box.innerHTML=cards.length?cards.join('')
       : '<div class="cat-vempty">🔍 No Library files matched these tags.<br>'
         + '<span style="font-size:11px;font-weight:600">You can also search by name in the box above.</span></div>';
+    ViewMode.apply();
     box.querySelectorAll('img').forEach(im=>{
       im.addEventListener('load',()=>im.classList.add('on'));
       if(im.complete&&im.naturalWidth) im.classList.add('on');
     });
     if(info){
-      if(d.source==='tags') info.innerHTML='🏷️ <b>'+d.terms.length+'</b> Search Tags found <b>'+d.total+'</b> videos';
+      if(d.source==='tags') info.innerHTML='🏷️ <b>'+d.terms.length+'</b> Search Tags found <b>'+d.total+'</b> '+(mode==='group'?'groups':'videos');
       else if(d.source==='custom') info.innerHTML='🔍 &quot;'+esc(q.trim())+'&quot;: <b>'+d.total+'</b> results';
       else info.innerHTML='📝 Title: <b>'+d.total+'</b> results (this entry has no tags)';
     }
@@ -1191,12 +1205,13 @@ async function loadMedia(offset){
       if(lbl) lbl.textContent='Page '+(Math.floor(mediaOffset/D.limit)+1);
     }
     RevealCards.stagger('#catMediaResults .vcard');
-  }catch(e){ if(info) info.textContent='⚠️ Could not load results'; }
+    RevealCards.reveal(box);
+  }catch(e){ if(e.name!=='AbortError'&&seq===mediaSeq&&info) info.textContent='⚠️ Could not load results'; }
 }
 function mediaPage(step){
   if(!D.tagMedia) return;
-  const next=mediaOffset+step*D.limit;
-  if(next<0 || (step>0&&!mediaNext)) return;
+  const next=step>0?Number(mediaNext):Math.max(0,mediaOffset-D.limit);
+  if((step<0&&mediaOffset===0)||(step>0&&!mediaNext)) return;
   loadMedia(next);
 }
 
@@ -1325,6 +1340,8 @@ document.addEventListener('click',e=>{
 window.addEventListener('pageshow',()=>{document.querySelectorAll('.cat-back').forEach(link=>delete link.dataset.backNavigating);});
 const mq=document.getElementById('catMediaQ');
 if(mq){
+  const sel=document.getElementById('catMediaGroup');if(sel)sel.value=mediaGroupMode;
+  ViewMode.init({storage:ViewMode.storageFor()});
   let t;
   mq.addEventListener('input',()=>{ clearTimeout(t); t=setTimeout(()=>loadMedia(0),320); });
   mq.addEventListener('keydown',e=>{ if(e.key==='Enter'){ clearTimeout(t); loadMedia(0); } });
@@ -1451,17 +1468,21 @@ def _detail_body(kind: str, role: str, item: dict) -> str:
         tag_pills = "".join(f'<span class="cat-tagpill">🏷️ <b>#{esc(t)}</b></span>' for t in tags)
         if not tag_pills:
             tag_pills = '<span class="cat-tagpill">🏷️ No search tags — searching by <b>Title</b></span>'
+        media_filters = filter_buttons((
+            dict(SEARCH_FILTERS[0], id="catMediaMode"),
+            dict(SEARCH_FILTERS[1], id="catMediaGroup", onchange="setMediaGroup(this.value)"),
+        ))
         tag_section = f"""
     <div class="cat-subhead"><h3>🏷️ From the Library — based on Search Tags</h3>
       <span class="cat-hint">like the actor Linked Media tab in v5</span></div>
     <div class="cat-tagline" id="catTagPills">{tag_pills}</div>
     <div class="cat-mediabar">
-      <div class="cat-search"><input type="search" id="catMediaQ" autocomplete="off"
+      <div class="cat-search"><input type="search" id="catMediaQ" aria-label="Search files" autocomplete="off"
         placeholder="Search inside this profile… (empty = use tags automatically)"></div>
-      <button class="cat-btn ghost" style="padding:9px 14px;font-size:11px" onclick="loadMedia(0)">🔍 Search</button>
+      {media_filters}
     </div>
     <div class="cat-mediainfo" id="catMediaInfo">Opening the Videos tab searches by tags…</div>
-    <div class="cat-vgrid vgrid" id="catMediaResults"></div>
+    <div class="cat-vgrid vgrid vm-grid" id="catMediaResults"></div>
     <div class="cat-mediapg" id="catMediaPg" style="display:none">
       <button id="catMediaPrev" onclick="mediaPage(-1)">◀ Prev</button>
       <span id="catMediaPage">Page 1</span>

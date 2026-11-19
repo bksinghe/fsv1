@@ -91,7 +91,7 @@ class TestSingleSource(unittest.TestCase):
         self.assertIn("RevealCards.stagger('#catMediaResults .vcard')", src)
         self.assertIn("RevealCards.stagger('#catGallery .cat-galitem')", src)
         self.assertIn('CARD_CLASS=" rv-enter"', src)   # attached video cards
-        self.assertIn("CARD_CLASS:' rv-enter'", src)    # tag-driven results
+        self.assertIn("CARD_CLASS:topLevel?' rv-enter':''", src)    # top-level tag results
 
     def test_06_group_cards_only_at_top_level(self):
         src = FILES["group_assets.py"]
