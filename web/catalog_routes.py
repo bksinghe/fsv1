@@ -110,6 +110,18 @@ async def _tag_media(item: dict, custom_q: str, offset: int, limit: int):
     if not terms:
         return [], "", [], 0, source
 
+    # A single tag (or custom query/title) needs no cross-tag deduplication.
+    # Page the shared search directly rather than truncating it to 60 files.
+    if len(terms) == 1:
+        try:
+            page, nxt, total = await get_search_results(terms[0], offset, limit)
+            return page, nxt, terms, total, source
+        except Exception as e:
+            logger.debug(f"tag media search skipped ({terms[0]!r}): {e}")
+            return [], "", terms, 0, source
+
+    # Multiple tag result sets can overlap; preserve existing bounded merge
+    # until they have a dedicated scalable deduplicated pagination strategy.
     merged, seen = [], set()
     for term in terms:
         try:
