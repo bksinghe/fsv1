@@ -1108,7 +1108,9 @@ DETAIL_JS = r"""
 const esc = window.escapeHTML;
 const D = __DETAIL_CFG__;
 let GALLERY = D.gallery.slice();
-let mediaLoaded=false, mediaOffset=0, mediaNext='', mediaSeq=0, mediaController=null;
+let mediaLoaded=false, mediaSeq=0, mediaController=null, mediaBusy=false;
+let mediaPages=[],mediaPageIndex=0,mediaCursor=0,mediaSourceMore=true,
+    mediaBuffer=[],mediaSeen=Object.create(null),mediaInfo=null;
 let mediaGroupMode=localStorage.getItem('ff_group_mode')||'all';
 if(!['all','group','ungroup'].includes(mediaGroupMode))mediaGroupMode='all';
 function setMediaGroup(v){
@@ -1165,54 +1167,87 @@ document.addEventListener('click',e=>{
   const c=e.target.closest('.vcard[data-fid]');
   if(c) playCard(c);
 });
-async function loadMedia(offset){
+function updateMediaControls(){
+  const pg=document.getElementById('catMediaPg');if(!pg)return;
+  const hasNext=mediaPageIndex+1<mediaPages.length||mediaSourceMore||mediaBuffer.length>0;
+  pg.style.display=mediaPages.length&&(mediaPageIndex>0||hasNext)?'flex':'none';
+  document.getElementById('catMediaPrev').disabled=mediaBusy||mediaPageIndex===0;
+  document.getElementById('catMediaNext').disabled=mediaBusy||!hasNext;
+  document.getElementById('catMediaPage').textContent='Page '+(mediaPageIndex+1);
+}
+function renderMediaPage(){
+  const box=document.getElementById('catMediaResults'),list=mediaPages[mediaPageIndex]||[];
+  box.innerHTML=list.map(f=>mediaCard(f,true)).join('') ||
+    '<div class="cat-vempty">🔍 No Library files matched these tags.<br>'
+    +'<span style="font-size:11px;font-weight:600">You can also search by name in the box above.</span></div>';
+  ViewMode.apply();
+  box.querySelectorAll('img').forEach(im=>{
+    im.addEventListener('load',()=>im.classList.add('on'));
+    if(im.complete&&im.naturalWidth)im.classList.add('on');
+  });
+  const info=document.getElementById('catMediaInfo'),d=mediaInfo;
+  if(info&&d){
+    if(d.source==='tags')info.innerHTML='🏷️ <b>'+d.terms.length+'</b> Search Tags found <b>'+d.total+'</b> '+(d.mode==='group'?'groups':'videos');
+    else if(d.source==='custom')info.innerHTML='🔍 &quot;'+esc(d.query)+'&quot;: <b>'+d.total+'</b> results';
+    else info.innerHTML='📝 Title: <b>'+d.total+'</b> results (this entry has no tags)';
+  }
+  RevealCards.stagger('#catMediaResults .vcard');RevealCards.reveal(box);
+  updateMediaControls();
+}
+async function loadMedia(offset,advance=false){
   if(!D.tagMedia) return;
-  const box=document.getElementById('catMediaResults'); if(!box) return;
+  const box=document.getElementById('catMediaResults');if(!box)return;
+  const reset=!advance;
+  if(!reset&&mediaBusy)return;
   if(mediaController)mediaController.abort();
-  mediaController=new AbortController();const seq=++mediaSeq,requested=Math.max(0,offset||0);
-  mediaLoaded=true;
-  const q=(document.getElementById('catMediaQ')||{}).value||'';
+  mediaController=new AbortController();const seq=++mediaSeq;
+  if(reset){
+    mediaPages=[];mediaPageIndex=0;mediaCursor=0;mediaSourceMore=true;
+    mediaBuffer=[];mediaSeen=Object.create(null);mediaInfo=null;
+    box.innerHTML='<div class="cat-vempty" role="status">Loading results…</div>';
+  }
+  mediaLoaded=true;mediaBusy=true;updateMediaControls();
+  const q=((document.getElementById('catMediaQ')||{}).value||'').trim();
   const mode=mediaGroupMode,info=document.getElementById('catMediaInfo');
-  if(info) info.textContent='⏳ Searching the Library…';
+  let cursor=mediaCursor,more=mediaSourceMore,buffer=mediaBuffer.slice(),
+      seen=Object.assign(Object.create(null),mediaSeen),list=[],details=mediaInfo;
+  if(info)info.textContent='⏳ Searching the Library…';
   try{
-    const r=await fetch('/api/catalog/'+D.kind+'/media?id='+encodeURIComponent(D.id)
-      +'&q='+encodeURIComponent(q.trim())+'&offset='+requested+'&limit='+D.limit+'&group='+mode,
-      {credentials:'same-origin',signal:mediaController.signal});
-    if(!r.ok)throw new Error('HTTP '+r.status);
-    const d=await r.json();if(seq!==mediaSeq)return;
-    mediaOffset=requested;mediaNext=d.next_offset||'';
-    const cards=(d.results||[]).map(f=>mediaCard(f,true));
-    box.innerHTML=cards.length?cards.join('')
-      : '<div class="cat-vempty">🔍 No Library files matched these tags.<br>'
-        + '<span style="font-size:11px;font-weight:600">You can also search by name in the box above.</span></div>';
-    ViewMode.apply();
-    box.querySelectorAll('img').forEach(im=>{
-      im.addEventListener('load',()=>im.classList.add('on'));
-      if(im.complete&&im.naturalWidth) im.classList.add('on');
-    });
-    if(info){
-      if(d.source==='tags') info.innerHTML='🏷️ <b>'+d.terms.length+'</b> Search Tags found <b>'+d.total+'</b> '+(mode==='group'?'groups':'videos');
-      else if(d.source==='custom') info.innerHTML='🔍 &quot;'+esc(q.trim())+'&quot;: <b>'+d.total+'</b> results';
-      else info.innerHTML='📝 Title: <b>'+d.total+'</b> results (this entry has no tags)';
+    // Like main search: group raw files in batches, deduplicate groups, and
+    // buffer surplus cards so each visible page has up to 21 distinct cards.
+    while(list.length<D.limit){
+      while(buffer.length&&list.length<D.limit){
+        const f=buffer.shift();
+        if(f.group){const key=String(f.key||f.gid||'');if(key&&seen[key])continue;if(key)seen[key]=true;}
+        list.push(f);
+      }
+      if(list.length===D.limit||!more)break;
+      const r=await fetch('/api/catalog/'+D.kind+'/media?id='+encodeURIComponent(D.id)
+        +'&q='+encodeURIComponent(q)+'&offset='+cursor+'&limit='+D.limit+'&group='+mode,
+        {credentials:'same-origin',signal:mediaController.signal});
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      const d=await r.json();if(seq!==mediaSeq)return;
+      buffer.push(...(d.results||[]));
+      details={source:d.source,terms:d.terms||[],total:d.total,query:q,mode};
+      more=d.next_offset!==''&&d.next_offset!=null&&d.next_offset!==0;
+      if(more){const next=Number(d.next_offset);if(!Number.isSafeInteger(next)||next<=cursor)throw new Error('Invalid pagination cursor');cursor=next;}
     }
-    const pg=document.getElementById('catMediaPg');
-    if(pg){
-      pg.style.display=(mediaOffset>0||mediaNext)?'flex':'none';
-      const pr=document.getElementById('catMediaPrev'), nx=document.getElementById('catMediaNext');
-      if(pr) pr.disabled=mediaOffset===0;
-      if(nx) nx.disabled=!mediaNext;
-      const lbl=document.getElementById('catMediaPage');
-      if(lbl) lbl.textContent='Page '+(Math.floor(mediaOffset/D.limit)+1);
-    }
-    RevealCards.stagger('#catMediaResults .vcard');
-    RevealCards.reveal(box);
-  }catch(e){ if(e.name!=='AbortError'&&seq===mediaSeq&&info) info.textContent='⚠️ Could not load results'; }
+    if(seq!==mediaSeq)return;
+    mediaCursor=cursor;mediaSourceMore=more;mediaBuffer=buffer;mediaSeen=seen;mediaInfo=details;
+    if(list.length||!mediaPages.length){mediaPages.push(list);mediaPageIndex=mediaPages.length-1;renderMediaPage();}
+    else if(info)info.textContent='No more results.';
+  }catch(e){
+    if(e.name!=='AbortError'&&seq===mediaSeq&&info)info.textContent='⚠️ Could not load results. Please try again.';
+  }finally{
+    if(seq===mediaSeq){mediaBusy=false;updateMediaControls();}
+  }
 }
 function mediaPage(step){
-  if(!D.tagMedia) return;
-  const next=step>0?Number(mediaNext):Math.max(0,mediaOffset-D.limit);
-  if((step<0&&mediaOffset===0)||(step>0&&!mediaNext)) return;
-  loadMedia(next);
+  if(!D.tagMedia||mediaBusy)return;
+  const next=mediaPageIndex+step;
+  if(next<0)return;
+  if(next<mediaPages.length){mediaPageIndex=next;renderMediaPage();return;}
+  if(step>0&&(mediaSourceMore||mediaBuffer.length))return loadMedia(mediaCursor,true);
 }
 
 /* ── 🖼️ Gallery / Screenshots — direct upload + in-place delete ── */
@@ -1605,7 +1640,7 @@ def build_detail_page(kind: str, role: str, tg_id: int, item: dict):
         "galleryEmpty": cfg["galleryEmpty"],
         "tabAlias": cfg["tabAlias"],
         "tagMedia": cfg["tagMedia"],
-        "limit": 12,
+        "limit": 21,
     }
     js = DETAIL_JS.replace("__DETAIL_CFG__", json.dumps(detail_cfg, ensure_ascii=False))
     return app_page(

@@ -359,9 +359,9 @@ async def api_media(req):
         return _json({"results": [], "terms": [], "total": 0}, 404)
     try:
         offset = max(0, int(req.query.get("offset", "0")))
-        limit = max(1, min(int(req.query.get("limit", "12")), 30))
+        limit = max(1, min(int(req.query.get("limit", "21")), 30))
     except ValueError:
-        offset, limit = 0, 12
+        offset, limit = 0, 21
     mode = (req.query.get("group") or "ungroup").strip().lower()
     if mode not in ("all", "group", "ungroup"):
         mode = "ungroup"

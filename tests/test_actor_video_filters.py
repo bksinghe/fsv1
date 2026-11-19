@@ -51,11 +51,12 @@ assert(window.cardHTML===mediaCard);
         tree=ast.parse(CAT)
         node=next(n for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='DETAIL_JS' for t in n.targets))
         text=ast.literal_eval(node.value)
-        code=text[text.index('async function loadMedia(offset){'):text.index('/* ── 🖼️ Gallery')]
+        code=text[text.index('function updateMediaControls(){'):text.index('/* ── 🖼️ Gallery')]
         js=r"""
 const assert=require('assert');
-let mediaLoaded=false,mediaOffset=0,mediaNext='',mediaSeq=0,mediaController=null,mediaGroupMode='all';
-const D={tagMedia:true,kind:'actors',id:'abc',limit:12},esc=String;
+let mediaLoaded=false,mediaSeq=0,mediaController=null,mediaGroupMode='all',mediaBusy=false;
+let mediaPages=[],mediaPageIndex=0,mediaCursor=0,mediaSourceMore=true,mediaBuffer=[],mediaSeen=Object.create(null),mediaInfo=null;
+const D={tagMedia:true,kind:'actors',id:'abc',limit:21},esc=String;
 const els={catMediaQ:{value:'name'},catMediaResults:{innerHTML:'',querySelectorAll:()=>[]},catMediaInfo:{textContent:'',innerHTML:''},catMediaPg:{style:{}},catMediaPrev:{},catMediaNext:{},catMediaPage:{}};
 const document={getElementById:id=>els[id]},ViewMode={apply(){}},RevealCards={stagger(){},reveal(){}};
 const mediaCard=f=>f.name;let pending=[],urls=[];
