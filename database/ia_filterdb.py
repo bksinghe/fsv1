@@ -200,7 +200,19 @@ async def get_search_results(
     # ===============================================
     # METHOD 1: TEXT SEARCH (FAST & RELEVANT)
     # ===============================================
-    text_filter = {"$text": {"$search": q}}
+    # MongoDB text search ORs unquoted words. Require every literal search
+    # term as well, so a shared surname alone cannot match another person.
+    # Terms may occur in the filename or, when enabled, the caption.
+    terms = q.split()
+    term_filters = []
+    for term in terms:
+        regex = re.compile(re.escape(term), re.IGNORECASE)
+        if USE_CAPTION_FILTER:
+            term_filters.append({"$or": [{"file_name": regex}, {"caption": regex}]})
+        else:
+            term_filters.append({"file_name": regex})
+    all_terms_filter = {"$and": term_filters}
+    text_filter = {"$text": {"$search": q}, **all_terms_filter}
 
     try:
         def text_search():
@@ -210,7 +222,9 @@ async def get_search_results(
                  **WEB_EXTRA_FIELDS, "score": {"$meta": "textScore"}},
             ).sort([("score", {"$meta": "textScore"})]).skip(offset).limit(max_results)
             found = list(cursor)
-            count = collection.count_documents(text_filter, limit=10000) if found else 0
+            # Count even for an empty later page: otherwise pagination could
+            # incorrectly switch to the regex fallback and repeat earlier files.
+            count = collection.count_documents(text_filter, limit=10000)
             return found, count
         files, total = await asyncio.to_thread(text_search)
 
@@ -220,17 +234,11 @@ async def get_search_results(
     # ===============================================
     # METHOD 2: REGEX FALLBACK (SLOWER BUT ACCURATE)
     # ===============================================
-    if not files:
+    if not total:
         try:
-            # Escape special regex characters
-            escaped_query = re.escape(q)
-            regex = re.compile(escaped_query, re.IGNORECASE)
-            
-            # Build filter based on caption setting
-            if USE_CAPTION_FILTER:
-                rg_filter = {"$or": [{"file_name": regex}, {"caption": regex}]}
-            else:
-                rg_filter = {"file_name": regex}
+            # Same all-terms rule when the text index is unavailable or there
+            # are no indexed matches. Escaping above keeps metacharacters literal.
+            rg_filter = all_terms_filter
 
             def regex_search():
                 cursor = collection.find(
