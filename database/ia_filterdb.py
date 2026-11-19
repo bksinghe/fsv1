@@ -174,10 +174,13 @@ def detect_quality(name: str) -> str:
 async def get_search_results(
     query: str,
     offset: int = 0,
-    max_results: int = MAX_BTN
+    max_results: int = MAX_BTN,
+    exact_phrase: bool = False,
 ) -> Tuple[List[Dict], str, int]:
     """
-    Search files with text search + regex fallback
+    Search files with text search + regex fallback.
+    exact_phrase matches one complete, ordered name within a single field.
+    A limit of 0 means all matches for internal group scans and bypasses cache.
     Returns: (files, next_offset, total_count)
     """
     # Validate input
@@ -188,8 +191,8 @@ async def get_search_results(
     q_lower = q.lower()
     
     # Check the cache (the limit is part of the key — web pagination may ask for a different one)
-    cache_key = f"{q_lower}:{offset}:{max_results}"
-    cached = cache_get(cache_key)
+    cache_key = f"{'phrase' if exact_phrase else 'terms'}:{q_lower}:{offset}:{max_results}"
+    cached = cache_get(cache_key) if max_results > 0 else None
     if cached:
         return cached
 
@@ -200,60 +203,103 @@ async def get_search_results(
     # ===============================================
     # METHOD 1: TEXT SEARCH (FAST & RELEVANT)
     # ===============================================
-    text_filter = {"$text": {"$search": q}}
-
-    try:
-        def text_search():
-            cursor = collection.find(
-                text_filter,
-                {"file_name": 1, "file_size": 1, "caption": 1, "quality": 1,
-                 **WEB_EXTRA_FIELDS, "score": {"$meta": "textScore"}},
-            ).sort([("score", {"$meta": "textScore"})]).skip(offset).limit(max_results)
-            found = list(cursor)
-            count = collection.count_documents(text_filter, limit=10000) if found else 0
-            return found, count
-        files, total = await asyncio.to_thread(text_search)
-
-    except Exception as e:
-        logger.error(f"Text search error: {e}")
-
-    # ===============================================
-    # METHOD 2: REGEX FALLBACK (SLOWER BUT ACCURATE)
-    # ===============================================
-    if not files:
-        try:
-            # Escape special regex characters
-            escaped_query = re.escape(q)
-            regex = re.compile(escaped_query, re.IGNORECASE)
-            
-            # Build filter based on caption setting
+    # MongoDB text search ORs unquoted words. Require every literal search
+    # term as well, so a shared surname alone cannot match another person.
+    # Terms may occur in the filename or, when enabled, the caption.
+    terms = q.split()
+    if exact_phrase:
+        # Actor tags are complete names, not unordered individual words. Treat
+        # common filename separators as spaces, but never bridge extra words or
+        # different fields. Underscores are separators rather than name letters.
+        phrase = r"[\s._-]+".join(re.escape(term) for term in terms)
+        regex = re.compile(r"(?<![^\W_])" + phrase + r"(?![^\W_])", re.IGNORECASE)
+        field_filter = {"$or": [{"file_name": regex}, {"caption": regex}]} if USE_CAPTION_FILTER else {"file_name": regex}
+        all_terms_filter = {"$and": [field_filter]}
+    else:
+        term_filters = []
+        for term in terms:
+            regex = re.compile(re.escape(term), re.IGNORECASE)
             if USE_CAPTION_FILTER:
-                rg_filter = {"$or": [{"file_name": regex}, {"caption": regex}]}
+                term_filters.append({"$or": [{"file_name": regex}, {"caption": regex}]})
             else:
-                rg_filter = {"file_name": regex}
+                term_filters.append({"file_name": regex})
+        all_terms_filter = {"$and": term_filters}
 
+    # Mongo's text tokenizer may treat underscores or punctuation differently.
+    # A text prefilter can silently drop valid exact phrases, so actor tag phrase
+    # searches use the same literal regex for both find and count instead.
+    if not exact_phrase:
+        text_filter = {"$text": {"$search": q}, **all_terms_filter}
+        try:
+            def text_search():
+                cursor = collection.find(
+                    text_filter,
+                    {"file_name": 1, "file_size": 1, "caption": 1, "quality": 1,
+                     **WEB_EXTRA_FIELDS, "score": {"$meta": "textScore"}},
+                ).sort([("score", {"$meta": "textScore"})]).skip(offset).limit(max_results)
+                found = list(cursor)
+                count = collection.count_documents(text_filter, limit=10000)
+                return found, count
+            files, total = await asyncio.to_thread(text_search)
+        except Exception as e:
+            logger.error(f"Text search error: {e}")
+
+    if not total:
+        try:
             def regex_search():
                 cursor = collection.find(
-                    rg_filter,
+                    all_terms_filter,
                     {"file_name": 1, "file_size": 1, "caption": 1, "quality": 1,
                      **WEB_EXTRA_FIELDS},
                 ).skip(offset).limit(max_results)
                 found = list(cursor)
-                count = min(collection.count_documents(rg_filter, limit=5000), 5000) if found else 0
+                if exact_phrase:
+                    count = collection.count_documents(all_terms_filter)
+                else:
+                    count = min(collection.count_documents(all_terms_filter, limit=5000), 5000) if found else 0
                 return found, count
             files, total = await asyncio.to_thread(regex_search)
-
         except Exception as e:
             logger.error(f"Regex search error: {e}")
 
     # Calculate next offset
-    next_offset = str(offset + max_results) if total > offset + max_results else ""
+    next_offset = str(offset + max_results) if max_results > 0 and total > offset + max_results else ""
     
     result = (files, next_offset, total)
-    if generation == CACHE_GENERATION:
+    if max_results > 0 and generation == CACHE_GENERATION:
         cache_set(cache_key, result)
 
     return result
+
+async def get_search_results_for_phrases(phrases, offset: int = 0, max_results: int = MAX_BTN):
+    """Match any complete actor tag in one DB query; results are naturally deduplicated.
+
+    This is a regex scan: do not cache the complete result or use $text as a
+    prefilter, since its tokenizer may exclude names separated by underscores.
+    """
+    patterns = []
+    for phrase in phrases:
+        words = str(phrase or "").split()
+        if words:
+            pattern = r"[\s._-]+".join(re.escape(w) for w in words)
+            patterns.append(re.compile(r"(?<![^\W_])" + pattern + r"(?![^\W_])", re.IGNORECASE))
+    if not patterns:
+        return [], "", 0
+    choices = []
+    for regex in patterns:
+        choices.append({"file_name": regex})
+        if USE_CAPTION_FILTER:
+            choices.append({"caption": regex})
+    query = {"$or": choices}
+    def run():
+        projection = {"file_name": 1, "file_size": 1, "caption": 1, "quality": 1, **WEB_EXTRA_FIELDS}
+        docs = list(collection.find(query, projection).sort("_id", 1).skip(offset).limit(max_results))
+        total = collection.count_documents(query)
+        return docs, total
+    docs, total = await asyncio.to_thread(run)
+    next_offset = str(offset + max_results) if max_results > 0 and offset + max_results < total else ""
+    return docs, next_offset, total
+
 
 # =====================================================
 # 🆕 RECENT FILES (the "Recently Added" grid shown for an empty web query)
@@ -274,7 +320,7 @@ async def get_recent_files(offset: int = 0, max_results: int = 30):
             )
         )
         total = await asyncio.to_thread(db_count_documents)
-        next_offset = str(offset + max_results) if offset + max_results < total else ""
+        next_offset = str(offset + max_results) if max_results > 0 and offset + max_results < total else ""
         return docs, next_offset, total
     except Exception as e:
         logger.error(f"Recent files error: {e}")

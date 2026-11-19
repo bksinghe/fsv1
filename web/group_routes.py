@@ -49,6 +49,8 @@ _MAX_UPLOAD = 5 * 1024 * 1024
 SCAN_MAX_GROUP = 30          # a larger quality bucket is a very common name — do not group it
 SCAN_MAX_SERIES = 500        # series may contain many episodes but should still be bounded
 SCAN_STATE = {"running": False}
+# Full Group filter scans are memory-heavy; serialize them within each worker.
+GROUP_FILTER_LOCK = asyncio.Lock()
 _AUTO_GROUP_LOCK = asyncio.Lock()
 
 
@@ -247,7 +249,7 @@ async def _persist_auto_group(key, candidates, kind, cards_by_id):
 # ─────────────────────────────────────────────────────────────
 # 🎴 GROUP-FIRST SEARCH — turn the page's cards into groups
 # ─────────────────────────────────────────────────────────────
-async def group_cards(cards, normalize=None, auto_join=True):
+async def group_cards(cards, normalize=None, auto_join=True, include_extra=None):
     """Normalized card dicts → the same list, but buckets of 2+ become one group card.
 
     * Saved group (`members`/`auto_keys`) → **permanent** group card, `gid` + `num`,
@@ -256,6 +258,7 @@ async def group_cards(cards, normalize=None, auto_join=True):
       as permanent DB groups; only unknown/mismatched-duration quality files stay single.
     * `auto_join`: a new file matching a saved group's `auto_keys` is joined only
       when its group kind/duration/episode identity is compatible; exclusions stay out.
+    * include_extra can restrict off-page members without changing saved membership.
     * Input dicts are not mutated; ranking is preserved (the group takes the first file's slot).
     """
     cards = list(cards or [])
@@ -423,15 +426,19 @@ async def group_cards(cards, normalize=None, auto_join=True):
 
     # Load the remaining members of saved groups (not found on this page) from the DB
     needed = []
+    needed_set = set()
     have = set(ids)
     for g in groups:
         for m in (g.get("members") or []):
-            if str(m) not in have and str(m) not in needed:
-                needed.append(str(m))
+            fid = str(m)
+            if fid not in have and fid not in needed_set:
+                needed.append(fid)
+                needed_set.add(fid)
     extra = []
     if needed and normalize:
         for doc in await store.files_by_ids(needed):
-            extra.append(normalize(doc))
+            if include_extra is None or include_extra(doc):
+                extra.append(normalize(doc))
     pool = defaultdict(list)
     for c in cards:
         pool[str(c.get("file_id") or "")].append(c)

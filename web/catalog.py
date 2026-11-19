@@ -25,8 +25,8 @@ The same **features** are here, but with a completely different and smaller stru
 * **🏷️ Tag-driven Videos — Actors only** (`tagMedia` config flag) — v5's
   `get_actor_search_results(name|tags)`: the second part of the Actor Videos tab
   comes from a Library search using **Search Tags**; typing a custom `q` in the
-  box above ignores tags (exactly like v5). fsv1's own `$text` +
-  regex-fallback pipeline runs per term and the results are merged/deduped/paginated.
+  box above ignores tags. Each tag matches a complete name, and a combined
+  database query deduplicates and paginates matches across all tags.
   **Posts do not have this block at all** — their Videos tab shows only
   attached `videos[]` (the API also returns `disabled`).
 * **📐 Two grids, both fixed** — 🎬 **video**: shared `.vgrid` (`/search` +
@@ -68,7 +68,7 @@ from urllib.parse import quote
 
 from web.web_assets import (app_page, PLAYER_MODAL_HTML, PLAYER_JS,
                             FILE_EDIT_HTML, FILE_EDIT_JS,
-                            filter_buttons, CATALOG_FILTERS,
+                            filter_buttons, CATALOG_FILTERS, SEARCH_FILTERS,
                             render_vcard, vcard_chips, vcard_size)
 
 # ─────────────────────────────────────────────────────────────
@@ -575,7 +575,8 @@ margin:16px 0 8px;border-top:1px solid var(--line);padding-top:14px}
 padding:4px 10px;font-size:10.5px;font-weight:800;color:var(--mut)}
 .cat-tagpill b{color:var(--red)}
 .cat-mediabar{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
-.cat-mediabar .cat-search{flex:1 1 230px}
+.cat-mediabar .cat-search{flex:1 1 230px;min-width:0}
+@media(max-width:760px){.cat-mediabar .cat-search{flex:1 1 100%}}
 .cat-mediabar .cat-search input{width:100%;box-sizing:border-box;background:var(--bg3);
 border:1.5px solid var(--line);border-radius:9px;padding:11px 14px;color:var(--txt);
 font:600 13px inherit;font-family:inherit;outline:none;transition:border-color .18s,box-shadow .18s}
@@ -1107,7 +1108,15 @@ DETAIL_JS = r"""
 const esc = window.escapeHTML;
 const D = __DETAIL_CFG__;
 let GALLERY = D.gallery.slice();
-let mediaLoaded=false, mediaOffset=0, mediaNext='';
+let mediaLoaded=false, mediaSeq=0, mediaController=null, mediaBusy=false;
+let mediaPages=[],mediaPageIndex=0,mediaCursor=0,mediaSourceMore=true,
+    mediaBuffer=[],mediaSeen=Object.create(null),mediaInfo=null;
+let mediaGroupMode=localStorage.getItem('ff_group_mode')||'all';
+if(!['all','group','ungroup'].includes(mediaGroupMode))mediaGroupMode='all';
+function setMediaGroup(v){
+  mediaGroupMode=['all','group','ungroup'].includes(v)?v:'all';
+  localStorage.setItem('ff_group_mode',mediaGroupMode);loadMedia(0);
+}
 let toastTimer=null;
 
 function imageSrc(v){
@@ -1138,15 +1147,17 @@ function switchTab(name, init){
 }
 /* ── 🏷️ v5's tag-driven Linked Media, served by fsv1's JSON API ── */
 /* 🎴 the same shared card as /search — markup/chips/size from web_assets.VCARD_* */
-function mediaCard(f){
+function mediaCard(f,topLevel){
+  const attrs=ViewMode.imgAttrs(esc(f.thumb||''));
+  const err="this.classList.add('hidden');this.closest('.vposter,.gposter').classList.add('no-thumb')";
+  if(f.group)return groupHTML(f,attrs,err,topLevel);
   return vcardHTML({
-    CARD_CLASS:' rv-enter', EXTRA_ATTRS:' data-label="1"',
+    CARD_CLASS:topLevel?' rv-enter':'', EXTRA_ATTRS:' data-label="1"',
     FID:esc(f.file_id), RAW_FID:esc(f.file_id), NAME:esc(f.name),
-    IMG_ATTRS:'src="'+esc(f.thumb)+'"',
-    IMG_ERROR:"this.classList.add('hidden');this.closest('.vposter').classList.add('no-thumb')",
-    CHIPS:vcardChips(f), SIZE:vcardSize(f)
+    IMG_ATTRS:attrs, IMG_ERROR:err, CHIPS:vcardChips(f), SIZE:vcardSize(f)
   });
 }
+window.cardHTML=mediaCard;
 /* ▶ shared player like the main page — clicking a name/card opens the small modal */
 function playCard(c){
   if(!c || !c.dataset.fid) return;
@@ -1156,48 +1167,87 @@ document.addEventListener('click',e=>{
   const c=e.target.closest('.vcard[data-fid]');
   if(c) playCard(c);
 });
-async function loadMedia(offset){
-  if(!D.tagMedia) return;                 /* Posts must not show search-text results */
-  const box=document.getElementById('catMediaResults'); if(!box) return;
-  mediaLoaded=true; mediaOffset=Math.max(0,offset||0);
-  const q=(document.getElementById('catMediaQ')||{}).value||'';
-  const info=document.getElementById('catMediaInfo');
-  if(info) info.textContent='⏳ Searching the Library…';
+function updateMediaControls(){
+  const pg=document.getElementById('catMediaPg');if(!pg)return;
+  const hasNext=mediaPageIndex+1<mediaPages.length||mediaSourceMore||mediaBuffer.length>0;
+  pg.style.display=mediaPages.length&&(mediaPageIndex>0||hasNext)?'flex':'none';
+  document.getElementById('catMediaPrev').disabled=mediaBusy||mediaPageIndex===0;
+  document.getElementById('catMediaNext').disabled=mediaBusy||!hasNext;
+  document.getElementById('catMediaPage').textContent='Page '+(mediaPageIndex+1);
+}
+function renderMediaPage(){
+  const box=document.getElementById('catMediaResults'),list=mediaPages[mediaPageIndex]||[];
+  box.innerHTML=list.map(f=>mediaCard(f,true)).join('') ||
+    '<div class="cat-vempty">🔍 No Library files matched these tags.<br>'
+    +'<span style="font-size:11px;font-weight:600">You can also search by name in the box above.</span></div>';
+  ViewMode.apply();
+  box.querySelectorAll('img').forEach(im=>{
+    im.addEventListener('load',()=>im.classList.add('on'));
+    if(im.complete&&im.naturalWidth)im.classList.add('on');
+  });
+  const info=document.getElementById('catMediaInfo'),d=mediaInfo;
+  if(info&&d){
+    if(d.source==='tags')info.innerHTML='🏷️ <b>'+d.terms.length+'</b> Search Tags found <b>'+d.total+'</b> '+(d.mode==='group'?'groups':'videos');
+    else if(d.source==='custom')info.innerHTML='🔍 &quot;'+esc(d.query)+'&quot;: <b>'+d.total+'</b> results';
+    else info.innerHTML='📝 Title: <b>'+d.total+'</b> results (this entry has no tags)';
+  }
+  RevealCards.stagger('#catMediaResults .vcard');RevealCards.reveal(box);
+  updateMediaControls();
+}
+async function loadMedia(offset,advance=false){
+  if(!D.tagMedia) return;
+  const box=document.getElementById('catMediaResults');if(!box)return;
+  const reset=!advance;
+  if(!reset&&mediaBusy)return;
+  if(mediaController)mediaController.abort();
+  mediaController=new AbortController();const seq=++mediaSeq;
+  if(reset){
+    mediaPages=[];mediaPageIndex=0;mediaCursor=0;mediaSourceMore=true;
+    mediaBuffer=[];mediaSeen=Object.create(null);mediaInfo=null;
+    box.innerHTML='<div class="cat-vempty" role="status">Loading results…</div>';
+  }
+  mediaLoaded=true;mediaBusy=true;updateMediaControls();
+  const q=((document.getElementById('catMediaQ')||{}).value||'').trim();
+  const mode=mediaGroupMode,info=document.getElementById('catMediaInfo');
+  let cursor=mediaCursor,more=mediaSourceMore,buffer=mediaBuffer.slice(),
+      seen=Object.assign(Object.create(null),mediaSeen),list=[],details=mediaInfo;
+  if(info)info.textContent='⏳ Searching the Library…';
   try{
-    const r=await fetch('/api/catalog/'+D.kind+'/media?id='+encodeURIComponent(D.id)
-      +'&q='+encodeURIComponent(q.trim())+'&offset='+mediaOffset+'&limit='+D.limit);
-    const d=await r.json();
-    mediaNext=d.next_offset||'';
-    const cards=(d.results||[]).map(mediaCard);
-    box.innerHTML=cards.length?cards.join('')
-      : '<div class="cat-vempty">🔍 No Library files matched these tags.<br>'
-        + '<span style="font-size:11px;font-weight:600">You can also search by name in the box above.</span></div>';
-    box.querySelectorAll('img').forEach(im=>{
-      im.addEventListener('load',()=>im.classList.add('on'));
-      if(im.complete&&im.naturalWidth) im.classList.add('on');
-    });
-    if(info){
-      if(d.source==='tags') info.innerHTML='🏷️ <b>'+d.terms.length+'</b> Search Tags found <b>'+d.total+'</b> videos';
-      else if(d.source==='custom') info.innerHTML='🔍 &quot;'+esc(q.trim())+'&quot;: <b>'+d.total+'</b> results';
-      else info.innerHTML='📝 Title: <b>'+d.total+'</b> results (this entry has no tags)';
+    // Like main search: group raw files in batches, deduplicate groups, and
+    // buffer surplus cards so each visible page has up to 21 distinct cards.
+    while(list.length<D.limit){
+      while(buffer.length&&list.length<D.limit){
+        const f=buffer.shift();
+        if(f.group){const key=String(f.key||f.gid||'');if(key&&seen[key])continue;if(key)seen[key]=true;}
+        list.push(f);
+      }
+      if(list.length===D.limit||!more)break;
+      const r=await fetch('/api/catalog/'+D.kind+'/media?id='+encodeURIComponent(D.id)
+        +'&q='+encodeURIComponent(q)+'&offset='+cursor+'&limit='+D.limit+'&group='+mode,
+        {credentials:'same-origin',signal:mediaController.signal});
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      const d=await r.json();if(seq!==mediaSeq)return;
+      buffer.push(...(d.results||[]));
+      details={source:d.source,terms:d.terms||[],total:d.total,query:q,mode};
+      more=d.next_offset!==''&&d.next_offset!=null&&d.next_offset!==0;
+      if(more){const next=Number(d.next_offset);if(!Number.isSafeInteger(next)||next<=cursor)throw new Error('Invalid pagination cursor');cursor=next;}
     }
-    const pg=document.getElementById('catMediaPg');
-    if(pg){
-      pg.style.display=(mediaOffset>0||mediaNext)?'flex':'none';
-      const pr=document.getElementById('catMediaPrev'), nx=document.getElementById('catMediaNext');
-      if(pr) pr.disabled=mediaOffset===0;
-      if(nx) nx.disabled=!mediaNext;
-      const lbl=document.getElementById('catMediaPage');
-      if(lbl) lbl.textContent='Page '+(Math.floor(mediaOffset/D.limit)+1);
-    }
-    RevealCards.stagger('#catMediaResults .vcard');
-  }catch(e){ if(info) info.textContent='⚠️ Could not load results'; }
+    if(seq!==mediaSeq)return;
+    mediaCursor=cursor;mediaSourceMore=more;mediaBuffer=buffer;mediaSeen=seen;mediaInfo=details;
+    if(list.length||!mediaPages.length){mediaPages.push(list);mediaPageIndex=mediaPages.length-1;renderMediaPage();}
+    else if(info)info.textContent='No more results.';
+  }catch(e){
+    if(e.name!=='AbortError'&&seq===mediaSeq&&info)info.textContent='⚠️ Could not load results. Please try again.';
+  }finally{
+    if(seq===mediaSeq){mediaBusy=false;updateMediaControls();}
+  }
 }
 function mediaPage(step){
-  if(!D.tagMedia) return;
-  const next=mediaOffset+step*D.limit;
-  if(next<0 || (step>0&&!mediaNext)) return;
-  loadMedia(next);
+  if(!D.tagMedia||mediaBusy)return;
+  const next=mediaPageIndex+step;
+  if(next<0)return;
+  if(next<mediaPages.length){mediaPageIndex=next;renderMediaPage();return;}
+  if(step>0&&(mediaSourceMore||mediaBuffer.length))return loadMedia(mediaCursor,true);
 }
 
 /* ── 🖼️ Gallery / Screenshots — direct upload + in-place delete ── */
@@ -1325,6 +1375,8 @@ document.addEventListener('click',e=>{
 window.addEventListener('pageshow',()=>{document.querySelectorAll('.cat-back').forEach(link=>delete link.dataset.backNavigating);});
 const mq=document.getElementById('catMediaQ');
 if(mq){
+  const sel=document.getElementById('catMediaGroup');if(sel)sel.value=mediaGroupMode;
+  ViewMode.init({storage:ViewMode.storageFor()});
   let t;
   mq.addEventListener('input',()=>{ clearTimeout(t); t=setTimeout(()=>loadMedia(0),320); });
   mq.addEventListener('keydown',e=>{ if(e.key==='Enter'){ clearTimeout(t); loadMedia(0); } });
@@ -1429,19 +1481,29 @@ def _detail_body(kind: str, role: str, item: dict) -> str:
         for l in (item.get("links") or [])[:20] if l.get("value")
     )
 
-    # 📌 manually attached videos (the earlier multi-video feature is preserved)
+    # Actor pages show tag-driven Library results only. Keep stored attachments
+    # untouched; Post detail pages continue to render their attached videos.
     videos = [v for v in (item.get("videos") or [])[:50] if v.get("file_id")]
-    if videos:
-        vids_html = ""
-        for i, v in enumerate(videos):
-            fid = str(v.get("file_id") or "")
-            poster = "/api/thumb?file_id=" + quote(fid, safe="") + "&v=1"
-            label = str(v.get("label") or f"Video {i+1}")
-            vids_html += video_card_html(fid, label, poster, data=v)
-    else:
-        vids_html = (
-            '<div class="cat-vempty">🎬 No videos attached yet.'
-            f'<br><span style="font-size:11px;font-weight:600">{video_empty_hint}</span></div>'
+    attached_section = ""
+    video_badge = ""
+    if kind == "posts":
+        if videos:
+            vids_html = ""
+            for i, v in enumerate(videos):
+                fid = str(v.get("file_id") or "")
+                poster = "/api/thumb?file_id=" + quote(fid, safe="") + "&v=1"
+                label = str(v.get("label") or f"Video {i+1}")
+                vids_html += video_card_html(fid, label, poster, data=v)
+        else:
+            vids_html = (
+                '<div class="cat-vempty">🎬 No videos attached yet.'
+                f'<br><span style="font-size:11px;font-weight:600">{video_empty_hint}</span></div>'
+            )
+        video_badge = f'<span class="cat-tab-n">{len(videos)}</span>'
+        attached_section = (
+            f'<div class="cat-subhead"><h3>{videos_heading}</h3>'
+            f'<span class="cat-hint">Added in the editor · {len(videos)}</span></div>'
+            f'<div class="cat-vgrid vgrid" id="catVideos">{vids_html}</div>'
         )
 
     # 🏷️ Like v5: the main part of the Videos tab comes from "Search Tags"
@@ -1451,17 +1513,21 @@ def _detail_body(kind: str, role: str, item: dict) -> str:
         tag_pills = "".join(f'<span class="cat-tagpill">🏷️ <b>#{esc(t)}</b></span>' for t in tags)
         if not tag_pills:
             tag_pills = '<span class="cat-tagpill">🏷️ No search tags — searching by <b>Title</b></span>'
+        media_filters = filter_buttons((
+            dict(SEARCH_FILTERS[0], id="catMediaMode"),
+            dict(SEARCH_FILTERS[1], id="catMediaGroup", onchange="setMediaGroup(this.value)"),
+        ))
         tag_section = f"""
     <div class="cat-subhead"><h3>🏷️ From the Library — based on Search Tags</h3>
       <span class="cat-hint">like the actor Linked Media tab in v5</span></div>
     <div class="cat-tagline" id="catTagPills">{tag_pills}</div>
     <div class="cat-mediabar">
-      <div class="cat-search"><input type="search" id="catMediaQ" autocomplete="off"
+      <div class="cat-search"><input type="search" id="catMediaQ" aria-label="Search files" autocomplete="off"
         placeholder="Search inside this profile… (empty = use tags automatically)"></div>
-      <button class="cat-btn ghost" style="padding:9px 14px;font-size:11px" onclick="loadMedia(0)">🔍 Search</button>
+      {media_filters}
     </div>
     <div class="cat-mediainfo" id="catMediaInfo">Opening the Videos tab searches by tags…</div>
-    <div class="cat-vgrid vgrid" id="catMediaResults"></div>
+    <div class="cat-vgrid vgrid vm-grid" id="catMediaResults"></div>
     <div class="cat-mediapg" id="catMediaPg" style="display:none">
       <button id="catMediaPrev" onclick="mediaPage(-1)">◀ Prev</button>
       <span id="catMediaPage">Page 1</span>
@@ -1508,7 +1574,7 @@ def _detail_body(kind: str, role: str, item: dict) -> str:
         )
     add_videos_btn = (
         f'<a class="cat-btn ghost cat-tabedit" href="{cfg["base"]}?edit={item_id}&focus=videos">'
-        '🎬 Add Videos</a>' if admin else ""
+        '🎬 Add Videos</a>' if admin and kind == 'posts' else ""
     )
     hero_img = (
         '<button type="button" class="cat-hero-cover" aria-label="Enlarge poster" '
@@ -1523,7 +1589,7 @@ def _detail_body(kind: str, role: str, item: dict) -> str:
   <div class="cat-detail-toolbar"><a class="cat-btn ghost cat-back" href="{cfg['base']}">← Back</a>{admin_bar}</div>
   <div class="cat-tabs" role="tablist">
     <button class="cat-tab active" id="tab-overview" role="tab" aria-selected="true" aria-controls="cp-overview" tabindex="0" data-tab="overview" onclick="switchTab('overview')">ℹ️ Overview</button>
-    <button class="cat-tab" id="tab-videos" role="tab" aria-selected="false" aria-controls="cp-videos" tabindex="-1" data-tab="videos" onclick="switchTab('videos')">🎬 Videos <span class="cat-tab-n">{len(videos)}</span></button>
+    <button class="cat-tab" id="tab-videos" role="tab" aria-selected="false" aria-controls="cp-videos" tabindex="-1" data-tab="videos" onclick="switchTab('videos')">🎬 Videos {video_badge}</button>
     <button class="cat-tab" id="tab-gallery" role="tab" aria-selected="false" aria-controls="cp-gallery" tabindex="-1" data-tab="gallery" onclick="switchTab('gallery')">{gallery_tab} <span class="cat-tab-n">{len(gallery)}</span></button>
     <span class="cat-tabspace"></span>{add_videos_btn}
   </div>
@@ -1545,8 +1611,7 @@ def _detail_body(kind: str, role: str, item: dict) -> str:
   </section>
 
   <section class="cat-panel" id="cp-videos" role="tabpanel" aria-labelledby="tab-videos">
-    <div class="cat-subhead"><h3>{videos_heading}</h3><span class="cat-hint">Added in the editor · {len(videos)}</span></div>
-    <div class="cat-vgrid vgrid" id="catVideos">{vids_html}</div>
+    {attached_section}
     {tag_section}
   </section>
 
@@ -1575,7 +1640,7 @@ def build_detail_page(kind: str, role: str, tg_id: int, item: dict):
         "galleryEmpty": cfg["galleryEmpty"],
         "tabAlias": cfg["tabAlias"],
         "tagMedia": cfg["tagMedia"],
-        "limit": 12,
+        "limit": 21,
     }
     js = DETAIL_JS.replace("__DETAIL_CFG__", json.dumps(detail_cfg, ensure_ascii=False))
     return app_page(

@@ -1512,7 +1512,7 @@ const $=s=>document.querySelector(s);
 const esc=window.escapeHTML;
 const SEARCH_PAGE_SIZE=21;
 const SEARCH_CACHE_SCOPE=__SEARCH_CACHE_SCOPE__;
-const SEARCH_CACHE_KEY='ff_search_preview_v1', SEARCH_CACHE_TTL=5*60*1000, SEARCH_CACHE_MAX=256*1024;
+const SEARCH_CACHE_KEY='ff_search_preview_v2', SEARCH_CACHE_TTL=5*60*1000, SEARCH_CACHE_MAX=256*1024;
 let curQ='',nextOffset=0,loading=false,hasMore=true,sourceMore=true,pendingCards=[],seenGroups=Object.create(null),pages=[],pageIndex=0;
 let debounce=null,searchController=null,searchSeq=0;
 /* 🖼️📄 Poster/Text comes entirely from `web/mode_assets.py` (SITE_JS → window.ViewMode) —

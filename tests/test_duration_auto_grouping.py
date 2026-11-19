@@ -201,6 +201,23 @@ class TestDurationAwareSearchGrouping(unittest.IsolatedAsyncioTestCase):
         await ROUTE_NAMESPACE["group_cards"](cards)
         self.assertEqual(len(self.store.groups), 1)
 
+    async def test_actor_member_predicate_filters_group_variants_without_changing_saved_group(self):
+        self.store.files = {
+            'a': {'_id':'a', 'file_name':'Anissa Kate 1080p', 'duration':100},
+            'b': {'_id':'b', 'file_name':'Anissa Kate 720p', 'duration':100},
+            'c': {'_id':'c', 'file_name':'Joney Kate 720p', 'duration':100},
+        }
+        await self.store.create(name='Mixed',items=[('a','Anissa Kate 1080p'),('b','Anissa Kate 720p'),('c','Joney Kate 720p')])
+        def normalize(doc):
+            return {'file_id':doc['_id'],'name':doc['file_name'],'duration_seconds':doc['duration']}
+        cards=[normalize(self.store.files['a'])]
+        result=await ROUTE_NAMESPACE['group_cards'](cards,normalize=normalize,auto_join=False,
+                                                    include_extra=lambda doc:'Anissa Kate' in doc['file_name'])
+        self.assertEqual({x['file_id'] for x in result[0]['variants']},{'a','b'})
+        self.assertEqual(set(next(iter(self.store.groups.values()))['members']),{'a','b','c'})
+        normal=await ROUTE_NAMESPACE['group_cards'](cards,normalize=normalize,auto_join=False)
+        self.assertEqual({x['file_id'] for x in normal[0]['variants']},{'a','b','c'})
+
     async def test_different_episode_durations_share_a_persisted_series_group(self):
         cards = [
             {"file_id": "e1", "name": "North Star S01E01 1080p.mkv",
