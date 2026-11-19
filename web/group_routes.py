@@ -249,7 +249,7 @@ async def _persist_auto_group(key, candidates, kind, cards_by_id):
 # ─────────────────────────────────────────────────────────────
 # 🎴 GROUP-FIRST SEARCH — turn the page's cards into groups
 # ─────────────────────────────────────────────────────────────
-async def group_cards(cards, normalize=None, auto_join=True):
+async def group_cards(cards, normalize=None, auto_join=True, include_extra=None):
     """Normalized card dicts → the same list, but buckets of 2+ become one group card.
 
     * Saved group (`members`/`auto_keys`) → **permanent** group card, `gid` + `num`,
@@ -258,6 +258,7 @@ async def group_cards(cards, normalize=None, auto_join=True):
       as permanent DB groups; only unknown/mismatched-duration quality files stay single.
     * `auto_join`: a new file matching a saved group's `auto_keys` is joined only
       when its group kind/duration/episode identity is compatible; exclusions stay out.
+    * include_extra can restrict off-page members without changing saved membership.
     * Input dicts are not mutated; ranking is preserved (the group takes the first file's slot).
     """
     cards = list(cards or [])
@@ -436,7 +437,8 @@ async def group_cards(cards, normalize=None, auto_join=True):
     extra = []
     if needed and normalize:
         for doc in await store.files_by_ids(needed):
-            extra.append(normalize(doc))
+            if include_extra is None or include_extra(doc):
+                extra.append(normalize(doc))
     pool = defaultdict(list)
     for c in cards:
         pool[str(c.get("file_id") or "")].append(c)

@@ -25,8 +25,8 @@ The same **features** are here, but with a completely different and smaller stru
 * **🏷️ Tag-driven Videos — Actors only** (`tagMedia` config flag) — v5's
   `get_actor_search_results(name|tags)`: the second part of the Actor Videos tab
   comes from a Library search using **Search Tags**; typing a custom `q` in the
-  box above ignores tags (exactly like v5). fsv1's own `$text` +
-  regex-fallback pipeline runs per term and the results are merged/deduped/paginated.
+  box above ignores tags. Each tag matches a complete name, and a combined
+  database query deduplicates and paginates matches across all tags.
   **Posts do not have this block at all** — their Videos tab shows only
   attached `videos[]` (the API also returns `disabled`).
 * **📐 Two grids, both fixed** — 🎬 **video**: shared `.vgrid` (`/search` +

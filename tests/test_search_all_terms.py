@@ -36,8 +36,9 @@ class Collection:
         self.calls.append(filt)
         if '$text' in filt and self.text_broken: raise RuntimeError('missing text index')
         return Cursor([d for d in self.docs if self.matches(d, filt)])
-    def count_documents(self, filt, limit):
-        return min(sum(self.matches(d, filt) for d in self.docs), limit)
+    def count_documents(self, filt, limit=None):
+        total = sum(self.matches(d, filt) for d in self.docs)
+        return min(total, limit) if limit else total
 
 
 def handler(col, captions=True):
@@ -91,6 +92,33 @@ class SearchAllTermsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([d['_id'] for d in first+second],['correct','caption','reverse'])
         self.assertEqual((nxt,last,total,total2,total3,empty),('2','',3,3,3,[]))
         self.assertTrue(all('$text' in query for query in col.calls))
+
+
+    async def test_actor_exact_phrase_case_boundaries_and_separators(self):
+        docs=[
+            {'_id':'space','file_name':'Anissa Kate 1080p','caption':''},
+            {'_id':'dot','file_name':'prefix_Anissa.Kate-720p','caption':''},
+            {'_id':'case','file_name':'ANISSA-kAtE video','caption':''},
+            {'_id':'extra','file_name':'Anissa and Kate video','caption':''},
+            {'_id':'reverse','file_name':'Kate Anissa video','caption':''},
+            {'_id':'partial','file_name':'Anissab Kate','caption':''},
+            {'_id':'other','file_name':'Joney Kate','caption':''},
+            {'_id':'caption','file_name':'other','caption':'featuring Anissa Kate'},
+            {'_id':'split','file_name':'Anissa','caption':'Kate'},
+            {'_id':'second','file_name':'Anisss kutaa video','caption':''},
+        ]
+        col=Collection(docs);search=handler(col)
+        found,nxt,total=await search('Anissa Kate',0,2,exact_phrase=True)
+        more,_,_=await search('Anissa Kate',2,2,exact_phrase=True)
+        self.assertEqual([d['_id'] for d in found+more],['space','dot','case','caption'])
+        self.assertEqual((nxt,total),('2',4))
+        self.assertTrue(all('$text' not in c for c in col.calls))
+        second,_,count=await search('Anisss kutaa',0,10,exact_phrase=True)
+        self.assertEqual(([d['_id'] for d in second],count),(['second'],1))
+        normal,_,_=await search('Anissa Kate',0,10)
+        self.assertIn('extra',[d['_id'] for d in normal]) # distinct cache entry
+        disabled,_,_=await handler(Collection(docs),False)('Anissa Kate',0,10,exact_phrase=True)
+        self.assertNotIn('caption',[d['_id'] for d in disabled])
 
     async def test_one_word_search_is_still_supported(self):
         docs,_,_=await handler(Collection(self.docs))('Kate')

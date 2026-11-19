@@ -33,7 +33,7 @@ from aiohttp import web
 import info as _info
 from info import BIN_CHANNEL
 from utils import temp
-from database.ia_filterdb import get_search_results, get_file_details
+from database.ia_filterdb import get_search_results, get_search_results_for_phrases, get_file_details
 
 # Optional dedicated channel (defaults to BIN_CHANNEL in info.py).
 _STORAGE_CHANNEL = getattr(_info, "CATALOG_STORAGE_CHANNEL", BIN_CHANNEL)
@@ -95,10 +95,9 @@ async def _enrich_attached_videos(item: dict):
 async def _tag_media(item: dict, custom_q: str, offset: int, limit: int):
     """🏷️ v5's `get_actor_search_results(name|tags)` — Library videos from tags.
 
-    v5 ran one raw regex-OR (`(tag1|tag2|...)`) and forgot the actor name.
-    Here fsv1's **own** search pipeline (`$text` + regex fallback) runs for each
-    term and the results are merged/deduped — the index is used, with no new query
-    layer. Typing a custom `q` ignores tags (exactly like v5).
+    Actor tags match complete ordered names, with tags as OR alternatives.
+    A custom query ignores tags and uses the normal search pipeline; without
+    tags or a custom query, the profile title uses that same normal pipeline.
     """
     tags = [str(t).strip() for t in (item.get("tags") or []) if str(t).strip()][:12]
     custom = str(custom_q or "").strip()
@@ -117,30 +116,35 @@ async def _tag_media(item: dict, custom_q: str, offset: int, limit: int):
     # Page the shared search directly rather than truncating it to 60 files.
     if len(terms) == 1:
         try:
-            page, nxt, total = await get_search_results(terms[0], offset, limit)
+            if source == "tags":
+                page, nxt, total = await get_search_results(terms[0], offset, limit, exact_phrase=True)
+            else:
+                page, nxt, total = await get_search_results(terms[0], offset, limit)
             return page, nxt, terms, total, source
         except Exception as e:
             logger.debug(f"tag media search skipped ({terms[0]!r}): {e}")
             return [], "", terms, 0, source
 
-    # For ordinary pages keep the existing bounded merge. Group filtering uses
-    # limit=0 internally to scan every matching tag and deduplicate file IDs.
-    merged, seen = [], set()
-    for term in terms:
-        try:
-            docs = (await get_search_results(term, 0, 0 if limit == 0 else 60))[0] or []
-        except Exception as e:
-            logger.debug(f"tag media search skipped ({term!r}): {e}")
-            docs = []
-        for d in docs:
-            fid = str(d.get("_id") or "")
-            if fid and fid not in seen:
-                seen.add(fid)
-                merged.append(d)
-    total = len(merged)
-    page = merged[offset:offset + limit] if limit else merged[offset:]
-    nxt = str(offset + limit) if limit > 0 and offset + limit < total else ""
-    return page, nxt, terms, total, source
+    # Multiple tags are OR alternatives in one query, so matching files appear
+    # once and pagination/count include all matches without a per-tag cap.
+    try:
+        page, nxt, total = await get_search_results_for_phrases(terms, offset, limit)
+        return page, nxt, terms, total, source
+    except Exception as e:
+        logger.debug(f"tag media search failed ({terms!r}): {e}")
+        return [], "", terms, 0, source
+
+
+def _tag_member_filter(terms):
+    """Apply the same complete tag match to off-page saved group members."""
+    patterns = [re.compile(r"(?<![^\W_])" + r"[\s._-]+".join(re.escape(w) for w in term.split())
+                           + r"(?![^\W_])", re.IGNORECASE) for term in terms if term.split()]
+    def matches(doc):
+        fields = [str(doc.get("file_name") or "")]
+        if getattr(_info, "USE_CAPTION_FILTER", True):
+            fields.append(str(doc.get("caption") or ""))
+        return any(pattern.search(value) for pattern in patterns for value in fields)
+    return matches
 
 
 def _safe_item(kind, item):
@@ -367,7 +371,9 @@ async def api_media(req):
         # The scan loads no thumbnail bytes but can use substantial RAM.
         async with GROUP_FILTER_LOCK:
             scan, _, terms, _, source = await _tag_media(item, query, 0, 0)
-            cards = await group_cards([_media_row(d) for d in scan], normalize=_media_row)
+            member_filter = _tag_member_filter(terms) if source == "tags" else None
+            cards = await group_cards([_media_row(d) for d in scan], normalize=_media_row,
+                                      include_extra=member_filter)
             matched = filter_group_cards(cards, "group")
             total = len(matched)
             results = matched[offset:offset + limit]
@@ -375,7 +381,11 @@ async def api_media(req):
     else:
         page, nxt, terms, total, source = await _tag_media(item, query, offset, limit)
         cards = [_media_row(d) for d in page]
-        results = await group_cards(cards, normalize=_media_row) if mode == "all" else cards
+        if mode == "all":
+            member_filter = _tag_member_filter(terms) if source == "tags" else None
+            results = await group_cards(cards, normalize=_media_row, include_extra=member_filter)
+        else:
+            results = cards
     return _json({
         "results": results,
         "terms": terms, "source": source, "total": total,

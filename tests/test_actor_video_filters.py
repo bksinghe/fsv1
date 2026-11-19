@@ -82,7 +82,7 @@ class ActorFilterAPITests(unittest.IsolatedAsyncioTestCase):
                  '_kind':lambda req:req.match_info['kind'], 'CATALOGS':{'actors':{'tagMedia':True},'posts':{'tagMedia':False}},
                  'store':SimpleNamespace(get_item=AsyncMock(return_value={'tags':['Actor']})),
                  '_clean_id':lambda x:x,'_tag_media':self.fetch,
-                 '_media_row':lambda d:{'file_id':d['_id']},'group_cards':self.group,
+                 '_media_row':lambda d:{'file_id':d['_id']},'group_cards':self.group, '_tag_member_filter':lambda terms: lambda doc: True,
                  'filter_group_cards':lambda cards,mode:[c for c in cards if c.get('group')], 'GROUP_FILTER_LOCK':asyncio.Lock()}
         exec(compile(ast.fix_missing_locations(ast.Module(body=[fn],type_ignores=[])),'<routes>','exec'),self.ns)
     async def request(self,**q):

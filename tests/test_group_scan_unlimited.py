@@ -75,11 +75,10 @@ class GroupUnlimitedTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(max_active,1)
 
     async def test_actor_group_scan_fetches_all_tags_deduplicated(self):
-        async def search(term,offset,limit):
-            self.assertEqual((offset,limit),(0,0))
-            ids=range(0,650) if term=='first' else range(600,1250)
-            return [{'_id':str(i)} for i in ids],'',650
-        ns={'get_search_results':search,'logger':logging.getLogger(__name__)}
+        async def search_phrases(terms,offset,limit):
+            self.assertEqual((terms,offset,limit),(['first','second'],0,0))
+            return [{'_id':str(i)} for i in range(1250)],'',1250
+        ns={'get_search_results_for_phrases':search_phrases,'logger':logging.getLogger(__name__)}
         tag_media=install(function('web/catalog_routes.py','_tag_media'),ns)
         docs,nxt,terms,total,source=await tag_media({'tags':['first','second']},'',0,0)
         self.assertEqual((len(docs),nxt,terms,total,source),(1250,'',['first','second'],1250,'tags'))
