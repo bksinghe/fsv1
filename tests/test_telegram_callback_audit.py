@@ -22,6 +22,25 @@ def load(path, names, ns):
     return ns
 
 
+class DeliveryCaptionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_delivery_uses_only_the_bold_filename(self):
+        ns = dict(asyncio=asyncio, html=html, logging=logging, get_file_details=AsyncMock(),
+                  has_premium_or_grace=AsyncMock(return_value=True), IS_STREAM=False,
+                  styled_button=Mock(), styled_keyboard=Mock(), PROTECT_CONTENT=True,
+                  enums=SimpleNamespace(ParseMode=SimpleNamespace(HTML='html')),
+                  schedule_file_deletion=AsyncMock(), active_tasks={})
+        load('plugins/file_deliver.py', {'deliver_file'}, ns)
+        for name, expected in [(' Film <HD> & Co.mkv ', '<b>Film &lt;HD&gt; &amp; Co.mkv</b>'), (None, '')]:
+            with self.subTest(name=name):
+                ns['get_file_details'].return_value = {'file_name': name, 'caption': 'Original channel caption'}
+                client = SimpleNamespace(send_cached_media=AsyncMock(return_value=SimpleNamespace(id=1)))
+                await ns['deliver_file'](client, 7, 0, 'file')
+                kwargs = client.send_cached_media.await_args.kwargs
+                self.assertEqual(kwargs['caption'], expected)
+                self.assertEqual(kwargs['parse_mode'], 'html')
+                await ns['active_tasks'][(7, 1)]
+
+
 class DeliveryExpiryTests(unittest.IsolatedAsyncioTestCase):
     async def test_closing_one_pm_does_not_disable_expiry_in_another(self):
         state = SimpleNamespace(FILES={})

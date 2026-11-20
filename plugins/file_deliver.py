@@ -1,4 +1,5 @@
 import asyncio
+import html
 import logging
 
 from pyrogram import Client, filters, enums
@@ -236,15 +237,8 @@ async def deliver_file(client, uid, grp_id, file_id):
             )
             return
 
-
-        # Build caption
         file_name = (file.get("file_name") or "").strip()
-        file_caption = (file.get("caption") or "").strip()
-
-        if not file_caption or file_caption == file_name:
-            caption = file_name
-        else:
-            caption = f"{file_name}\n\n{file_caption}"
+        caption = f"<b>{html.escape(file_name)}</b>" if file_name else ""
 
         # Build buttons
         buttons = []
@@ -266,6 +260,7 @@ async def deliver_file(client, uid, grp_id, file_id):
             chat_id=uid,
             file_id=file_id,
             caption=caption,
+            parse_mode=enums.ParseMode.HTML,
             protect_content=PROTECT_CONTENT,
             reply_markup=markup
         )
