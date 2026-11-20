@@ -13,7 +13,7 @@ class ButtonTests(unittest.IsolatedAsyncioTestCase):
     async def test_serialized_buttons_keep_action_and_style(self):
         from telegram_buttons import styled_button
 
-        for action, color in [('help', 'primary'), ('page#123', 'primary'),
+        for action, color in [('help', 'primary'), ('send_all', 'primary'), ('page#123', 'primary'),
                               ('pay_ok#7#plan#99', 'success'), ('pay_no#7', 'danger'),
                               ('idx#cancel', 'danger'), ('idx#start#3#4', 'success')]:
             with self.subTest(action=action):

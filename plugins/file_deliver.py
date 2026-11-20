@@ -263,8 +263,8 @@ async def lookup_offer(owner, fid):
             g = groups[0]
             count = len(set(g['members']) - {fid})
             if count:
-                action = '📺 Send all episodes' if g.get('kind') == KIND_EPISODES else '🎞 Send all qualities'
-                return BatchOffer(owner, fid, g['_id'], f"{action} (+{count}) · {str(g.get('name') or 'Group')[:40]}")
+                action = '⚡Send All Episode' if g.get('kind') == KIND_EPISODES else '♻️Send All Quality'
+                return BatchOffer(owner, fid, g['_id'], f"{action} | {count}")
     except Exception:
         logging.exception("Optional delivery group lookup failed")
     return None

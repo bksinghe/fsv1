@@ -26,10 +26,10 @@ class BatchTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_only_grouped_files_offer_and_select_remaining_in_episode_order(self):
         offer = await self.ns['lookup_offer'](7, 'seed')
-        self.assertIn('episodes', offer.label)
+        self.assertEqual(offer.label, '⚡Send All Episode | 3')
         self.assertEqual([d['_id'] for d in await self.ns['remaining_files'](offer)], ['one','two'])
         self.group['kind'] = 'qualities'
-        self.assertIn('qualities', (await self.ns['lookup_offer'](7, 'seed')).label)
+        self.assertEqual((await self.ns['lookup_offer'](7, 'seed')).label, '♻️Send All Quality | 3')
         self.group['members'] = ['seed']
         self.assertIsNone(await self.ns['lookup_offer'](7, 'seed'))
         self.store.by_members.return_value = []
