@@ -1468,7 +1468,14 @@ PLAYER_JS = r"""<script>
   window.closePlayer = function(){
     saveProgress(true);currentFile='';
     ++seq; items=[]; currentWatch='';
-    if(standalone){video.pause(); location.assign(q('#pReturn').href); return;}
+    if(standalone){
+      video.pause();
+      // Browsers decide whether this tab is script-closable. If not, hand off
+      // to the bot without leaving the expired player in this history entry.
+      try{window.close();}catch(e){}
+      if(!window.closed) location.replace(q('#pReturn').href);
+      return;
+    }
     const v=q('#player'); if(!v) return;
     v.onloadedmetadata=null;v.pause(); v.removeAttribute('src'); v.load();
     const m=q('#modal'); if(m) m.classList.remove('open');
@@ -1482,7 +1489,7 @@ PLAYER_JS = r"""<script>
     }).catch(()=>{ if(note) note.textContent=currentWatch; });
   };
   if(standalone){
-    q('#pReturn').addEventListener('click',()=>video.pause());
+    q('#pReturn').addEventListener('click',e=>{e.preventDefault();window.closePlayer();});
     const {fileId,name,stream,poster}=standalone.dataset;
     window.play(fileId,name,null,{stream,download:stream,watch:location.pathname+location.search,poster});
   }
