@@ -26,8 +26,8 @@ import logging
 import re
 import time
 
-from hydrogram import Client, filters, enums
-from hydrogram.errors import MessageNotModified
+from pyrogram import Client, filters, enums
+from pyrogram.errors import MessageNotModified
 
 from info import ADMINS
 from database.ia_filterdb import collection

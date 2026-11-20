@@ -17,7 +17,7 @@ def load():
     tree = ast.parse(SOURCE)
     names = {'build_results_text', '_send_new', 'send_results'}
     nodes = [n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name in names]
-    ns = dict(html=html, logging=logging, asyncio=asyncio, ceil=ceil,
+    ns = dict(LinkPreviewOptions=SimpleNamespace, html=html, logging=logging, asyncio=asyncio, ceil=ceil,
               enums=SimpleNamespace(ParseMode=SimpleNamespace(HTML='html')),
               temp=SimpleNamespace(U_NAME='ExampleBot'), get_size=lambda n: f'{n} MB',
               RESULTS_PER_PAGE_PM=12, RESULTS_PER_PAGE_GROUP=10,
@@ -62,7 +62,7 @@ class FilterResultLayoutTests(unittest.IsolatedAsyncioTestCase):
         text = self.reply.reply_text.await_args.args[0]
         self.assertIn('<blockquote>', text)
         self.assertNotIn('Search:', text)
-        self.assertTrue(self.reply.reply_text.await_args.kwargs['quote'])
+        self.assertTrue(self.reply.reply_text.await_args.kwargs['link_preview_options'].is_disabled)
         self.ns['_register_expiry'].assert_awaited_once_with(self.sent)
         result = SimpleNamespace(id=55, edit_text=AsyncMock())
         await self.ns['send_results'](*self.args, message=result, premium=True)

@@ -10,7 +10,7 @@ logging.basicConfig(
 )
 
 # Silence unnecessary logs
-logging.getLogger("hydrogram").setLevel(logging.ERROR)
+logging.getLogger("pyrogram").setLevel(logging.ERROR)
 logging.getLogger("aiohttp.access").setLevel(logging.WARNING)  # Hide uptime bot logs
 logging.getLogger("aiohttp.server").setLevel(logging.WARNING)
 
@@ -24,7 +24,9 @@ import uvloop
 from datetime import datetime
 import pytz
 
-from hydrogram import Client, filters
+from pyrogram import Client, filters
+from pyrogram.handlers import MessageHandler
+from telegram_replies import ReplyWaiters
 from aiohttp import web
 
 from web import web_app
@@ -138,12 +140,18 @@ async def debug_start_logger(client, message):
 class Bot(Client):
     def __init__(self):
         super().__init__(
-            name="Auto_Filter_Bot",
+            name="Auto_Filter_Bot_Kurigram",
             api_id=API_ID,
             api_hash=API_HASH,
             bot_token=BOT_TOKEN,
             plugins={"root": "plugins"}
         )
+
+        self.replies = ReplyWaiters()
+        self.add_handler(MessageHandler(self.replies.receive, filters.incoming), group=-100)
+
+    async def listen(self, **kwargs):
+        return await self.replies.listen(**kwargs)
 
     async def start(self):
         await super().start()

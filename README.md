@@ -277,8 +277,12 @@ In `JoneySin/v5`, these features were split between `post_routes.py` (~790 lines
 ### Runtime dependencies
 
 `requirements.txt` pins direct dependencies tested on the Docker image's Python 3.11/Linux.
-Hydrogram is kept at 0.2.0; TgCrypto and uvloop retain its fast crypto/event loop
-on Linux. Pillow is required for QR images and full thumbnail validation. Unused
+Kurigram 2.2.27 provides the `pyrogram` module and native colored inline buttons; TgCrypto and uvloop retain its fast crypto/event loop
+on Linux. Use a fresh virtual environment (do not co-install Pyrogram or Pyrofork).
+The bot creates a fresh `Auto_Filter_Bot_Kurigram.session` with the existing bot token;
+stop the old instance before redeploying. MongoDB data and callback IDs are unchanged.
+Button colors appear on newly sent or updated keyboards in compatible Telegram clients.
+Pillow is required for QR images and full thumbnail validation. Unused
 `aiofiles`, `requests`, and `shortzy` were removed. Transitive dependencies are not
 locked, so rebuilds can still change them; review and test dependency updates regularly.
 
@@ -391,7 +395,7 @@ Fixed by matching the real API (quality is derived inside `save_file()`, and `up
 
 ## 🚢 Deploy
 
-`Procfile` / `Dockerfile` / `render.yaml` still run `python bot.py`; the web app comes up on `0.0.0.0:PORT` as soon as the bot starts. No extra service or dependency was added (everything is stdlib plus the existing `aiohttp`/`pymongo`/`hydrogram`).
+`Procfile` / `Dockerfile` / `render.yaml` still run `python bot.py`; the web app comes up on `0.0.0.0:PORT` as soon as the bot starts. No extra service or dependency was added (everything is stdlib plus the existing `aiohttp`/`pymongo`/`kurigram`).
 
 > ⚠️ Old unsigned watch/download links are disabled by default for security. If such links are still in circulation, set `ALLOW_UNSIGNED_LINKS=True` temporarily.
 

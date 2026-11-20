@@ -3,8 +3,9 @@ import os
 import aiohttp
 import asyncio
 import time
-from hydrogram import Client, filters
-from hydrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
+from pyrogram import Client, filters
+from telegram_buttons import styled_button
+from pyrogram.types import LinkPreviewOptions, InlineKeyboardMarkup, CallbackQuery
 from info import ADMINS
 from utils import is_premium, get_size
 
@@ -64,7 +65,7 @@ def site_buttons(uid):
         info = SITES_INFO[key]
         check = "✅" if key == selected else ""
         limit = get_size(info["max"])
-        buttons.append([InlineKeyboardButton(
+        buttons.append([styled_button(
             f"{info['icon']} {info['name']} · ≤{limit} {check}",
             callback_data=f"site#{key}"
         )])
@@ -72,13 +73,13 @@ def site_buttons(uid):
     # A file too big for a host is simply not offered — no failed attempt.
     skipped = [site_label(k) for k in SITES_INFO if k not in available]
     if skipped:
-        buttons.append([InlineKeyboardButton(
+        buttons.append([styled_button(
             f"🚫 Too big for {', '.join(skipped)}",
             callback_data="noop"
         )])
 
-    buttons.append([InlineKeyboardButton("🚀 Upload", callback_data="do_upload")])
-    buttons.append([InlineKeyboardButton("❌ Cancel", callback_data="cancel")])
+    buttons.append([styled_button("🚀 Upload", callback_data="do_upload")])
+    buttons.append([styled_button("❌ Cancel", callback_data="cancel")])
 
     return InlineKeyboardMarkup(buttons)
 
@@ -329,7 +330,7 @@ async def start_upload(bot, msg, uid):
 
         # Success with button
         btn = InlineKeyboardMarkup([[
-            InlineKeyboardButton("🔗 Open Link", url=link)
+            styled_button("🔗 Open Link", url=link)
         ]])
 
         switched = "" if len(tried) == 1 else f"\n↪️ Fell back from {site_label(tried[0])}"
@@ -339,7 +340,7 @@ async def start_upload(bot, msg, uid):
             f"📤 Site: {site_info['icon']} {site_info['name']}{switched}\n"
             f"🔗 Link: `{link}`",
             reply_markup=btn,
-            disable_web_page_preview=True
+            link_preview_options=LinkPreviewOptions(is_disabled=True)
         )
         
     except Exception as e:

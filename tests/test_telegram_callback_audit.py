@@ -41,7 +41,7 @@ class CallbackRoutingTests(unittest.TestCase):
         self.assertIsNone(re.match(pattern, 'cancel_payment'))
         for value in ('cancel','site#x','do_upload','noop'): self.assertRegex(value, pattern)
 
-    def test_listeners_use_hydrogram_keyword_signature(self):
+    def test_listeners_are_scoped_to_chat_and_user(self):
         for path in ('plugins/premium.py', 'plugins/admin_tools.py'):
             tree = ast.parse((ROOT / path).read_text())
             for node in ast.walk(tree):
@@ -57,7 +57,7 @@ class DeleteAllTests(unittest.IsolatedAsyncioTestCase):
                   ListenerTimeout=type('ListenerTimeout',(Exception,),{}),
                   db_count_documents=lambda:10, delete_all_files=AsyncMock(return_value=10),
                   fmt=lambda x:'now', filters=SimpleNamespace(text='text'),
-                  InlineKeyboardMarkup=lambda x:x, InlineKeyboardButton=lambda *a,**kw:kw)
+                  InlineKeyboardMarkup=lambda x:x, styled_button=lambda *a,**kw:kw)
         load('plugins/admin_tools.py', {'delete_all_cmd','_wait_delete_all','cancel_delete_all'}, ns)
         msg = SimpleNamespace(id=55,chat=SimpleNamespace(id=9),edit=AsyncMock())
         user_msg = SimpleNamespace(chat=SimpleNamespace(id=9),from_user=SimpleNamespace(id=7),
@@ -86,7 +86,7 @@ class DeleteAllTests(unittest.IsolatedAsyncioTestCase):
                   ListenerTimeout=type('ListenerTimeout',(Exception,),{}),
                   db_count_documents=lambda:10, delete_all_files=AsyncMock(return_value=10),
                   fmt=lambda x:'now', filters=SimpleNamespace(text='text'),
-                  InlineKeyboardMarkup=lambda x:x, InlineKeyboardButton=lambda *a,**kw:kw)
+                  InlineKeyboardMarkup=lambda x:x, styled_button=lambda *a,**kw:kw)
         load('plugins/admin_tools.py', {'delete_all_cmd','_wait_delete_all'}, ns)
         response=SimpleNamespace(text='CONFIRM DELETE ALL',delete=AsyncMock())
         bot=SimpleNamespace(listen=AsyncMock(return_value=response),send_message=AsyncMock())
@@ -159,13 +159,12 @@ class PaymentBackgroundTests(unittest.IsolatedAsyncioTestCase):
 
 class PaymentListenTests(unittest.IsolatedAsyncioTestCase):
     async def test_number_listener_is_scoped_and_timeout_cleans_session(self):
-        listener_timeout=type('ListenerTimeout',(Exception,),{})
-        ns=dict(asyncio=asyncio, ListenerTimeout=listener_timeout, LISTEN_SHORT=180,
+        ns=dict(asyncio=asyncio, LISTEN_SHORT=180,
                 active_sessions={7:{'step':'waiting_number'}}, cancel_btn=lambda:'cancel',
                 duration_buttons=lambda n:'duration', _fail=AsyncMock())
         load('plugins/premium.py', {'_buy_premium_flow'},ns)
         query=SimpleNamespace(message=SimpleNamespace(chat=SimpleNamespace(id=22),edit=AsyncMock()))
-        client=SimpleNamespace(listen=AsyncMock(side_effect=listener_timeout()))
+        client=SimpleNamespace(listen=AsyncMock(side_effect=asyncio.TimeoutError()))
         await ns['_buy_premium_flow'](client,query,7)
         client.listen.assert_awaited_once_with(chat_id=22,user_id=7,timeout=180)
         self.assertIn('Timeout',ns['_fail'].await_args.args[3])

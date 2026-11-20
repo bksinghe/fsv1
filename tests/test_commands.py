@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """🤖 Telegram commands — the help menu must never advertise a dead command.
 
-Stdlib-only; runs without MongoDB / Telegram / hydrogram:
+Stdlib-only; runs without MongoDB / Telegram / pyrogram:
 
     python3 -m unittest discover -s tests -v
 
@@ -13,7 +13,7 @@ the group /help text). Every command that is *shown* must have a real
 `filters.command(...)` handler in `plugins/`, otherwise a user taps a command
 that does nothing.
 
-The source is parsed with `ast` (never imported), so hydrogram is not needed:
+The source is parsed with `ast` (never imported), so pyrogram is not needed:
 
 * `registered_commands()`  — every command a handler is actually bound to.
 * `listed_commands(...)`   — every `/cmd` written in a Script.py block.

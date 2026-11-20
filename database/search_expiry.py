@@ -9,8 +9,8 @@ import logging
 import time
 import uuid
 
-from hydrogram import enums
-from hydrogram.errors import FloodWait, MessageIdInvalid
+from pyrogram import enums
+from pyrogram.errors import FloodWait, MessageIdInvalid
 from pymongo import ReturnDocument
 
 from database.ia_filterdb import db

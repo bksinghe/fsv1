@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """⏱️ `/warmup_thumbs` anti-flood pacing.
 
-Stdlib-only; runs without MongoDB / Telegram / hydrogram:
+Stdlib-only; runs without MongoDB / Telegram / pyrogram:
 
     python3 -m unittest discover -s tests -v
 

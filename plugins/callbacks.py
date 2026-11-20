@@ -2,14 +2,14 @@ import logging
 import random
 import asyncio
 
-from hydrogram import Client, enums, filters
-from hydrogram.types import (
+from pyrogram import Client, enums, filters
+from telegram_buttons import styled_button
+from pyrogram.types import (
     InlineKeyboardMarkup,
-    InlineKeyboardButton,
     CallbackQuery,
     InputMediaPhoto
 )
-from hydrogram.errors import (
+from pyrogram.errors import (
     MessageNotModified,
     MessageIdInvalid,
     MessageDeleteForbidden,
@@ -153,20 +153,20 @@ async def safe_edit_body(
 
 def help_buttons(is_admin: bool = False):
     """Buttons of the help menu — 🛡️ Admin Commands only for bot admins."""
-    rows = [[InlineKeyboardButton("👤 User Commands", callback_data="user_cmds")]]
+    rows = [[styled_button("👤 User Commands", callback_data="user_cmds")]]
     if is_admin:
         rows[0].append(
-            InlineKeyboardButton("🛡️ Admin Commands", callback_data="admin_cmds")
+            styled_button("🛡️ Admin Commands", callback_data="admin_cmds")
         )
-    rows.append([InlineKeyboardButton("❌ Close", callback_data="close_data")])
+    rows.append([styled_button("❌ Close", callback_data="close_data")])
     return InlineKeyboardMarkup(rows)
 
 
 def back_buttons():
     return InlineKeyboardMarkup(
         [
-            [InlineKeyboardButton("🔙 Back", callback_data="help")],
-            [InlineKeyboardButton("❌ Close", callback_data="close_data")],
+            [styled_button("🔙 Back", callback_data="help")],
+            [styled_button("❌ Close", callback_data="close_data")],
         ]
     )
 
@@ -293,10 +293,10 @@ async def cb_handler(client: Client, query: CallbackQuery):
                     InlineKeyboardMarkup(
                         [
                             [
-                                InlineKeyboardButton("▶️ Watch Online", url=watch),
-                                InlineKeyboardButton("⬇️ Fast Download", url=download)
+                                styled_button("▶️ Watch Online", url=watch),
+                                styled_button("⬇️ Fast Download", url=download)
                             ],
-                            [InlineKeyboardButton("❌ Close", callback_data="close_data")]
+                            [styled_button("❌ Close", callback_data="close_data")]
                         ]
                     )
                 )

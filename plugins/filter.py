@@ -6,8 +6,9 @@ from math import ceil
 from time import time
 from collections import defaultdict
 
-from hydrogram import Client, filters, enums
-from hydrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from pyrogram import Client, filters, enums
+from telegram_buttons import styled_button
+from pyrogram.types import LinkPreviewOptions, InlineKeyboardMarkup
 
 from info import ADMINS
 from database.users_chats_db import db
@@ -64,7 +65,6 @@ async def search_toggle(client, message):
         if not await is_group_admin(client, message.chat.id, message.from_user.id):
             return await message.reply_text(
                 "❌ Only group admins can use this command.",
-                quote=True
             )
         
         # Get current settings
@@ -83,7 +83,6 @@ async def search_toggle(client, message):
                 "💡 <b>Usage:</b>\n"
                 "• <code>/search on</code> - Enable search\n"
                 "• <code>/search off</code> - Disable search",
-                quote=True
             )
         
         action = args[1].lower()
@@ -95,7 +94,6 @@ async def search_toggle(client, message):
             return await message.reply_text(
                 "✅ <b>Search Enabled!</b>\n\n"
                 "Members can now search for files in this group.",
-                quote=True
             )
         
         elif action == "off":
@@ -106,7 +104,6 @@ async def search_toggle(client, message):
                 "❌ <b>Search Disabled!</b>\n\n"
                 "File search has been turned off for this group.\n"
                 "Use <code>/search on</code> to enable again.",
-                quote=True
             )
         
         else:
@@ -114,14 +111,12 @@ async def search_toggle(client, message):
                 "❌ Invalid option. Use:\n"
                 "• <code>/search on</code>\n"
                 "• <code>/search off</code>",
-                quote=True
             )
     
     except Exception as e:
         print(f"Search toggle error: {e}")
         await message.reply_text(
             "❌ An error occurred. Please try again.",
-            quote=True
         )
 
 
@@ -282,14 +277,12 @@ async def filter_handler(client, message):
                             "PM search is only available for premium users."
                         ),
                         reply_markup=premium_buy_markup(),
-                        quote=True,
                         parse_mode=enums.ParseMode.HTML,
                     )
                 except Exception as e:
                     print(f"Failed to send premium message: {e}")
                     await message.reply_text(
                         "🔒 PM search requires premium subscription.",
-                        quote=True
                     )
                 return
 
@@ -320,7 +313,7 @@ async def filter_handler(client, message):
                         "Please wait a moment before searching again.\n\n"
                         "💡 <b>Tip:</b> Premium users get unlimited searches!"
                     )
-                    return await message.reply_text(text, quote=True)
+                    return await message.reply_text(text)
 
         # 🔥 auto-learn keywords (RAM only, ultra fast)
         try:
@@ -351,7 +344,6 @@ async def filter_handler(client, message):
         try:
             await message.reply_text(
                 "❌ An error occurred. Please try again.",
-                quote=True
             )
         except Exception:
             logging.getLogger(__name__).debug("filter_handler: optional operation failed", exc_info=True)
@@ -400,13 +392,13 @@ def build_nav(search, offset, next_offset, results_per_page, source_chat_id, own
         callback_key = make_callback_key(
             search, offset - results_per_page, source_chat_id, owner, is_pm
         )
-        nav.append(InlineKeyboardButton("◀️ Prev", callback_data=f"page#{callback_key}"))
+        nav.append(styled_button("◀️ Prev", callback_data=f"page#{callback_key}"))
 
     if next_offset:
         callback_key = make_callback_key(
             search, offset + results_per_page, source_chat_id, owner, is_pm
         )
-        nav.append(InlineKeyboardButton("Next ▶️", callback_data=f"page#{callback_key}"))
+        nav.append(styled_button("Next ▶️", callback_data=f"page#{callback_key}"))
 
     return InlineKeyboardMarkup([nav]) if nav else None
 
@@ -415,7 +407,7 @@ async def _send_new(client, chat_id, reply_msg, text, fallback_prefix="", **kwar
     """Send a NEW message; quote-reply to the user's message when we have it."""
     if reply_msg is not None:
         try:
-            return await reply_msg.reply_text(text, quote=True, **kwargs)
+            return await reply_msg.reply_text(text, **kwargs)
         except Exception as e:
             # e.g. the user already deleted their message → fall back to a plain send
             logging.getLogger(__name__).debug("quote reply failed, sending plain: %s", e)
@@ -515,7 +507,7 @@ async def send_results(
             await message.edit_text(
                 text,
                 reply_markup=markup,
-                disable_web_page_preview=True,
+                link_preview_options=LinkPreviewOptions(is_disabled=True),
                 parse_mode=enums.ParseMode.HTML
             )
         else:
@@ -527,7 +519,7 @@ async def send_results(
                 text,
                 fallback_prefix=f"🔎 <b>Search:</b> <code>{html.escape(str(search))}</code>\n\n",
                 reply_markup=markup,
-                disable_web_page_preview=True,
+                link_preview_options=LinkPreviewOptions(is_disabled=True),
                 parse_mode=enums.ParseMode.HTML
             )
             await _register_expiry(msg)

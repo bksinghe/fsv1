@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, patch
 try:
     import mongomock
     import pymongo
-    import hydrogram
+    import pyrogram
 except ImportError:
     mongomock = None
 

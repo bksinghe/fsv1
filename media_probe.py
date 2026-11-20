@@ -409,13 +409,13 @@ def probe_bytes(head, tail=None, file_name="") -> dict:
 async def fetch_range(bot, file_ref, file_size, offset_mb, chunks_mb, timeout=FETCH_TIMEOUT):
     """Fetch the [offset_mb, offset_mb+chunks_mb) MB slice via `client.get_file()`.
 
-    hydrogram is lazily imported (returns b'' quietly when unavailable in the sandbox
+    pyrogram is lazily imported (returns b'' quietly when unavailable in the sandbox
     or tests). FloodWait reaches the caller; everything else is fail-soft, so whatever
     """
     if not bot or not file_ref or chunks_mb <= 0:
         return b""
     try:
-        from hydrogram.file_id import FileId
+        from pyrogram.file_id import FileId
         fid = FileId.decode(file_ref)
     except Exception:
         return b""

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """🔌 plugins → database call signatures.
 
-Stdlib-only; runs without MongoDB / Telegram / hydrogram:
+Stdlib-only; runs without MongoDB / Telegram / pyrogram:
 
     python3 -m unittest discover -s tests -v
 
@@ -15,7 +15,7 @@ arguments they do not accept:
 
 Every one of them raises `TypeError` at runtime, and because the handler
 swallows exceptions the channel posts were silently never indexed — the
-suite could not see it (hydrogram cannot be imported here).
+suite could not see it (pyrogram cannot be imported here).
 
 These tests parse both sides with `ast` and compare every call made from
 `plugins/` against the real signature in `database/`, so a mismatch now

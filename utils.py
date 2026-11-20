@@ -4,8 +4,9 @@ import traceback
 import time
 from datetime import datetime, timedelta
 
-from hydrogram.errors import FloodWait
-from hydrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from pyrogram.errors import FloodWait
+from telegram_buttons import styled_button
+from pyrogram.types import InlineKeyboardMarkup
 
 from info import ADMINS, IS_PREMIUM
 from database.users_chats_db import db
@@ -367,9 +368,9 @@ def premium_required_text(reason):
 
 def premium_buy_markup(close=False):
     """💰 Buy / Renew Premium (+ an optional ❌ Close row)"""
-    rows = [[InlineKeyboardButton("💰 Buy / Renew Premium", callback_data="buy_premium")]]
+    rows = [[styled_button("💰 Buy / Renew Premium", callback_data="buy_premium")]]
     if close:
-        rows.append([InlineKeyboardButton("❌ Close", callback_data="close_data")])
+        rows.append([styled_button("❌ Close", callback_data="close_data")])
     return InlineKeyboardMarkup(rows)
 
 

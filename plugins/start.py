@@ -1,6 +1,7 @@
 import random
-from hydrogram import Client, filters, enums
-from hydrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from pyrogram import Client, filters, enums
+from telegram_buttons import styled_button
+from pyrogram.types import LinkPreviewOptions, InlineKeyboardMarkup
 from info import PICS
 from Script import script
 
@@ -12,7 +13,7 @@ def start_buttons():
     return InlineKeyboardMarkup(
         [
             [
-                InlineKeyboardButton("👨‍🚒 Help", callback_data="help")
+                styled_button("👨‍🚒 Help", callback_data="help")
             ]
         ]
     )
@@ -73,10 +74,7 @@ async def get_id(client, message):
             member = await message.chat.get_member(user.id)
             if member.status == enums.ChatMemberStatus.OWNER:
                 badge = "👑 Owner"
-            elif member.status in (
-                enums.ChatMemberStatus.ADMINISTRATOR,
-                enums.ChatMemberStatus.ADMIN
-            ):
+            elif member.status == enums.ChatMemberStatus.ADMINISTRATOR:
                 badge = "🛡 Admin"
         except Exception:
             pass
@@ -126,5 +124,5 @@ async def get_id(client, message):
     await message.reply_text(
         text,
         parse_mode=enums.ParseMode.HTML,
-        disable_web_page_preview=True
+        link_preview_options=LinkPreviewOptions(is_disabled=True)
     )

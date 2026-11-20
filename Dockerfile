@@ -1,7 +1,7 @@
 # Build dependencies separately so compilers never enter the runtime image.
 FROM python:3.11-slim-bookworm AS builder
 
-# Some dependencies (including Hydrogram's pyaes) may need building from source.
+# Some dependencies (including Kurigram's pyaes) may need building from source.
 RUN apt-get update && apt-get install -y --no-install-recommends gcc \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """📊 /stats command — it must stay a button-free, text-only report.
 
-Stdlib-only; runs without MongoDB / Telegram / hydrogram:
+Stdlib-only; runs without MongoDB / Telegram / pyrogram:
 
     python3 -m unittest discover -s tests -v
 
@@ -19,7 +19,7 @@ and the command list itself was dropped on request: the 👨‍🚒 Help button 
 meant something while an indexing run was in flight.
 
 The source of `plugins/admin_tools.py` is parsed with `ast` (never imported),
-so this suite needs neither hydrogram nor a database.
+so this suite needs neither pyrogram nor a database.
 """
 import ast
 import re

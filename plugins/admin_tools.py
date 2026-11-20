@@ -3,9 +3,10 @@ import asyncio
 import time
 import html
 from datetime import datetime
-from hydrogram import Client, filters, enums
-from hydrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
-from hydrogram.errors import MessageNotModified, MessageIdInvalid, BadRequest, ListenerTimeout
+from pyrogram import Client, filters, enums
+from telegram_buttons import styled_button
+from pyrogram.types import InlineKeyboardMarkup, CallbackQuery
+from pyrogram.errors import MessageNotModified, MessageIdInvalid, BadRequest
 
 from info import ADMINS, LOG_CHANNEL
 from database.ia_filterdb import (
@@ -177,7 +178,7 @@ async def delete_all_cmd(bot, message):
             f"❗ This will permanently delete ALL {file_count} files!\n\n"
             "Reply with 'CONFIRM DELETE ALL' to proceed.",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("❌ Cancel", callback_data="deleteall_cancel")]
+                [styled_button("❌ Cancel", callback_data="deleteall_cancel")]
             ])
         )
 
@@ -229,7 +230,7 @@ async def _wait_delete_all(bot, message, msg, key, owner_key, cancel):
         else:
             await msg.edit("❌ Deletion cancelled - incorrect confirmation.")
             
-    except ListenerTimeout:
+    except asyncio.TimeoutError:
         await msg.edit("❌ Deletion cancelled - timeout (30s).")
     except Exception as e:
         await msg.edit(f"❌ Error: {html.escape(str(e))}")

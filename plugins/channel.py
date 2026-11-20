@@ -1,7 +1,7 @@
 import logging
 import asyncio
-from hydrogram import Client, filters
-from hydrogram.errors import (
+from pyrogram import Client, filters
+from pyrogram.errors import (
     FloodWait,
     ReactionInvalid
 )

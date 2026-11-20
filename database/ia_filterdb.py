@@ -7,7 +7,7 @@ from struct import pack
 from datetime import datetime
 from typing import List, Tuple, Optional, Dict, Any
 
-from hydrogram.file_id import FileId
+from pyrogram.file_id import FileId
 from pymongo import MongoClient, TEXT, ASCENDING
 from pymongo.errors import DuplicateKeyError, OperationFailure
 

@@ -1,5 +1,5 @@
 # Telegram client and accelerated cryptography/event loop (Linux deployment).
-hydrogram==0.2.0
+kurigram==2.2.27
 tgcrypto==1.2.5
 uvloop==0.23.0
 

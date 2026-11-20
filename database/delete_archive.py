@@ -3,7 +3,7 @@ import asyncio
 import html
 import logging
 
-from hydrogram import enums
+from pyrogram import enums
 from info import DELETE_ARCHIVE_CHANNEL, INDEX_CHANNELS
 from database import ia_filterdb as ia
 from database.group_db import store as group_store

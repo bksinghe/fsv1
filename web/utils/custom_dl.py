@@ -1,10 +1,9 @@
 import math
 
-from hydrogram.types import Message
-from hydrogram import Client, utils, raw
-from hydrogram.session import Session, Auth
-from hydrogram.errors import AuthBytesInvalid
-from hydrogram.file_id import FileId, FileType, ThumbnailSource
+from pyrogram.types import Message
+from pyrogram import Client, utils, raw
+from pyrogram.session import Session
+from pyrogram.file_id import FileId, FileType, ThumbnailSource
 
 from utils import temp
 
@@ -66,59 +65,7 @@ class TGCustomYield:
     async def generate_media_session(self, client: Client, msg: Message) -> Session:
         data = await self.generate_file_properties(msg)
 
-        media_session = client.media_sessions.get(data.dc_id)
-
-        if media_session:
-            return media_session
-
-        # ---- DIFFERENT DC ----
-        if data.dc_id != await client.storage.dc_id():
-            media_session = Session(
-                client,
-                data.dc_id,
-                await Auth(
-                    client,
-                    data.dc_id,
-                    await client.storage.test_mode()
-                ).create(),
-                await client.storage.test_mode(),
-                is_media=True
-            )
-            await media_session.start()
-
-            for _ in range(3):
-                exported_auth = await client.invoke(
-                    raw.functions.auth.ExportAuthorization(
-                        dc_id=data.dc_id
-                    )
-                )
-                try:
-                    await media_session.send(
-                        raw.functions.auth.ImportAuthorization(
-                            id=exported_auth.id,
-                            bytes=exported_auth.bytes
-                        )
-                    )
-                    break
-                except AuthBytesInvalid:
-                    continue
-            else:
-                await media_session.stop()
-                raise AuthBytesInvalid
-
-        # ---- SAME DC ----
-        else:
-            media_session = Session(
-                client,
-                data.dc_id,
-                await client.storage.auth_key(),
-                await client.storage.test_mode(),
-                is_media=True
-            )
-            await media_session.start()
-
-        client.media_sessions[data.dc_id] = media_session
-        return media_session
+        return await client.get_session(data.dc_id, is_media=True)
 
     # --------------------------------------------------
     # 📍 FILE LOCATION
@@ -143,9 +90,8 @@ class TGCustomYield:
 
             return raw.types.InputPeerPhotoFileLocation(
                 peer=peer,
-                volume_id=file_id.volume_id,
-                local_id=file_id.local_id,
-                big=file_id.thumbnail_source == ThumbnailSource.CHAT_PHOTO_BIG
+                photo_id=file_id.media_id,
+                big=file_id.thumbnail_source in (ThumbnailSource.CHAT_PHOTO_BIG, ThumbnailSource.CHAT_PHOTO_BIG_LEGACY)
             )
 
         if file_id.file_type == FileType.PHOTO:

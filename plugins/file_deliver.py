@@ -2,8 +2,9 @@ import asyncio
 import time
 import logging
 
-from hydrogram import Client, filters, enums
-from hydrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from pyrogram import Client, filters, enums
+from telegram_buttons import styled_button
+from pyrogram.types import InlineKeyboardMarkup, CallbackQuery
 
 from info import IS_STREAM, PM_FILE_DELETE_TIME, PROTECT_CONTENT
 from database.ia_filterdb import get_file_details
@@ -76,7 +77,6 @@ async def file_button_handler(client: Client, query: CallbackQuery):
     await query.message.reply_text(
         text,
         reply_markup=btn,
-        quote=True,
         parse_mode=enums.ParseMode.HTML
     )
     
@@ -199,7 +199,7 @@ async def schedule_file_deletion(client, sent_msg, uid, file_id):
             uid,
             "⌛ <b>File expired</b>",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton(
+                [styled_button(
                     "🔁 Resend File",
                     callback_data=f"resend#{file_id}"
                 )]
@@ -260,13 +260,13 @@ async def deliver_file(client, uid, grp_id, file_id):
         buttons = []
         if IS_STREAM:
             buttons.append([
-                InlineKeyboardButton(
+                styled_button(
                     "▶️ Watch / Download",
                     callback_data=f"stream#{file_id}"
                 )
             ])
         buttons.append([
-            InlineKeyboardButton("❌ Close", callback_data="close_data")
+            styled_button("❌ Close", callback_data="close_data")
         ])
 
         markup = InlineKeyboardMarkup(buttons)

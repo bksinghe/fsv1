@@ -2,9 +2,10 @@ import logging
 import time
 import asyncio
 
-from hydrogram import Client, filters, enums
-from hydrogram.errors import FloodWait
-from hydrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from pyrogram import Client, filters, enums
+from pyrogram.errors import FloodWait
+from telegram_buttons import styled_button
+from pyrogram.types import InlineKeyboardMarkup
 
 from info import ADMINS, INDEX_LOG_CHANNEL
 from database.ia_filterdb import save_file, db as media_db
@@ -97,11 +98,11 @@ async def start_index(bot, message):
         return await message.reply(f"❌ Error: `{e}`")
 
     btn = InlineKeyboardMarkup([
-        [InlineKeyboardButton(
+        [styled_button(
             "✅ START INDEXING",
             callback_data=f"idx#start#{chat_id}#{last_msg_id}"
         )],
-        [InlineKeyboardButton("❌ CANCEL", callback_data="idx#close")]
+        [styled_button("❌ CANCEL", callback_data="idx#close")]
     ])
 
     await message.reply(
@@ -209,7 +210,7 @@ async def index_worker(bot, status, chat_id, last_msg_id, channel_title):
                 # A failed status edit must never abort a long run
                 try:
                     btn = InlineKeyboardMarkup(
-                        [[InlineKeyboardButton("🛑 STOP", callback_data="idx#cancel")]]
+                        [[styled_button("🛑 STOP", callback_data="idx#cancel")]]
                     )
                     await status.edit(
                         f"📊 `{processed}` scanned\n"
