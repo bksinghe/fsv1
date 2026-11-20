@@ -5,7 +5,7 @@ from pyrogram.enums import ButtonStyle
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 _DANGER = {'cancel', 'cancel_payment', 'close_data', 'deleteall_cancel', 'idx#close', 'idx#cancel', 'pay_no', 'noop'}
-_SUCCESS = {'buy_premium', 'do_upload', 'idx#start', 'pay_ok', 'resend', 'stream'}
+_SUCCESS = {'buy_premium', 'do_upload', 'idx#start', 'pay_ok', 'resend', 'stream', 'send_all'}
 
 
 def styled_button(text, *, callback_data=None, url=None):

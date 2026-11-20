@@ -1,13 +1,17 @@
 import asyncio
 import html
 import logging
+import re
+from dataclasses import dataclass
 
 from pyrogram import Client, filters, enums
 from telegram_buttons import styled_button, styled_keyboard
 from pyrogram.types import CallbackQuery
+from pyrogram.errors import FloodWait
 
 from info import IS_STREAM, PM_FILE_DELETE_TIME, PROTECT_CONTENT
 from database.ia_filterdb import get_file_details
+from database.group_db import store, episode_label, KIND_EPISODES
 from database import search_expiry
 from database.users_chats_db import db
 from utils import temp, is_premium, premium_required_text, premium_buy_markup
@@ -64,16 +68,12 @@ async def file_button_handler(client: Client, query: CallbackQuery):
 
     await query.answer()
     try:
-        sent = await client.send_cached_media(
-            chat_id=msg.chat.id, message_thread_id=msg.message_thread_id,
-            file_id=file_id, caption=file_caption(file),
-            parse_mode=enums.ParseMode.HTML, protect_content=PROTECT_CONTENT,
-        )
+        await send_delivery(client, msg.chat.id, query.from_user.id, file_id, file,
+                            group=True, topic=msg.message_thread_id)
     except Exception:
         logging.exception("Could not deliver group search result")
         await msg.reply_text("❌ Couldn't send the file here. Check the bot's media permissions.")
         return
-    track_expiry(client, sent, msg.chat.id, file_id, group=True)
 
 
 # ======================================================
@@ -217,7 +217,135 @@ def track_expiry(client, sent, chat_id, file_id, *, group=False):
     key = (chat_id, sent.id)
     task = asyncio.create_task(schedule_file_deletion(client, sent, chat_id, file_id, group=group))
     active_tasks[key] = task
-    task.add_done_callback(lambda _: active_tasks.pop(key, None))
+    def cleanup(_):
+        active_tasks.pop(key, None)
+        batch_offers.pop(key, None)
+    task.add_done_callback(cleanup)
+
+
+@dataclass(frozen=True)
+class BatchOffer:
+    owner: int
+    seed: str
+    gid: str
+    label: str
+
+
+# Offers are scoped to the original delivered message, not to callback data
+# supplied by a client. Restart/expiry invalidates them just like stream buttons.
+batch_offers = {}
+batch_jobs = {}
+
+
+async def lookup_offer(owner, fid):
+    try:
+        groups = await store.by_members([fid])
+        if groups:
+            g = groups[0]
+            count = len(set(g['members']) - {fid})
+            if count:
+                action = '📺 Send all episodes' if g.get('kind') == KIND_EPISODES else '🎞 Send all qualities'
+                return BatchOffer(owner, fid, g['_id'], f"{action} (+{count}) · {str(g.get('name') or 'Group')[:40]}")
+    except Exception:
+        logging.exception("Optional delivery group lookup failed")
+    return None
+
+
+async def send_delivery(client, chat, owner, fid, doc, *, group=False, topic=None, offer_batch=True):
+    offer = await lookup_offer(owner, fid) if offer_batch else None
+    rows = []
+    if not group and IS_STREAM:
+        rows.append([styled_button("▶️ Watch / Download", callback_data=f"stream#{fid}")])
+    if offer:
+        rows.append([styled_button(offer.label, callback_data="send_all")])
+    if not group:
+        rows.append([styled_button("❌ Close", callback_data="close_data")])
+    sent = await client.send_cached_media(
+        chat_id=chat, message_thread_id=topic, file_id=fid, caption=file_caption(doc),
+        parse_mode=enums.ParseMode.HTML, protect_content=PROTECT_CONTENT,
+        reply_markup=styled_keyboard(rows) if rows else None,
+    )
+    if offer:
+        batch_offers[(chat, sent.id)] = offer
+    track_expiry(client, sent, chat, fid, group=group)
+
+
+async def remaining_files(offer):
+    g = await store.get(offer.gid)
+    if not g or offer.seed not in g['members']:
+        return []
+    ids = list(dict.fromkeys(i for i in g['members'] if i != offer.seed))
+    docs = {doc['_id']: doc for doc in await store.files_by_ids(ids)}
+    ordered = [docs[i] for i in ids if i in docs]
+    if g.get('kind') == KIND_EPISODES:
+        labels = g.get('episode_map') or {}
+        def episode_order(pair):
+            idx, doc = pair
+            label, ep = episode_label(labels.get(doc['_id']) or doc.get('file_name'), idx)
+            season = re.match(r'S(\d+)E', label)
+            return (int(season[1]) if season else 1, ep)
+        ordered = [doc for _, doc in sorted(enumerate(ordered), key=episode_order)]
+    return ordered
+
+
+async def send_batch(client, msg, offer, group):
+    sent_count = 0
+    try:
+        files = await remaining_files(offer)
+        if not files:
+            await msg.reply_text("No remaining files in this group.")
+            return
+        for doc in files:
+            if sent_count:
+                await asyncio.sleep(3 if group else 1)
+            for attempt in range(2):
+                # Recheck after pacing or a FloodWait: the admin may switch to PM-only mode.
+                if not await has_premium_or_grace(offer.owner) or (
+                    group and not (await db.get_settings(msg.chat.id)).get('group_mode', True)
+                ):
+                    await msg.reply_text("Batch stopped: delivery is no longer enabled.")
+                    return
+                try:
+                    await send_delivery(client, msg.chat.id, offer.owner, doc['_id'], doc,
+                                        group=group, topic=msg.message_thread_id, offer_batch=False)
+                    break
+                except FloodWait as wait:
+                    if attempt:
+                        raise
+                    await asyncio.sleep(wait.value + 1)
+            sent_count += 1
+    except Exception:
+        logging.exception("Batch delivery stopped after %s files", sent_count)
+        try:
+            await msg.reply_text(f"Batch stopped after {sent_count} files. Search again to request missing files.")
+        except Exception:
+            logging.exception("Could not report batch failure")
+
+
+@Client.on_callback_query(filters.regex(r"^send_all$"))
+async def send_all(client, query):
+    msg = query.message
+    key = (msg.chat.id, msg.id) if msg else None
+    offer = batch_offers.get(key)
+    if not offer:
+        return await query.answer("Already requested or expired.", show_alert=True)
+    if query.from_user.id != offer.owner:
+        return await query.answer("Only the original requester can send this group.", show_alert=True)
+    group = msg.chat.type in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP)
+    if not await has_premium_or_grace(offer.owner):
+        return await query.answer("Premium access required.", show_alert=True)
+    if group and not (await db.get_settings(msg.chat.id)).get('group_mode', True):
+        return await query.answer("Group delivery is off.", show_alert=True)
+    job_key = (msg.chat.id, offer.owner)
+    # Claim after all awaits: competing taps cannot both schedule this offer.
+    if job_key in batch_jobs:
+        return await query.answer("Already sending files here.")
+    if batch_offers.pop(key, None) is not offer:
+        return await query.answer("Already requested or expired.")
+    task = asyncio.create_task(send_batch(client, msg, offer, group))
+    batch_jobs[job_key] = task
+    task.add_done_callback(lambda _: batch_jobs.pop(job_key, None))
+    await query.answer("Sending the remaining files here…")
 
 
 async def deliver_file(client, uid, grp_id, file_id):
@@ -243,32 +371,7 @@ async def deliver_file(client, uid, grp_id, file_id):
             )
             return
 
-        # Build buttons
-        buttons = []
-        if IS_STREAM:
-            buttons.append([
-                styled_button(
-                    "▶️ Watch / Download",
-                    callback_data=f"stream#{file_id}"
-                )
-            ])
-        buttons.append([
-            styled_button("❌ Close", callback_data="close_data")
-        ])
-
-        markup = styled_keyboard(buttons)
-
-        # Send file
-        sent = await client.send_cached_media(
-            chat_id=uid,
-            file_id=file_id,
-            caption=file_caption(file),
-            parse_mode=enums.ParseMode.HTML,
-            protect_content=PROTECT_CONTENT,
-            reply_markup=markup
-        )
-
-        track_expiry(client, sent, uid, file_id)
+        await send_delivery(client, uid, uid, file_id, file)
 
     except Exception as e:
         logging.error(f"Error delivering file: {e}")

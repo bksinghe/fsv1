@@ -65,7 +65,7 @@ The bot registers the Telegram slash menu automatically on startup; no BotFather
 |---|---|---|
 | 👤 PM | `/start` | Welcome card with the 👨‍🚒 Help button |
 | 👤 PM + groups | `/id` | User / chat / sticker ID (reply to inspect someone else) |
-| 👤 PM | _(plain text)_ | Search — **PM search is 💎 premium only**, group search is free. Group admins can use `/group_mode off` for clickable file links that deliver in PM, `/group_mode on` for buttons that deliver in the group/topic (default), or `/group_mode` to check; PM search delivers in PM. Requesting a file retains the premium/admin check. |
+| 👤 PM | _(plain text)_ | Search — **PM search is 💎 premium only**, group search is free. Group admins can use `/group_mode off` for clickable file links that deliver in PM, `/group_mode on` for buttons that deliver in the group/topic (default), or `/group_mode` to check; PM search delivers in PM. Files in a saved quality/series group offer a one-use **Send all** button to the original requester. It sends remaining members to the same chat/topic, with no repeat of the first file. Requesting a file retains the premium/admin check. |
 | 👤 PM | `/plan` · `/myplan` · `/invoice` | Premium plans, your plan/expiry/renew, latest invoice |
 | 👤 PM or group 💎 | `/link` | Reply to a file for signed Watch Online and Download links valid for **5 hours**. Anyone with the link can use it until expiry; non-video files are download-only. Requires streaming enabled. |
 | 👤 PM 💎 | `/upload` · `/cancel_upload` | Reply to a file (**max 200 MB**) → 🟢 GoFile or 🔵 TmpFiles, with per-site limits and an automatic fallback if the chosen host fails (`plugins/tools.py`) |

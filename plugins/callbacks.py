@@ -290,6 +290,8 @@ async def cb_handler(client: Client, query: CallbackQuery):
                                 styled_button("▶️ Watch Online", url=watch),
                                 styled_button("⬇️ Fast Download", url=download)
                             ],
+                            *[row for row in getattr(query.message.reply_markup, 'inline_keyboard', [])
+                              if any(b.callback_data == 'send_all' for b in row)],
                             [styled_button("❌ Close", callback_data="close_data")]
                         ]
                     )

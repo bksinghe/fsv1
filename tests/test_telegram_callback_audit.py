@@ -28,8 +28,8 @@ class DeliveryCaptionTests(unittest.IsolatedAsyncioTestCase):
                   has_premium_or_grace=AsyncMock(return_value=True), IS_STREAM=False,
                   styled_button=Mock(), styled_keyboard=Mock(), PROTECT_CONTENT=True,
                   enums=SimpleNamespace(ParseMode=SimpleNamespace(HTML='html')),
-                  schedule_file_deletion=AsyncMock(), active_tasks={})
-        load('plugins/file_deliver.py', {'deliver_file', 'file_caption', 'track_expiry'}, ns)
+                  schedule_file_deletion=AsyncMock(), active_tasks={}, batch_offers={}, lookup_offer=AsyncMock(return_value=None))
+        load('plugins/file_deliver.py', {'deliver_file', 'file_caption', 'track_expiry', 'send_delivery'}, ns)
         for name, expected in [(' Film <HD> & Co.mkv ', '<b>Film &lt;HD&gt; &amp; Co.mkv</b>'), (None, '')]:
             with self.subTest(name=name):
                 ns['get_file_details'].return_value = {'file_name': name, 'caption': 'Original channel caption'}
@@ -45,17 +45,18 @@ class GroupDeliveryTests(unittest.IsolatedAsyncioTestCase):
     async def test_group_result_delivers_only_to_its_group_and_topic(self):
         ns = dict(Client=object, enums=SimpleNamespace(ChatType=SimpleNamespace(GROUP='group', SUPERGROUP='supergroup'),
                   ParseMode=SimpleNamespace(HTML='html')), html=html, PROTECT_CONTENT=True,
+                  lookup_offer=AsyncMock(return_value=None),
                   db=SimpleNamespace(get_settings=AsyncMock(return_value={})),
                   search_expiry=SimpleNamespace(touch=AsyncMock(return_value=True)), track_expiry=Mock(),
                   has_premium_or_grace=AsyncMock(return_value=True), get_file_details=AsyncMock(return_value={'file_name':'A&B'}))
-        load('plugins/file_deliver.py', {'file_button_handler', 'file_caption'}, ns)
+        load('plugins/file_deliver.py', {'file_button_handler', 'file_caption', 'send_delivery'}, ns)
         client = SimpleNamespace(send_cached_media=AsyncMock())
         msg = SimpleNamespace(id=10, chat=SimpleNamespace(id=-100, type='supergroup'), message_thread_id=3,
                               reply_markup=SimpleNamespace(inline_keyboard=[[SimpleNamespace(callback_data='file#abc')]]))
         query = SimpleNamespace(message=msg, data='file#abc', from_user=SimpleNamespace(id=42), answer=AsyncMock())
         await ns['file_button_handler'](client, query)
         client.send_cached_media.assert_awaited_once_with(chat_id=-100, message_thread_id=3,
-            file_id='abc', caption='<b>A&amp;B</b>', parse_mode='html', protect_content=True)
+            file_id='abc', caption='<b>A&amp;B</b>', parse_mode='html', protect_content=True, reply_markup=None)
         ns['track_expiry'].assert_called_once_with(client, client.send_cached_media.return_value, -100, 'abc', group=True)
         for premium, active, mode in [(False, True, True), (True, False, True), (True, True, False)]:
             ns['db'].get_settings.return_value = {'group_mode': mode}
