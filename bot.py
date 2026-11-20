@@ -27,6 +27,7 @@ import pytz
 from pyrogram import Client, filters
 from pyrogram.handlers import MessageHandler
 from telegram_replies import ReplyWaiters
+from telegram_commands import sync_command_menus
 from aiohttp import web
 
 from web import web_app
@@ -196,6 +197,8 @@ class Bot(Client):
         # ⭐ PREMIUM AUTO-REMOVE (NEW)
         asyncio.create_task(check_and_remove_expired_premium(self))
         logger.info("✅ Premium auto-remove task started")
+
+        await sync_command_menus(self, ADMINS)
 
         # ---- admin notify ----
         for admin in ADMINS:

@@ -59,9 +59,11 @@ duration, progress cannot be saved. Removing an entry does not delete the media.
 
 The help menu (`/start` → 👨‍🚒 Help) is the **only** place commands are documented, and it is generated from two constants — `USER_COMMAND_TXT` and `ADMIN_COMMAND_TXT` in `Script.py`. `tests/test_commands.py` parses `plugins/` with `ast` and fails if a listed command has no `filters.command(...)` handler, if a `/cmd` written inside any reply is dead, if a block grows past Telegram's 1024-character caption limit, or if a removed feature ever comes back. **Commands that do not exist are no longer advertised** (`/index`, `/premium`, `/broadcast`, `/stats`, `/restart`, `/go`, `/trans`, `/uptime`, `/health`, `/softban`, `/tempban` were all dead entries and were removed).
 
+The bot registers the Telegram slash menu automatically on startup; no BotFather `/setcommands` is required. Private chats, group members and group admins see their own menus. Bot admins listed in `ADMINS` get management commands in their own PM (start a chat with the bot first).
+
 | Where | Command | What it does |
 |---|---|---|
-| 👤 PM + groups | `/start` | Welcome card with the 👨‍🚒 Help button |
+| 👤 PM | `/start` | Welcome card with the 👨‍🚒 Help button |
 | 👤 PM + groups | `/id` | User / chat / sticker ID (reply to inspect someone else) |
 | 👤 PM | _(plain text)_ | Search — **PM search is 💎 premium only**, group search is free. Group admins can use `/group_mode off` for clickable file links that deliver in PM, `/group_mode on` for buttons that deliver in the group/topic (default), or `/group_mode` to check; PM search delivers in PM. Requesting a file retains the premium/admin check. |
 | 👤 PM | `/plan` · `/myplan` · `/invoice` | Premium plans, your plan/expiry/renew, latest invoice |
