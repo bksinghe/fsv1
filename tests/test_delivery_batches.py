@@ -26,14 +26,32 @@ class BatchTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_only_grouped_files_offer_and_select_remaining_in_episode_order(self):
         offer = await self.ns['lookup_offer'](7, 'seed')
-        self.assertEqual(offer.label, '⚡Send All Episode | 3')
+        self.assertEqual(offer.label, '⚡Send All 3 Episode')
         self.assertEqual([d['_id'] for d in await self.ns['remaining_files'](offer)], ['one','two'])
         self.group['kind'] = 'qualities'
-        self.assertEqual((await self.ns['lookup_offer'](7, 'seed')).label, '♻️Send All Quality | 3')
+        self.assertEqual((await self.ns['lookup_offer'](7, 'seed')).label, '♻️Send All 3 Quality')
         self.group['members'] = ['seed']
         self.assertIsNone(await self.ns['lookup_offer'](7, 'seed'))
         self.store.by_members.return_value = []
         self.assertIsNone(await self.ns['lookup_offer'](7, 'seed'))
+
+    async def test_stream_links_replace_batch_button_only_after_successful_edit(self):
+        msg = NS(id=4, chat=NS(id=7), reply_markup=NS(inline_keyboard=[[NS(callback_data='send_all')]]))
+        ns = dict(Client=object, temp=NS(FILES={(7,4):'seed'}), is_premium=AsyncMock(return_value=True),
+                  BIN_CHANNEL=-100, URL='https://example.org/', sign_params=lambda *a:'signed', USER_LINK_TTL=3600,
+                  styled_keyboard=lambda rows:rows, styled_button=lambda text, **kw:kw,
+                  safe_edit_markup=AsyncMock(), safe_answer_query=AsyncMock(), batch_offers={(7,4):'offer'})
+        load('plugins/file_deliver.py', {'discard_batch_offer'}, ns)
+        load('plugins/callbacks.py', {'cb_handler'}, ns)
+        client = NS(send_cached_media=AsyncMock(return_value=NS(id=12)))
+        query = NS(data='stream#seed', from_user=NS(id=7), message=msg)
+        for success in (False, True):
+            ns['safe_edit_markup'].return_value = success
+            await ns['cb_handler'](client, query)
+            self.assertEqual((7,4) in ns['batch_offers'], not success)
+            self.assertEqual(ns['safe_edit_markup'].await_args.args[1], [
+                [{'url':'https://example.org/watch/12?signed'}, {'url':'https://example.org/download/12?signed'}],
+                [{'callback_data':'close_data'}]])
 
     async def test_only_owner_can_claim_once_even_on_concurrent_taps(self):
         msg = NS(chat=NS(id=-100,type='sg'),id=12,message_thread_id=4)

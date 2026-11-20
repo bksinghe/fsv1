@@ -18,6 +18,7 @@ from pyrogram.errors import (
 
 from info import ADMINS, PICS, URL, BIN_CHANNEL
 from Script import script
+from plugins.file_deliver import discard_batch_offer
 
 from utils import is_premium, temp  # ✅ REMOVED: get_wish
 from stream_security import sign_params, USER_LINK_TTL
@@ -290,14 +291,13 @@ async def cb_handler(client: Client, query: CallbackQuery):
                                 styled_button("▶️ Watch Online", url=watch),
                                 styled_button("⬇️ Fast Download", url=download)
                             ],
-                            *[row for row in getattr(query.message.reply_markup, 'inline_keyboard', [])
-                              if any(b.callback_data == 'send_all' for b in row)],
                             [styled_button("❌ Close", callback_data="close_data")]
                         ]
                     )
                 )
                 
                 if success:
+                    discard_batch_offer(uid, query.message.id)
                     await safe_answer_query(query, "✅ Links ready")
                 else:
                     await safe_answer_query(query, "⚠️ Failed to update message", show_alert=True)

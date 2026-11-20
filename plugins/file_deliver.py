@@ -237,6 +237,10 @@ batch_offers = {}
 batch_jobs = {}
 
 
+def discard_batch_offer(chat_id, message_id):
+    batch_offers.pop((chat_id, message_id), None)
+
+
 @Client.on_message(filters.command("sendall") & filters.user(ADMINS))
 async def send_all_setting(client, message):
     args = message.command[1:]
@@ -263,8 +267,9 @@ async def lookup_offer(owner, fid):
             g = groups[0]
             count = len(set(g['members']) - {fid})
             if count:
-                action = '⚡Send All Episode' if g.get('kind') == KIND_EPISODES else '♻️Send All Quality'
-                return BatchOffer(owner, fid, g['_id'], f"{action} | {count}")
+                label = (f'⚡Send All {count} Episode' if g.get('kind') == KIND_EPISODES
+                         else f'♻️Send All {count} Quality')
+                return BatchOffer(owner, fid, g['_id'], label)
     except Exception:
         logging.exception("Optional delivery group lookup failed")
     return None
