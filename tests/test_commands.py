@@ -40,7 +40,7 @@ ALLOWED_REFERENCES = {
 EXPECTED_USER_COMMANDS = {
     "start",
     "plan", "myplan", "invoice",
-    "upload", "cancel_upload",
+    "upload", "cancel_upload", "link",
     "id",
 }
 

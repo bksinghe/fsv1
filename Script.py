@@ -42,8 +42,8 @@ class script(object):
         "• PM – 💎 premium only\n\n"
 
         "📩 <b>File Delivery</b> <i>(💎 premium)</i>\n"
-        "• Tap a file button in a group → the bot\n"
-        "  sends it here with ▶️ Watch / Download\n\n"
+        "• Tap a search result to receive the file in that chat\n"
+        "• /link – Reply to a file for 5-hour watch and download links\n\n"
 
         "💎 <b>Premium</b>\n"
         "• /plan – Plans &amp; pricing\n"

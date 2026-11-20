@@ -20,6 +20,7 @@ _SECRET = hashlib.sha256(
     b"fsv1-stream-link:" + (environ.get("STREAM_SECRET") or BOT_TOKEN).encode()
 ).digest()
 
+REPLY_LINK_TTL = 5 * 3600          # /link replies only
 USER_LINK_TTL = 24 * 3600          # links obtained from the Telegram bot (1 day)
 STREAM_TTL = 6 * 3600              # "Play / Stream" links from web search (6 hours)
 MAX_LINK_TTL = 365 * 24 * 3600     # upper limit for any custom link
