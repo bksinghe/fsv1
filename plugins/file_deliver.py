@@ -1,10 +1,9 @@
 import asyncio
-import time
 import logging
 
 from pyrogram import Client, filters, enums
-from telegram_buttons import styled_button
-from pyrogram.types import InlineKeyboardMarkup, CallbackQuery
+from telegram_buttons import styled_button, styled_keyboard
+from pyrogram.types import CallbackQuery
 
 from info import IS_STREAM, PM_FILE_DELETE_TIME, PROTECT_CONTENT
 from database.ia_filterdb import get_file_details
@@ -148,7 +147,8 @@ async def start_file_delivery(client: Client, message):
 
     # Cleanup callback
     def cleanup_task(t):
-        active_tasks.pop(user_task_key, None)
+        if active_tasks.get(user_task_key) is t:
+            active_tasks.pop(user_task_key, None)
     
     task.add_done_callback(cleanup_task)
 
@@ -165,27 +165,17 @@ async def start_file_delivery(client: Client, message):
 # ======================================================
 async def schedule_file_deletion(client, sent_msg, uid, file_id):
     """Schedule auto-deletion of file message"""
-    msg_id = sent_msg.id
+    message_key = (uid, sent_msg.id)
     
-    # Check if temp.FILES exists
-    if not hasattr(temp, 'FILES'):
-        temp.FILES = {}
-    
-    # Track in temp storage
-    temp.FILES[msg_id] = {
-        "owner": uid,
-        "file_id": file_id,
-        "expire": int(time.time()) + PM_FILE_DELETE_TIME
-    }
-    
+    temp.FILES[message_key] = file_id
+
     try:
         # Wait for expiry
         await asyncio.sleep(PM_FILE_DELETE_TIME)
         
         # Remove from tracking
-        data = temp.FILES.pop(msg_id, None)
-        if not data:
-            return
+        if temp.FILES.pop(message_key, None) is None:
+            return  # Closed manually: do not send a resend prompt.
         
         # Delete the file message
         try:
@@ -198,7 +188,7 @@ async def schedule_file_deletion(client, sent_msg, uid, file_id):
         resend = await client.send_message(
             uid,
             "⌛ <b>File expired</b>",
-            reply_markup=InlineKeyboardMarkup([
+            reply_markup=styled_keyboard([
                 [styled_button(
                     "🔁 Resend File",
                     callback_data=f"resend#{file_id}"
@@ -216,7 +206,7 @@ async def schedule_file_deletion(client, sent_msg, uid, file_id):
             
     except asyncio.CancelledError:
         # Task cancelled, cleanup
-        temp.FILES.pop(msg_id, None)
+        temp.FILES.pop(message_key, None)
         raise
 
 
@@ -269,7 +259,7 @@ async def deliver_file(client, uid, grp_id, file_id):
             styled_button("❌ Close", callback_data="close_data")
         ])
 
-        markup = InlineKeyboardMarkup(buttons)
+        markup = styled_keyboard(buttons)
 
         # Send file
         sent = await client.send_cached_media(
@@ -286,7 +276,7 @@ async def deliver_file(client, uid, grp_id, file_id):
         )
         
         # Track deletion task
-        task_key = f"delete_{sent.id}"
+        task_key = (uid, sent.id)
         active_tasks[task_key] = deletion_task
         
         # Cleanup callback

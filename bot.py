@@ -161,7 +161,7 @@ class Bot(Client):
                 pass
             os.remove("restart.txt")
 
-        me = await self.get_me()
+        me = self.me
         temp.ME = me.id
         temp.U_NAME = me.username
         temp.B_NAME = me.first_name
@@ -238,7 +238,6 @@ class Bot(Client):
 # 🚀 ENTRYPOINT
 # ==========================
 async def main():
-    uvloop.install()
     bot = Bot()
     try:
         await bot.start()
@@ -248,4 +247,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    uvloop.run(main())

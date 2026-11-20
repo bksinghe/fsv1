@@ -23,7 +23,7 @@ class DependencySmokeTests(unittest.TestCase):
         self.assertTrue(callable(Client))
         self.assertIsNotNone(aiohttp.web if hasattr(aiohttp, 'web') else aiohttp.ClientSession)
         self.assertTrue(callable(pymongo.MongoClient))
-        self.assertTrue(callable(uvloop.install))
+        self.assertTrue(callable(uvloop.run))
         self.assertEqual(str(pytz.timezone('Asia/Kolkata')), 'Asia/Kolkata')
         self.assertEqual(aes._crypto_backend.__name__.lower(), 'tgcrypto')
         data, key, iv = bytes(16), bytes(32), bytes(32)

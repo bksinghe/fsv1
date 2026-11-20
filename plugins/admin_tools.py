@@ -4,8 +4,8 @@ import time
 import html
 from datetime import datetime
 from pyrogram import Client, filters, enums
-from telegram_buttons import styled_button
-from pyrogram.types import InlineKeyboardMarkup, CallbackQuery
+from telegram_buttons import styled_button, styled_keyboard
+from pyrogram.types import CallbackQuery
 from pyrogram.errors import MessageNotModified, MessageIdInvalid, BadRequest
 
 from info import ADMINS, LOG_CHANNEL
@@ -177,7 +177,7 @@ async def delete_all_cmd(bot, message):
             f"📦 Total Files: <code>{file_count}</code>\n\n"
             f"❗ This will permanently delete ALL {file_count} files!\n\n"
             "Reply with 'CONFIRM DELETE ALL' to proceed.",
-            reply_markup=InlineKeyboardMarkup([
+            reply_markup=styled_keyboard([
                 [styled_button("❌ Cancel", callback_data="deleteall_cancel")]
             ])
         )
@@ -267,7 +267,5 @@ async def close_callback(_, query: CallbackQuery):
     # another menu must not cancel an unrelated file or delete its replied-to message.
     uid = query.from_user.id
     if query.message.chat.id == uid:
-        entry = temp.FILES.get(query.message.id)
-        if entry and entry.get("owner") == uid:
-            temp.FILES.pop(query.message.id, None)
+        temp.FILES.pop((uid, query.message.id), None)
     await query.message.delete()

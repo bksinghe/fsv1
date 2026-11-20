@@ -3,9 +3,8 @@ import random
 import asyncio
 
 from pyrogram import Client, enums, filters
-from telegram_buttons import styled_button
+from telegram_buttons import styled_button, styled_keyboard
 from pyrogram.types import (
-    InlineKeyboardMarkup,
     CallbackQuery,
     InputMediaPhoto
 )
@@ -159,11 +158,11 @@ def help_buttons(is_admin: bool = False):
             styled_button("🛡️ Admin Commands", callback_data="admin_cmds")
         )
     rows.append([styled_button("❌ Close", callback_data="close_data")])
-    return InlineKeyboardMarkup(rows)
+    return styled_keyboard(rows)
 
 
 def back_buttons():
-    return InlineKeyboardMarkup(
+    return styled_keyboard(
         [
             [styled_button("🔙 Back", callback_data="help")],
             [styled_button("❌ Close", callback_data="close_data")],
@@ -247,13 +246,8 @@ async def cb_handler(client: Client, query: CallbackQuery):
                 return
 
             # Check ownership
-            owned = False
-            for v in temp.FILES.values():
-                if v.get("owner") == uid and v.get("file_id") == file_id:
-                    owned = True
-                    break
-
-            if not owned:
+            delivery = temp.FILES.get((uid, query.message.id))
+            if query.message.chat.id != uid or delivery != file_id:
                 await safe_answer_query(
                     query,
                     "❌ This file is not for you",
@@ -290,7 +284,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
 
                 success = await safe_edit_markup(
                     query.message,
-                    InlineKeyboardMarkup(
+                    styled_keyboard(
                         [
                             [
                                 styled_button("▶️ Watch Online", url=watch),

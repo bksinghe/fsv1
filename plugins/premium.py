@@ -6,8 +6,8 @@ from io import BytesIO
 from datetime import datetime, timedelta
 
 from pyrogram import Client, filters, enums
-from telegram_buttons import styled_button
-from pyrogram.types import InlineKeyboardMarkup, CallbackQuery
+from telegram_buttons import styled_button, styled_keyboard
+from pyrogram.types import CallbackQuery
 
 from info import ADMINS, IS_PREMIUM, PRE_DAY_AMOUNT, UPI_ID, UPI_NAME, RECEIPT_SEND_USERNAME
 from database.users_chats_db import db
@@ -200,13 +200,13 @@ async def notify_user(client, uid, text):
 # ======================================================
 
 def buy_btn():
-    return InlineKeyboardMarkup([[
+    return styled_keyboard([[
         styled_button("💰 Buy / Renew Premium", callback_data="buy_premium")
     ]])
 
 
 def cancel_btn():
-    return InlineKeyboardMarkup([[
+    return styled_keyboard([[
         styled_button("❌ Cancel", callback_data="cancel_payment")
     ]])
 
@@ -222,18 +222,18 @@ def duration_buttons(num):
 
     rows.append([styled_button("🔄 Re-enter Number", callback_data="buy_premium")])
     rows.append([styled_button("❌ Cancel", callback_data="cancel_payment")])
-    return InlineKeyboardMarkup(rows)
+    return styled_keyboard(rows)
 
 
 def myplan_buttons():
-    return InlineKeyboardMarkup([[
+    return styled_keyboard([[
         styled_button("🔄 Renew", callback_data="buy_premium"),
         styled_button("🧾 Invoices", callback_data="show_invoices")
     ]])
 
 
 def back_btn():
-    return InlineKeyboardMarkup([[
+    return styled_keyboard([[
         styled_button("🔙 Back", callback_data="back_to_myplan")
     ]])
 
@@ -344,7 +344,7 @@ async def invoice_cmd(client, message):
 📅 **Activated:** {inv.get('activated')}
 ⏰ **Expires:** {inv.get('expire')}
 """,
-        reply_markup=InlineKeyboardMarkup([[
+        reply_markup=styled_keyboard([[
             styled_button("📜 View All Invoices", callback_data="show_invoices")
         ]])
     )
@@ -671,7 +671,7 @@ async def _duration_flow(client, query, uid, plan_text, amount, days):
     except Exception as e:
         return await _fail(client, query.message, uid, f"❌ Error: {str(e)}")
 
-    buttons = InlineKeyboardMarkup([[
+    buttons = styled_keyboard([[
         styled_button("✅ Approve", callback_data=f"pay_ok#{uid}#{plan_text}#{amount}"),
         styled_button("❌ Reject", callback_data=f"pay_no#{uid}")
     ]])

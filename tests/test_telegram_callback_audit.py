@@ -22,6 +22,34 @@ def load(path, names, ns):
     return ns
 
 
+class DeliveryExpiryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_closing_one_pm_does_not_disable_expiry_in_another(self):
+        state = SimpleNamespace(FILES={})
+        ready = asyncio.Event()
+        async def sleep(delay):
+            if delay == 10:
+                await ready.wait()
+        ns = dict(temp=state, asyncio=SimpleNamespace(sleep=sleep, CancelledError=asyncio.CancelledError),
+                  PM_FILE_DELETE_TIME=10, RESEND_EXPIRE_TIME=1, safe_answer=AsyncMock(),
+                  styled_keyboard=lambda rows: rows, styled_button=lambda *a, **kw: kw)
+        load('plugins/file_deliver.py', {'schedule_file_deletion'}, ns)
+        load('plugins/admin_tools.py', {'close_callback'}, ns)
+        client = SimpleNamespace(send_message=AsyncMock(return_value=SimpleNamespace(delete=AsyncMock())))
+        messages = [SimpleNamespace(id=9, chat=SimpleNamespace(id=uid), delete=AsyncMock()) for uid in (1, 2)]
+        tasks = [asyncio.create_task(ns['schedule_file_deletion'](client, msg, msg.chat.id, 'file')) for msg in messages]
+        await asyncio.sleep(0)
+        self.assertEqual(set(state.FILES), {(1, 9), (2, 9)})
+        await ns['close_callback'](client, SimpleNamespace(message=messages[0], from_user=messages[0].chat))
+        self.assertEqual(set(state.FILES), {(2, 9)})
+        ready.set()
+        await asyncio.gather(*tasks)
+        self.assertFalse(state.FILES)
+        for msg in messages:
+            msg.delete.assert_awaited_once()
+        client.send_message.assert_awaited_once()
+        self.assertEqual(client.send_message.await_args.args[0], 2)
+
+
 class CallbackRoutingTests(unittest.TestCase):
     def test_catchall_never_intercepts_other_callbacks(self):
         source = (ROOT / 'plugins/callbacks.py').read_text()
@@ -57,7 +85,7 @@ class DeleteAllTests(unittest.IsolatedAsyncioTestCase):
                   ListenerTimeout=type('ListenerTimeout',(Exception,),{}),
                   db_count_documents=lambda:10, delete_all_files=AsyncMock(return_value=10),
                   fmt=lambda x:'now', filters=SimpleNamespace(text='text'),
-                  InlineKeyboardMarkup=lambda x:x, styled_button=lambda *a,**kw:kw)
+                  styled_keyboard=lambda x:x, styled_button=lambda *a,**kw:kw)
         load('plugins/admin_tools.py', {'delete_all_cmd','_wait_delete_all','cancel_delete_all'}, ns)
         msg = SimpleNamespace(id=55,chat=SimpleNamespace(id=9),edit=AsyncMock())
         user_msg = SimpleNamespace(chat=SimpleNamespace(id=9),from_user=SimpleNamespace(id=7),
@@ -86,7 +114,7 @@ class DeleteAllTests(unittest.IsolatedAsyncioTestCase):
                   ListenerTimeout=type('ListenerTimeout',(Exception,),{}),
                   db_count_documents=lambda:10, delete_all_files=AsyncMock(return_value=10),
                   fmt=lambda x:'now', filters=SimpleNamespace(text='text'),
-                  InlineKeyboardMarkup=lambda x:x, styled_button=lambda *a,**kw:kw)
+                  styled_keyboard=lambda x:x, styled_button=lambda *a,**kw:kw)
         load('plugins/admin_tools.py', {'delete_all_cmd','_wait_delete_all'}, ns)
         response=SimpleNamespace(text='CONFIRM DELETE ALL',delete=AsyncMock())
         bot=SimpleNamespace(listen=AsyncMock(return_value=response),send_message=AsyncMock())

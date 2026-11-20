@@ -282,6 +282,8 @@ on Linux. Use a fresh virtual environment (do not co-install Pyrogram or Pyrofor
 The bot creates a fresh `Auto_Filter_Bot_Kurigram.session` with the existing bot token;
 stop the old instance before redeploying. MongoDB data and callback IDs are unchanged.
 Button colors appear on newly sent or updated keyboards in compatible Telegram clients.
+Use `styled_keyboard` for every outgoing Telegram keyboard: it keeps single-button
+styles and gives paired actions distinct colors without changing their callbacks or URLs.
 Pillow is required for QR images and full thumbnail validation. Unused
 `aiofiles`, `requests`, and `shortzy` were removed. Transitive dependencies are not
 locked, so rebuilds can still change them; review and test dependency updates regularly.

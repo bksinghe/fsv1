@@ -7,8 +7,8 @@ from time import time
 from collections import defaultdict
 
 from pyrogram import Client, filters, enums
-from telegram_buttons import styled_button
-from pyrogram.types import LinkPreviewOptions, InlineKeyboardMarkup
+from telegram_buttons import styled_button, styled_keyboard
+from pyrogram.types import LinkPreviewOptions
 
 from info import ADMINS
 from database.users_chats_db import db
@@ -398,7 +398,7 @@ def build_nav(search, offset, next_offset, results_per_page, source_chat_id, own
         )
         nav.append(styled_button("Next ▶️", callback_data=f"page#{callback_key}"))
 
-    return InlineKeyboardMarkup([nav]) if nav else None
+    return styled_keyboard([nav]) if nav else None
 
 
 async def _send_new(client, chat_id, reply_msg, text, fallback_prefix="", **kwargs):

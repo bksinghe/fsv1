@@ -4,8 +4,8 @@ import aiohttp
 import asyncio
 import time
 from pyrogram import Client, filters
-from telegram_buttons import styled_button
-from pyrogram.types import LinkPreviewOptions, InlineKeyboardMarkup, CallbackQuery
+from telegram_buttons import styled_button, styled_keyboard
+from pyrogram.types import LinkPreviewOptions, CallbackQuery
 from info import ADMINS
 from utils import is_premium, get_size
 
@@ -81,7 +81,7 @@ def site_buttons(uid):
     buttons.append([styled_button("🚀 Upload", callback_data="do_upload")])
     buttons.append([styled_button("❌ Cancel", callback_data="cancel")])
 
-    return InlineKeyboardMarkup(buttons)
+    return styled_keyboard(buttons)
 
 # Progress Tracker
 class Progress:
@@ -329,7 +329,7 @@ async def start_upload(bot, msg, uid):
             )
 
         # Success with button
-        btn = InlineKeyboardMarkup([[
+        btn = styled_keyboard([[
             styled_button("🔗 Open Link", url=link)
         ]])
 

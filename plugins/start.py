@@ -1,7 +1,7 @@
 import random
 from pyrogram import Client, filters, enums
-from telegram_buttons import styled_button
-from pyrogram.types import LinkPreviewOptions, InlineKeyboardMarkup
+from telegram_buttons import styled_button, styled_keyboard
+from pyrogram.types import LinkPreviewOptions
 from info import PICS
 from Script import script
 
@@ -10,7 +10,7 @@ from Script import script
 # 🔘 START BUTTONS (MINIMAL)
 # ======================================================
 def start_buttons():
-    return InlineKeyboardMarkup(
+    return styled_keyboard(
         [
             [
                 styled_button("👨‍🚒 Help", callback_data="help")
@@ -31,7 +31,7 @@ async def start_cmd(client, message):
     """Handle /start command for normal users"""
     caption = script.START_TXT.format(
         message.from_user.mention,
-        (await client.get_me()).mention
+        client.me.mention
     )
     try:
         await message.reply_photo(

@@ -26,6 +26,29 @@ class ButtonTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(raw.style.bg_success)
         self.assertEqual(raw.type.url, url)
 
+    async def test_paired_rows_have_distinct_wire_colors_and_unchanged_targets(self):
+        from telegram_buttons import styled_button, styled_keyboard
+
+        for targets, colors in [
+            (('page#prev', 'page#next'), ('primary', 'success')),
+            (('user_cmds', 'admin_cmds'), ('primary', 'success')),
+            (('https://example.org/watch', 'https://example.org/download'), ('primary', 'success')),
+            (('buy_premium', 'show_invoices'), ('success', 'primary')),
+            (('pay_ok#1', 'pay_no#1'), ('success', 'danger')),
+        ]:
+            with self.subTest(targets=targets):
+                row = [styled_button(t, **({'url': t} if t.startswith('https:') else {'callback_data': t}))
+                       for t in targets]
+                # Reusing a button in a single-button row must retain its original style.
+                original = [b.style for b in row]
+                markup = styled_keyboard([row, [row[1]]])
+                raw = await markup.write(None)
+                self.assertEqual([b.style for b in row], original)
+                self.assertEqual(markup.inline_keyboard[1][0].style, original[1])
+                for b, target, color in zip(raw.rows[0].buttons, targets, colors, strict=True):
+                    self.assertTrue(getattr(b.style, 'bg_' + color))
+                    self.assertEqual(b.type.url if target.startswith('https:') else b.type.data.decode(), target)
+
 
 class ReplyTests(unittest.IsolatedAsyncioTestCase):
     async def test_only_expected_sender_chat_and_media_match(self):

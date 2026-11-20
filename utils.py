@@ -5,8 +5,7 @@ import time
 from datetime import datetime, timedelta
 
 from pyrogram.errors import FloodWait
-from telegram_buttons import styled_button
-from pyrogram.types import InlineKeyboardMarkup
+from telegram_buttons import styled_button, styled_keyboard
 
 from info import ADMINS, IS_PREMIUM
 from database.users_chats_db import db
@@ -24,7 +23,7 @@ class temp(object):
     B_NAME = None
 
     SETTINGS = {}
-    FILES = {}          # msg_id -> delivery data
+    FILES = {}          # (recipient ID, message ID) -> file ID; removed on close or expiry
     PREMIUM = {}        # RAM premium cache
     KEYWORDS = {}       # learned keywords (RAM)
     BANNED_USERS = set()  # banned users set
@@ -300,7 +299,7 @@ def suggest_query(query: str):
 async def cleanup_files_memory():
     """
     Koyeb optimized memory cleanup
-    Removes expired files and old premium cache
+    Trims premium and keyword caches. File expiry is owned by the delivery task.
     """
     if temp._cleanup_running:
         print("[INFO] Cleanup task already running, skipping...")
@@ -311,15 +310,6 @@ async def cleanup_files_memory():
     
     while True:
         try:
-            now = int(time.time())
-            
-            # Cleanup expired files
-            expired = [k for k, v in temp.FILES.items() if v.get("expire", 0) <= now]
-            if expired:
-                for k in expired:
-                    temp.FILES.pop(k, None)
-                print(f"[INFO] Cleaned {len(expired)} expired files from memory")
-            
             # Cleanup old premium cache (keep only 1000 most recent)
             if len(temp.PREMIUM) > 1000:
                 old_keys = list(temp.PREMIUM.keys())[:500]
@@ -371,7 +361,7 @@ def premium_buy_markup(close=False):
     rows = [[styled_button("💰 Buy / Renew Premium", callback_data="buy_premium")]]
     if close:
         rows.append([styled_button("❌ Close", callback_data="close_data")])
-    return InlineKeyboardMarkup(rows)
+    return styled_keyboard(rows)
 
 
 def log_error(context, error):
