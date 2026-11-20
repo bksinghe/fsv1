@@ -28,7 +28,7 @@ class DeliveryCaptionTests(unittest.IsolatedAsyncioTestCase):
                   has_premium_or_grace=AsyncMock(return_value=True), IS_STREAM=False,
                   styled_button=Mock(), styled_keyboard=Mock(), PROTECT_CONTENT=True,
                   enums=SimpleNamespace(ParseMode=SimpleNamespace(HTML='html')),
-                  schedule_file_deletion=AsyncMock(), active_tasks={}, batch_offers={}, lookup_offer=AsyncMock(return_value=None))
+                  schedule_file_deletion=AsyncMock(), temp=SimpleNamespace(FILES={}), active_tasks={}, batch_offers={}, lookup_offer=AsyncMock(return_value=None))
         load('plugins/file_deliver.py', {'deliver_file', 'file_caption', 'track_expiry', 'send_delivery'}, ns)
         for name, expected in [(' Film <HD> & Co.mkv ', '<b>Film &lt;HD&gt; &amp; Co.mkv</b>'), (None, '')]:
             with self.subTest(name=name):
@@ -45,6 +45,7 @@ class GroupDeliveryTests(unittest.IsolatedAsyncioTestCase):
     async def test_group_result_delivers_only_to_its_group_and_topic(self):
         ns = dict(Client=object, enums=SimpleNamespace(ChatType=SimpleNamespace(GROUP='group', SUPERGROUP='supergroup'),
                   ParseMode=SimpleNamespace(HTML='html')), html=html, PROTECT_CONTENT=True,
+                  IS_STREAM=True, styled_button=lambda text, **kw: kw["callback_data"], styled_keyboard=lambda rows: rows,
                   lookup_offer=AsyncMock(return_value=None),
                   db=SimpleNamespace(get_settings=AsyncMock(return_value={"group_mode": True})),
                   search_expiry=SimpleNamespace(touch=AsyncMock(return_value=True)), track_expiry=Mock(),
@@ -56,8 +57,8 @@ class GroupDeliveryTests(unittest.IsolatedAsyncioTestCase):
         query = SimpleNamespace(message=msg, data='file#abc', from_user=SimpleNamespace(id=42), answer=AsyncMock())
         await ns['file_button_handler'](client, query)
         client.send_cached_media.assert_awaited_once_with(chat_id=-100, message_thread_id=3,
-            file_id='abc', caption='<b>A&amp;B</b>', parse_mode='html', protect_content=True, reply_markup=None)
-        ns['track_expiry'].assert_called_once_with(client, client.send_cached_media.return_value, -100, 'abc', group=True)
+            file_id='abc', caption='<b>A&amp;B</b>', parse_mode='html', protect_content=True, reply_markup=[['stream#abc'], ['close_file']])
+        ns['track_expiry'].assert_called_once_with(client, client.send_cached_media.return_value, -100, 'abc', 42, group=True)
         for premium, active, mode in [(False, True, True), (True, False, True), (True, True, False)]:
             ns['db'].get_settings.return_value = {'group_mode': mode}
             client.send_cached_media.reset_mock()
@@ -69,13 +70,13 @@ class GroupDeliveryTests(unittest.IsolatedAsyncioTestCase):
 
 class DeliveryExpiryTests(unittest.IsolatedAsyncioTestCase):
     async def test_closing_one_pm_does_not_disable_expiry_in_another(self):
-        state = SimpleNamespace(FILES={})
+        state = SimpleNamespace(FILES={(uid,9):(uid,'file') for uid in (1,2)})
         ready = asyncio.Event()
         async def sleep(delay):
             if delay == 10:
                 await ready.wait()
         ns = dict(temp=state, asyncio=SimpleNamespace(sleep=sleep, CancelledError=asyncio.CancelledError),
-                  PM_FILE_DELETE_TIME=10, RESEND_EXPIRE_TIME=1, safe_answer=AsyncMock(),
+                  PM_FILE_DELETE_TIME=10, RESEND_EXPIRE_TIME=1, safe_answer=AsyncMock(), discard_batch_offer=Mock(),
                   styled_keyboard=lambda rows: rows, styled_button=lambda *a, **kw: kw)
         load('plugins/file_deliver.py', {'schedule_file_deletion'}, ns)
         load('plugins/admin_tools.py', {'close_callback'}, ns)

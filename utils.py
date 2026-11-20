@@ -22,7 +22,7 @@ class temp(object):
     U_NAME = None
     B_NAME = None
 
-    FILES = {}          # (recipient ID, message ID) -> file ID; removed on close or expiry
+    FILES = {}          # (chat ID, message ID) -> (requester ID, file ID); removed on close or expiry
     PREMIUM = {}        # RAM premium cache
     KEYWORDS = {}       # learned keywords (RAM)
 

@@ -15,7 +15,7 @@ from pyrogram.errors import (
     BadRequest
 )
 
-from info import ADMINS, PICS, URL, BIN_CHANNEL
+from info import ADMINS, PICS, URL, BIN_CHANNEL, IS_STREAM
 from Script import script
 from plugins.file_deliver import discard_batch_offer
 
@@ -231,8 +231,9 @@ async def cb_handler(client: Client, query: CallbackQuery):
                 return
 
             # Check ownership
-            delivery = temp.FILES.get((uid, query.message.id))
-            if query.message.chat.id != uid or delivery != file_id:
+            chat_id = query.message.chat.id
+            delivery = temp.FILES.get((chat_id, query.message.id))
+            if not IS_STREAM or delivery != (uid, file_id):
                 await safe_answer_query(
                     query,
                     "❌ This file is not for you",
@@ -275,13 +276,13 @@ async def cb_handler(client: Client, query: CallbackQuery):
                                 styled_button("▶️ Watch Online", url=watch),
                                 styled_button("⬇️ Fast Download", url=download)
                             ],
-                            [styled_button("❌ Close", callback_data="close_data")]
+                            [styled_button("❌ Close", callback_data="close_file" if chat_id != uid else "close_data")]
                         ]
                     )
                 )
                 
                 if success:
-                    discard_batch_offer(uid, query.message.id)
+                    discard_batch_offer(chat_id, query.message.id)
                     await safe_answer_query(query, "✅ Links ready")
                 else:
                     await safe_answer_query(query, "⚠️ Failed to update message", show_alert=True)

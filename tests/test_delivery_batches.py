@@ -37,7 +37,7 @@ class BatchTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_stream_links_replace_batch_button_only_after_successful_edit(self):
         msg = NS(id=4, chat=NS(id=7), reply_markup=NS(inline_keyboard=[[NS(callback_data='send_all')]]))
-        ns = dict(Client=object, temp=NS(FILES={(7,4):'seed'}), is_premium=AsyncMock(return_value=True),
+        ns = dict(Client=object, IS_STREAM=True, temp=NS(FILES={(7,4):(7,'seed')}), is_premium=AsyncMock(return_value=True),
                   BIN_CHANNEL=-100, URL='https://example.org/', sign_params=lambda *a:'signed', USER_LINK_TTL=3600,
                   styled_keyboard=lambda rows:rows, styled_button=lambda text, **kw:kw,
                   safe_edit_markup=AsyncMock(), safe_answer_query=AsyncMock(), batch_offers={(7,4):'offer'})
@@ -52,6 +52,38 @@ class BatchTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(ns['safe_edit_markup'].await_args.args[1], [
                 [{'url':'https://example.org/watch/12?signed'}, {'url':'https://example.org/download/12?signed'}],
                 [{'callback_data':'close_data'}]])
+
+    async def test_group_stream_and_close_are_scoped_to_message_and_requester(self):
+        chat_id, owner = -100, 7
+        key = (chat_id, 4)
+        msg = NS(id=4, chat=NS(id=chat_id), delete=AsyncMock(),
+                 reply_markup=NS(inline_keyboard=[[NS(callback_data='close_file')]]))
+        ns = dict(Client=object, IS_STREAM=True, temp=NS(FILES={key:(owner,'seed')}),
+                  is_premium=AsyncMock(return_value=True), BIN_CHANNEL=-1, URL='https://example.org/',
+                  sign_params=lambda *a:'sig', USER_LINK_TTL=3600, styled_keyboard=lambda rows:rows,
+                  styled_button=lambda text, **kw:kw, safe_edit_markup=AsyncMock(return_value=True),
+                  safe_answer_query=AsyncMock(), safe_answer=AsyncMock(), batch_offers={key:'offer'})
+        load('plugins/file_deliver.py', {'discard_batch_offer'}, ns)
+        load('plugins/callbacks.py', {'cb_handler'}, ns)
+        load('plugins/admin_tools.py', {'close_callback'}, ns)
+        client = NS(send_cached_media=AsyncMock(return_value=NS(id=12)))
+        q = NS(message=msg, from_user=NS(id=8), data='stream#seed')
+        await ns['cb_handler'](client, q)
+        client.send_cached_media.assert_not_awaited()
+        for action in ('close_file', 'close_data'):
+            q.data = action
+            await ns['close_callback'](client, q)
+        msg.delete.assert_not_awaited()
+        q.from_user.id, q.data = owner, 'stream#seed'
+        await ns['cb_handler'](client, q)
+        self.assertNotIn(key, ns['batch_offers'])
+        self.assertEqual(ns['safe_edit_markup'].await_args.args, (msg, [
+            [{'url':'https://example.org/watch/12?sig'}, {'url':'https://example.org/download/12?sig'}],
+            [{'callback_data':'close_file'}]]))
+        q.data = 'close_file'
+        await ns['close_callback'](client, q)
+        msg.delete.assert_awaited_once()
+        self.assertFalse(ns['temp'].FILES)
 
     async def test_only_owner_can_claim_once_even_on_concurrent_taps(self):
         msg = NS(chat=NS(id=-100,type='sg'),id=12,message_thread_id=4)

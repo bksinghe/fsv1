@@ -18,6 +18,7 @@ from database.ia_filterdb import (
 from database.stats_db import snapshot
 from database.delete_archive import archive_and_delete, ArchiveDeleteError
 from utils import fmt, temp
+from plugins.file_deliver import discard_batch_offer
 
 
 # ======================================================
@@ -260,12 +261,20 @@ async def cancel_delete_all(_, query: CallbackQuery):
 # 🔐 CLOSE CALLBACK
 # ======================================================
 
-@Client.on_callback_query(filters.regex("^close_data$"))
+@Client.on_callback_query(filters.regex("^(?:close_data|close_file)$"))
 async def close_callback(_, query: CallbackQuery):
+    msg = query.message
+    key = (msg.chat.id, msg.id)
+    if msg.chat.id != query.from_user.id:
+        # Reject copied, stale or substituted callbacks on shared messages.
+        rows = getattr(msg.reply_markup, "inline_keyboard", ())
+        if not any(b.callback_data == query.data for row in rows for b in row):
+            return await safe_answer(query, "Button unavailable.", alert=True)
+        if query.data == "close_file":
+            delivery = temp.FILES.get(key)
+            if not delivery or delivery[0] != query.from_user.id:
+                return await safe_answer(query, "Only the original requester can close this file.", alert=True)
+    await msg.delete()
+    temp.FILES.pop(key, None)
+    discard_batch_offer(*key)
     await safe_answer(query, "✅ Closed")
-    # A file delivery is tracked by message ID in the recipient's PM.  Closing
-    # another menu must not cancel an unrelated file or delete its replied-to message.
-    uid = query.from_user.id
-    if query.message.chat.id == uid:
-        temp.FILES.pop((uid, query.message.id), None)
-    await query.message.delete()

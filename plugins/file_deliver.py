@@ -158,15 +158,12 @@ async def schedule_file_deletion(client, sent_msg, uid, file_id, *, group=False)
     """Schedule auto-deletion of file message"""
     message_key = (uid, sent_msg.id)
     
-    if not group:
-        temp.FILES[message_key] = file_id
-
     try:
         # Wait for expiry
         await asyncio.sleep(PM_FILE_DELETE_TIME)
         
         # Remove from tracking
-        if not group and temp.FILES.pop(message_key, None) is None:
+        if temp.FILES.pop(message_key, None) is None:
             return  # Closed manually: do not send a resend prompt.
         
         # Delete the file message
@@ -177,7 +174,7 @@ async def schedule_file_deletion(client, sent_msg, uid, file_id, *, group=False)
             pass
         
         if group:
-            return  # No private stream/resend controls in a shared chat.
+            return  # No public resend prompt in a shared chat.
 
         # Send resend button
         resend = await client.send_message(
@@ -213,8 +210,9 @@ def file_caption(file):
     return f"<b>{html.escape(name)}</b>" if name else ""
 
 
-def track_expiry(client, sent, chat_id, file_id, *, group=False):
+def track_expiry(client, sent, chat_id, file_id, owner, *, group=False):
     key = (chat_id, sent.id)
+    temp.FILES[key] = (owner, file_id)
     task = asyncio.create_task(schedule_file_deletion(client, sent, chat_id, file_id, group=group))
     active_tasks[key] = task
     def cleanup(_):
@@ -278,20 +276,19 @@ async def lookup_offer(owner, fid):
 async def send_delivery(client, chat, owner, fid, doc, *, group=False, topic=None, offer_batch=True):
     offer = await lookup_offer(owner, fid) if offer_batch else None
     rows = []
-    if not group and IS_STREAM:
+    if IS_STREAM:
         rows.append([styled_button("▶️ Watch / Download", callback_data=f"stream#{fid}")])
     if offer:
         rows.append([styled_button(offer.label, callback_data="send_all")])
-    if not group:
-        rows.append([styled_button("❌ Close", callback_data="close_data")])
+    rows.append([styled_button("❌ Close", callback_data="close_file" if group else "close_data")])
     sent = await client.send_cached_media(
         chat_id=chat, message_thread_id=topic, file_id=fid, caption=file_caption(doc),
         parse_mode=enums.ParseMode.HTML, protect_content=PROTECT_CONTENT,
-        reply_markup=styled_keyboard(rows) if rows else None,
+        reply_markup=styled_keyboard(rows),
     )
     if offer:
         batch_offers[(chat, sent.id)] = offer
-    track_expiry(client, sent, chat, fid, group=group)
+    track_expiry(client, sent, chat, fid, owner, group=group)
 
 
 async def remaining_files(offer):
