@@ -37,7 +37,7 @@ class Database:
     default_settings = {
         "pm_search": True,
         "group_search": True,
-        "group_mode": True,
+        "group_mode": False,
         "auto_delete": False,
         "anti_link": False,
     }
@@ -94,7 +94,7 @@ class Database:
 
     async def send_all_enabled(self) -> bool:
         doc = await asyncio.to_thread(self.bot_settings.find_one, {"_id": "send_all"})
-        return doc is None or doc.get("enabled") is True
+        return doc is not None and doc.get("enabled") is True
 
     async def set_send_all_enabled(self, enabled: bool):
         await asyncio.to_thread(self.bot_settings.update_one, {"_id": "send_all"},

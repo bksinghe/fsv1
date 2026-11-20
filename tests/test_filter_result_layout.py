@@ -17,7 +17,7 @@ def load():
     tree = ast.parse(SOURCE)
     names = {'build_results_text', 'build_nav', '_send_new', 'send_results'}
     nodes = [n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name in names]
-    ns = dict(db=SimpleNamespace(get_settings=AsyncMock(return_value={})), LinkPreviewOptions=SimpleNamespace, html=html, logging=logging, asyncio=asyncio, ceil=ceil,
+    ns = dict(ADMINS=[99], db=SimpleNamespace(get_settings=AsyncMock(return_value={})), LinkPreviewOptions=SimpleNamespace, html=html, logging=logging, asyncio=asyncio, ceil=ceil,
               enums=SimpleNamespace(ParseMode=SimpleNamespace(HTML='html')),
               temp=SimpleNamespace(U_NAME='ExampleBot'), get_size=lambda n: f'{n} MB',
               RESULTS_PER_PAGE_PM=12, RESULTS_PER_PAGE_GROUP=10,
@@ -57,6 +57,7 @@ class FilterResultLayoutTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(parser.links, ['https://t.me/ExampleBot?start=file_0_abc_1'])
 
     async def test_initial_reply_and_pagination(self):
+        self.ns['db'].get_settings.return_value = {'group_mode': True}
         self.ns['get_search_results'].return_value = ([{'_id':'a','file_name':'Name'}], '10', 20)
         await self.ns['send_results'](*self.args, reply_msg=self.reply, premium=True)
         await asyncio.sleep(0)
@@ -95,6 +96,8 @@ class FilterResultLayoutTests(unittest.IsolatedAsyncioTestCase):
         admin.return_value = True
         await self.ns['group_mode'](self.client, msg)
         db.set_group_setting.assert_awaited_once_with(-42, 'group_mode', False)
+        admin.return_value = False
+        msg.from_user.id = 99  # Bot admin need not also be a local group admin.
         msg.command = ['group_mode', 'on']
         await self.ns['group_mode'](self.client, msg)
         db.set_group_setting.assert_awaited_with(-42, 'group_mode', True)
@@ -107,8 +110,8 @@ class FilterResultLayoutTests(unittest.IsolatedAsyncioTestCase):
         text = self.client.send_message.await_args.args[1]
         self.assertIn('<code>search</code>', text)
         self.assertIn('<blockquote>', text)
-        self.assertNotIn('?start=file_', text)
-        self.assertEqual(self.client.send_message.await_args.kwargs['reply_markup'], [['file#a']])
+        self.assertIn('?start=file_-100_a', text)  # Unconfigured group defaults to PM links.
+        self.assertIsNone(self.client.send_message.await_args.kwargs['reply_markup'])
 
     async def test_suggestion_retains_reply_and_crown(self):
         self.ns['get_search_results'].side_effect = [([], '', 0), ([{'_id':'a'}], '', 1)]

@@ -22,10 +22,10 @@ PRIVATE = (
 GROUP_ADMIN = (
     ('help', 'Show group admin help'),
     ('search', 'Check group search or switch it on/off'),
-    ('group_mode', 'Choose group file buttons (on) or PM links (off)'),
+    ('group_mode', 'Group buttons: on/off (default off: PM links)'),
 )
 BOT_ADMIN = (
-    ('sendall', 'Check or switch Send All on/off for the whole bot'),
+    ('sendall', 'Bot-wide Send All: on/off (default off)'),
     ('stats', 'Show bot, web and database statistics'),
     ('addpremium', 'Grant a premium plan: user_id days'),
     ('extendpremium', 'Extend a premium plan: user_id days'),

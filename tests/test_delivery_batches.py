@@ -21,7 +21,7 @@ class BatchTests(unittest.IsolatedAsyncioTestCase):
         self.ns = dict(store=self.store, BatchOffer=Offer, KIND_EPISODES='episodes', re=re,
                        episode_label=lambda name, idx:(name, int(name[-2:])), logging=logging,
                        asyncio=asyncio, batch_offers={}, batch_jobs={}, has_premium_or_grace=AsyncMock(return_value=True),
-                       db=NS(send_all_enabled=AsyncMock(return_value=True), set_send_all_enabled=AsyncMock(), get_settings=AsyncMock(return_value={})), enums=NS(ChatType=NS(GROUP='g', SUPERGROUP='sg')))
+                       db=NS(send_all_enabled=AsyncMock(return_value=True), set_send_all_enabled=AsyncMock(), get_settings=AsyncMock(return_value={"group_mode": True})), enums=NS(ChatType=NS(GROUP='g', SUPERGROUP='sg')))
         load('plugins/file_deliver.py', {'lookup_offer','remaining_files','send_all','send_batch','send_all_setting'}, self.ns)
 
     async def test_only_grouped_files_offer_and_select_remaining_in_episode_order(self):
@@ -53,7 +53,7 @@ class BatchTests(unittest.IsolatedAsyncioTestCase):
         self.ns.update(send_delivery=AsyncMock(), asyncio=NS(sleep=AsyncMock()))
         msg = NS(chat=NS(id=-100), message_thread_id=4, reply_text=AsyncMock())
         offer = Offer(7,'seed','g','Button')
-        self.ns['db'].get_settings.side_effect = [{}, {'group_mode':False}]
+        self.ns['db'].get_settings.side_effect = [{'group_mode':True}, {}]
         await self.ns['send_batch'](None, msg, offer, True)
         self.ns['send_delivery'].assert_awaited_once_with(None,-100,7,'one',{'_id':'one','file_name':'Z'},
                                                          group=True,topic=4,offer_batch=False)

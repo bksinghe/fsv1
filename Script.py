@@ -69,7 +69,7 @@ class script(object):
     ADMIN_COMMAND_TXT = (
         "<b>🛡️ ADMIN COMMANDS</b>\n\n"
 
-        "• /sendall on|off – Toggle batch delivery bot-wide\n\n"
+        "• /sendall on|off – Batch delivery bot-wide (default off)\n\n"
         "📊 <b>Stats</b>\n"
         "• /stats – Users, groups, files, premium,\n"
         "  index speed, DB size &amp; uptime\n\n"
@@ -91,6 +91,6 @@ class script(object):
 
         "👥 <b>Group Only</b> <i>(not in PM)</i>\n"
         "• /search on|off – group file search\n"
-        "• /group_mode on|off – group buttons or PM links\n"
+        "• /group_mode on|off – group buttons or PM links (default off: PM)\n"
         "• /help – group admin help"
     )

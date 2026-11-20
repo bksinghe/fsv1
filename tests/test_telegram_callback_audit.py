@@ -46,7 +46,7 @@ class GroupDeliveryTests(unittest.IsolatedAsyncioTestCase):
         ns = dict(Client=object, enums=SimpleNamespace(ChatType=SimpleNamespace(GROUP='group', SUPERGROUP='supergroup'),
                   ParseMode=SimpleNamespace(HTML='html')), html=html, PROTECT_CONTENT=True,
                   lookup_offer=AsyncMock(return_value=None),
-                  db=SimpleNamespace(get_settings=AsyncMock(return_value={})),
+                  db=SimpleNamespace(get_settings=AsyncMock(return_value={"group_mode": True})),
                   search_expiry=SimpleNamespace(touch=AsyncMock(return_value=True)), track_expiry=Mock(),
                   has_premium_or_grace=AsyncMock(return_value=True), get_file_details=AsyncMock(return_value={'file_name':'A&B'}))
         load('plugins/file_deliver.py', {'file_button_handler', 'file_caption', 'send_delivery'}, ns)

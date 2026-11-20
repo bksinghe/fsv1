@@ -54,7 +54,7 @@ async def file_button_handler(client: Client, query: CallbackQuery):
     if not await has_premium_or_grace(query.from_user.id):
         return await query.answer("🔒 Premium required to request files. See /plan in PM.", show_alert=True)
 
-    if not (await db.get_settings(msg.chat.id)).get("group_mode", True):
+    if not (await db.get_settings(msg.chat.id)).get("group_mode", False):
         return await query.answer("Group delivery is off. Search again for a PM link.", show_alert=True)
 
     # Do not accept a stale/forged payload or a copy forwarded to another chat.
@@ -320,7 +320,7 @@ async def send_batch(client, msg, offer, group):
             for attempt in range(2):
                 # Recheck after pacing or a FloodWait: the admin may switch to PM-only mode.
                 if not await db.send_all_enabled() or not await has_premium_or_grace(offer.owner) or (
-                    group and not (await db.get_settings(msg.chat.id)).get('group_mode', True)
+                    group and not (await db.get_settings(msg.chat.id)).get('group_mode', False)
                 ):
                     await msg.reply_text("Batch stopped: delivery is no longer enabled.")
                     return
@@ -355,7 +355,7 @@ async def send_all(client, query):
     group = msg.chat.type in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP)
     if not await has_premium_or_grace(offer.owner):
         return await query.answer("Premium access required.", show_alert=True)
-    if group and not (await db.get_settings(msg.chat.id)).get('group_mode', True):
+    if group and not (await db.get_settings(msg.chat.id)).get('group_mode', False):
         return await query.answer("Group delivery is off.", show_alert=True)
     job_key = (msg.chat.id, offer.owner)
     # Claim after all awaits: competing taps cannot both schedule this offer.

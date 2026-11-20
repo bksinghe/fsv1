@@ -121,11 +121,12 @@ async def search_toggle(client, message):
 @Client.on_message(filters.group & filters.command("group_mode"))
 async def group_mode(client, message):
     chat_id = message.chat.id
-    if not message.from_user or not await is_group_admin(client, chat_id, message.from_user.id):
-        return await message.reply_text("Only group admins can change the result mode.")
+    if not message.from_user or (message.from_user.id not in ADMINS and
+                                not await is_group_admin(client, chat_id, message.from_user.id)):
+        return await message.reply_text("Only bot or group admins can change the result mode.")
     args = message.command[1:]
     if not args:
-        enabled = (await db.get_settings(chat_id)).get("group_mode", True)
+        enabled = (await db.get_settings(chat_id)).get("group_mode", False)
     elif len(args) == 1 and args[0].lower() in ("on", "off"):
         enabled = args[0].lower() == "on"
         await db.set_group_setting(chat_id, "group_mode", enabled)
@@ -164,7 +165,7 @@ async def help_command(client, message):
         "• `/search` – Show the current status\n"
         "• `/search on` – Enable file search here\n"
         "• `/search off` – Disable file search here\n"
-        "• `/group_mode on|off` – Group file buttons or links to PM\n\n"
+        "• `/group_mode on|off` – Group buttons when on; PM links by default\n\n"
 
         "🤖 **Auto Protection:**\n"
         "• Anti-bot system is enabled\n"
@@ -351,7 +352,7 @@ async def filter_handler(client, message):
             is_pm=is_pm,
             premium=user_is_premium,
             reply_msg=message,
-            group_buttons=not is_pm and stg.get("group_mode", True),
+            group_buttons=not is_pm and stg.get("group_mode", False),
         )
     
     except Exception as e:
@@ -470,7 +471,7 @@ async def send_results(
     try:
         # On pagination, pick up any mode change since the previous page.
         if group_buttons is None:
-            group_buttons = not is_pm and (await db.get_settings(chat_id)).get("group_mode", True)
+            group_buttons = not is_pm and (await db.get_settings(chat_id)).get("group_mode", False)
 
         # Determine results per page based on PM or Group
         results_per_page = RESULTS_PER_PAGE_PM if is_pm else RESULTS_PER_PAGE_GROUP
