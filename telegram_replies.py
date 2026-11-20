@@ -18,7 +18,7 @@ class ReplyWaiters:
             self.pending.pop(key, None)
 
     async def receive(self, client, message):
-        if not message.chat or not message.from_user:
+        if not message.chat or not message.from_user or (message.text or "").startswith("/"):
             return
         waiter = self.pending.get((message.chat.id, message.from_user.id))
         if waiter:

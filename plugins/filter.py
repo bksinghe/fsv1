@@ -235,13 +235,11 @@ def sanitize_search(text):
 # =====================================================
 # 📩 MESSAGE HANDLER (✅ FULLY FIXED)
 # =====================================================
-@Client.on_message(filters.text & filters.incoming & (filters.group | filters.private))
+# Reject commands before dispatch: returning inside a matching handler still
+# consumes the update for other handlers in the same Kurigram group.
+@Client.on_message(filters.text & filters.incoming & (filters.group | filters.private) & ~filters.regex(r"^/"))
 async def filter_handler(client, message):
     try:
-        # Ignore commands
-        if message.text.startswith("/"):
-            return
-
         user_id = message.from_user.id
         raw_search = message.text.strip().lower()
 

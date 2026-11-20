@@ -34,7 +34,7 @@ class ReplyTests(unittest.IsolatedAsyncioTestCase):
             return bool(msg.text)
         task = asyncio.create_task(waiters.listen(chat_id=4, user_id=5, filters=text, timeout=3))
         await asyncio.sleep(0)
-        for chat, user, body in [(4, 6, 'yes'), (3, 5, 'yes'), (4, 5, None), (4, 5, 'yes')]:
+        for chat, user, body in [(4, 6, 'yes'), (3, 5, 'yes'), (4, 5, None), (4, 5, '/start'), (4, 5, 'yes')]:
             msg = SimpleNamespace(chat=SimpleNamespace(id=chat), from_user=SimpleNamespace(id=user),
                                   text=body, stop_propagation=Mock())
             await waiters.receive(None, msg)

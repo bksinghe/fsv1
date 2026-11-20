@@ -123,18 +123,6 @@ async def check_and_remove_expired_premium(client):
 
 
 # ==========================
-# 🧪 GLOBAL DEBUG: /START LOGGER
-# ==========================
-@Client.on_message(filters.private & filters.command("start"))
-async def debug_start_logger(client, message):
-    logger.warning(
-        f"/START HIT | user={message.from_user.id} | text='{message.text}'"
-    )
-    # ⚠️ DO NOT reply, DO NOT delete here
-    # This is ONLY for logs
-
-
-# ==========================
 # 🤖 BOT CLASS
 # ==========================
 class Bot(Client):
