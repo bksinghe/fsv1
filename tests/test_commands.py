@@ -53,7 +53,7 @@ EXPECTED_ADMIN_COMMANDS = {
 
 # Group-only commands (they live in the group /help text, not in the PM menu)
 EXPECTED_GROUP_COMMANDS = {
-    "search", "help",
+    "search", "group_mode", "help",
 }
 
 # Features that were removed on purpose: no handler may come back, and no list

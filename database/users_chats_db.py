@@ -37,6 +37,7 @@ class Database:
     default_settings = {
         "pm_search": True,
         "group_search": True,
+        "group_mode": True,
         "auto_delete": False,
         "anti_link": False,
     }
@@ -97,11 +98,11 @@ class Database:
             settings.update(group["settings"])
         return settings
 
-    async def update_settings(self, chat_id: int, settings: dict):
+    async def set_group_setting(self, chat_id: int, key: str, value: bool):
         await asyncio.to_thread(
             self.groups.update_one,
             {"id": chat_id},
-            {"$set": {"settings": settings}},
+            {"$set": {f"settings.{key}": value}},
             upsert=True
         )
         return True

@@ -9,6 +9,7 @@ from pyrogram.types import CallbackQuery
 from info import IS_STREAM, PM_FILE_DELETE_TIME, PROTECT_CONTENT
 from database.ia_filterdb import get_file_details
 from database import search_expiry
+from database.users_chats_db import db
 from utils import temp, is_premium, premium_required_text, premium_buy_markup
 
 
@@ -48,6 +49,9 @@ async def file_button_handler(client: Client, query: CallbackQuery):
         return await query.answer("Open the original group result.", show_alert=True)
     if not await has_premium_or_grace(query.from_user.id):
         return await query.answer("🔒 Premium required to request files. See /plan in PM.", show_alert=True)
+
+    if not (await db.get_settings(msg.chat.id)).get("group_mode", True):
+        return await query.answer("Group delivery is off. Search again for a PM link.", show_alert=True)
 
     # Do not accept a stale/forged payload or a copy forwarded to another chat.
     rows = getattr(msg.reply_markup, 'inline_keyboard', [])

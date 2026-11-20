@@ -88,8 +88,7 @@ async def search_toggle(client, message):
         action = args[1].lower()
         
         if action == "on":
-            settings["search"] = True
-            await db.update_settings(message.chat.id, settings)
+            await db.set_group_setting(message.chat.id, "search", True)
             
             return await message.reply_text(
                 "✅ <b>Search Enabled!</b>\n\n"
@@ -97,8 +96,7 @@ async def search_toggle(client, message):
             )
         
         elif action == "off":
-            settings["search"] = False
-            await db.update_settings(message.chat.id, settings)
+            await db.set_group_setting(message.chat.id, "search", False)
             
             return await message.reply_text(
                 "❌ <b>Search Disabled!</b>\n\n"
@@ -118,6 +116,23 @@ async def search_toggle(client, message):
         await message.reply_text(
             "❌ An error occurred. Please try again.",
         )
+
+
+@Client.on_message(filters.group & filters.command("group_mode"))
+async def group_mode(client, message):
+    chat_id = message.chat.id
+    if not message.from_user or not await is_group_admin(client, chat_id, message.from_user.id):
+        return await message.reply_text("Only group admins can change the result mode.")
+    args = message.command[1:]
+    if not args:
+        enabled = (await db.get_settings(chat_id)).get("group_mode", True)
+    elif len(args) == 1 and args[0].lower() in ("on", "off"):
+        enabled = args[0].lower() == "on"
+        await db.set_group_setting(chat_id, "group_mode", enabled)
+    else:
+        return await message.reply_text("Usage: /group_mode on or /group_mode off")
+    mode = "ON — file buttons deliver here" if enabled else "OFF — file links deliver in PM"
+    await message.reply_text(f"Group mode: {mode}.")
 
 
 # =====================================================
@@ -148,7 +163,8 @@ async def help_command(client, message):
         "🔍 **File Search:**\n"
         "• `/search` – Show the current status\n"
         "• `/search on` – Enable file search here\n"
-        "• `/search off` – Disable file search here\n\n"
+        "• `/search off` – Disable file search here\n"
+        "• `/group_mode on|off` – Group file buttons or links to PM\n\n"
 
         "🤖 **Auto Protection:**\n"
         "• Anti-bot system is enabled\n"
@@ -334,7 +350,8 @@ async def filter_handler(client, message):
             source_chat_id=source_chat_id,
             is_pm=is_pm,
             premium=user_is_premium,
-            reply_msg=message
+            reply_msg=message,
+            group_buttons=not is_pm and stg.get("group_mode", True),
         )
     
     except Exception as e:
@@ -361,7 +378,7 @@ async def check_premium(user_id, client):
         return False
 
 
-def build_results_text(files, search, total, page, total_pages, source_chat_id, crown=""):
+def build_results_text(files, search, total, page, total_pages, source_chat_id, crown="", *, group_buttons=False):
     """Compact quoted page information followed by clickable file names."""
     text = (
         f"<blockquote><b><i>{html.escape(str(crown))}🎬 Total Files: {total}\n"
@@ -369,7 +386,7 @@ def build_results_text(files, search, total, page, total_pages, source_chat_id, 
     )
 
     # HTML links can only open the bot in PM. Group results use callback rows.
-    if source_chat_id:
+    if group_buttons:
         return text + "📁 Select a file to send it here."
 
     for f in files:
@@ -386,7 +403,7 @@ def build_results_text(files, search, total, page, total_pages, source_chat_id, 
     return text
 
 
-def build_nav(search, offset, next_offset, results_per_page, source_chat_id, owner, is_pm, files):
+def build_nav(search, offset, next_offset, results_per_page, source_chat_id, owner, is_pm, files, *, group_buttons):
     """◀️ Prev / Next ▶️ row — None when the page stands alone"""
     nav = []
 
@@ -403,7 +420,7 @@ def build_nav(search, offset, next_offset, results_per_page, source_chat_id, own
         nav.append(styled_button("Next ▶️", callback_data=f"page#{callback_key}"))
 
     rows = []
-    if not is_pm:
+    if group_buttons:
         # Indexed _ids are compact Telegram file IDs (not the long file_reference).
         for doc in files:
             label = f"📁 [{get_size(doc.get('file_size', 0))}] {doc.get('file_name') or 'Untitled'}"
@@ -447,9 +464,14 @@ async def send_results(
     message=None,
     tried_fallback=False,
     premium=None,
-    reply_msg=None
+    reply_msg=None,
+    group_buttons=None,
 ):
     try:
+        # On pagination, pick up any mode change since the previous page.
+        if group_buttons is None:
+            group_buttons = not is_pm and (await db.get_settings(chat_id)).get("group_mode", True)
+
         # Determine results per page based on PM or Group
         results_per_page = RESULTS_PER_PAGE_PM if is_pm else RESULTS_PER_PAGE_GROUP
         
@@ -477,7 +499,8 @@ async def send_results(
                         message,
                         True,
                         premium=premium,
-                        reply_msg=reply_msg
+                        reply_msg=reply_msg,
+                        group_buttons=group_buttons,
                     )
             except Exception as e:
                 print(f"Fallback suggestion error: {e}")
@@ -504,12 +527,13 @@ async def send_results(
         crown = "👑 " if premium else ""
 
         text = build_results_text(
-            files, search, total, page, total_pages, source_chat_id, crown
+            files, search, total, page, total_pages, source_chat_id, crown, group_buttons=group_buttons
         )
 
         # -------- PAGINATION --------
         markup = build_nav(
-            search, offset, next_offset, results_per_page, source_chat_id, owner, is_pm, files
+            search, offset, next_offset, results_per_page, source_chat_id, owner, is_pm, files,
+            group_buttons=group_buttons,
         )
 
         if message:

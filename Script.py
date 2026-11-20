@@ -90,5 +90,6 @@ class script(object):
 
         "👥 <b>Group Only</b> <i>(not in PM)</i>\n"
         "• /search on|off – group file search\n"
+        "• /group_mode on|off – group buttons or PM links\n"
         "• /help – group admin help"
     )

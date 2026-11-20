@@ -45,6 +45,7 @@ class GroupDeliveryTests(unittest.IsolatedAsyncioTestCase):
     async def test_group_result_delivers_only_to_its_group_and_topic(self):
         ns = dict(Client=object, enums=SimpleNamespace(ChatType=SimpleNamespace(GROUP='group', SUPERGROUP='supergroup'),
                   ParseMode=SimpleNamespace(HTML='html')), html=html, PROTECT_CONTENT=True,
+                  db=SimpleNamespace(get_settings=AsyncMock(return_value={})),
                   search_expiry=SimpleNamespace(touch=AsyncMock(return_value=True)), track_expiry=Mock(),
                   has_premium_or_grace=AsyncMock(return_value=True), get_file_details=AsyncMock(return_value={'file_name':'A&B'}))
         load('plugins/file_deliver.py', {'file_button_handler', 'file_caption'}, ns)
@@ -56,7 +57,8 @@ class GroupDeliveryTests(unittest.IsolatedAsyncioTestCase):
         client.send_cached_media.assert_awaited_once_with(chat_id=-100, message_thread_id=3,
             file_id='abc', caption='<b>A&amp;B</b>', parse_mode='html', protect_content=True)
         ns['track_expiry'].assert_called_once_with(client, client.send_cached_media.return_value, -100, 'abc', group=True)
-        for premium, active in [(False, True), (True, False)]:
+        for premium, active, mode in [(False, True, True), (True, False, True), (True, True, False)]:
+            ns['db'].get_settings.return_value = {'group_mode': mode}
             client.send_cached_media.reset_mock()
             ns['has_premium_or_grace'].return_value = premium
             ns['search_expiry'].touch.return_value = active

@@ -17,7 +17,7 @@ def load():
     tree = ast.parse(SOURCE)
     names = {'build_results_text', 'build_nav', '_send_new', 'send_results'}
     nodes = [n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name in names]
-    ns = dict(LinkPreviewOptions=SimpleNamespace, html=html, logging=logging, asyncio=asyncio, ceil=ceil,
+    ns = dict(db=SimpleNamespace(get_settings=AsyncMock(return_value={})), LinkPreviewOptions=SimpleNamespace, html=html, logging=logging, asyncio=asyncio, ceil=ceil,
               enums=SimpleNamespace(ParseMode=SimpleNamespace(HTML='html')),
               temp=SimpleNamespace(U_NAME='ExampleBot'), get_size=lambda n: f'{n} MB',
               RESULTS_PER_PAGE_PM=12, RESULTS_PER_PAGE_GROUP=10,
@@ -71,6 +71,33 @@ class FilterResultLayoutTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.edit_text.await_args.kwargs['reply_markup'], [['file#a'], ['page#nav']])
         self.assertNotIn('?start=file_', text)
         self.client.send_message.assert_not_awaited()
+
+    async def test_group_mode_off_keeps_pagination_but_links_to_pm(self):
+        self.ns['db'].get_settings.return_value = {'group_mode': False}
+        self.ns['get_search_results'].return_value = ([{'_id':'a_b','file_name':'Film'}], '10', 20)
+        result = SimpleNamespace(edit_text=AsyncMock())
+        await self.ns['send_results'](*self.args, message=result)
+        self.ns['db'].get_settings.assert_awaited_once_with(-100)
+        self.assertIn('https://t.me/ExampleBot?start=file_-100_a_b', result.edit_text.await_args.args[0])
+        self.assertEqual(result.edit_text.await_args.kwargs['reply_markup'], [['page#nav']])
+
+    async def test_group_mode_command_checks_admin_and_scopes_write(self):
+        node = next(n for n in ast.parse(SOURCE).body if getattr(n, 'name', None) == 'group_mode')
+        node.decorator_list = []
+        db = self.ns['db']
+        db.set_group_setting = AsyncMock()
+        admin = self.ns['is_group_admin'] = AsyncMock(return_value=False)
+        exec(compile(ast.Module([node], type_ignores=[]), '<group_mode>', 'exec'), self.ns)
+        msg = SimpleNamespace(chat=SimpleNamespace(id=-42), from_user=SimpleNamespace(id=7),
+                              command=['group_mode', 'off'], reply_text=AsyncMock())
+        await self.ns['group_mode'](self.client, msg)
+        db.set_group_setting.assert_not_awaited()
+        admin.return_value = True
+        await self.ns['group_mode'](self.client, msg)
+        db.set_group_setting.assert_awaited_once_with(-42, 'group_mode', False)
+        msg.command = ['group_mode', 'on']
+        await self.ns['group_mode'](self.client, msg)
+        db.set_group_setting.assert_awaited_with(-42, 'group_mode', True)
 
     async def test_reply_failure_preserves_search_context_and_links(self):
         self.ns['get_search_results'].return_value = ([{'_id':'a','file_name':'Movie'}], '', 1)
