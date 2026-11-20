@@ -3,7 +3,7 @@ import qrcode
 import secrets
 import asyncio
 from io import BytesIO
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from pyrogram import Client, filters, enums
 from telegram_buttons import styled_button, styled_keyboard
@@ -12,7 +12,7 @@ from pyrogram.types import CallbackQuery
 from info import ADMINS, IS_PREMIUM, PRE_DAY_AMOUNT, UPI_ID, UPI_NAME, RECEIPT_SEND_USERNAME
 from database.users_chats_db import db
 from database.payment_db import decide_payment
-from utils import is_premium, fmt, get_expiry_datetime, temp
+from utils import GRACE_PERIOD, is_premium, fmt, get_expiry_datetime, temp
 
 
 # ======================================================
@@ -99,13 +99,14 @@ async def get_plan_data(uid):
     if not plan or not plan.get("premium"):
         return None, "none"
 
-    expire = plan.get("expire")
-    exp_dt = get_expiry_datetime(expire)
+    exp_dt = get_expiry_datetime(plan.get("expire"))
+    if exp_dt is None:
+        return None, "none"
     now = datetime.utcnow()
     remaining = exp_dt - now
 
-    if remaining.total_seconds() <= 0:
-        await revoke_premium(uid)      # keep the invoice history
+    if remaining < -GRACE_PERIOD:
+        # Read-only: the expiry worker owns revocation after the grace period.
         return None, "expired"
 
     return {
@@ -113,16 +114,13 @@ async def get_plan_data(uid):
         "exp_dt": exp_dt,
         "remaining": remaining,
         "days": max(0, remaining.days),
-        "hours": remaining.seconds // 3600
+        "hours": max(0, int(remaining.total_seconds()) // 3600) % 24
     }, "active"
 
 
 async def apply_premium(uid, plan_text, amount, duration=None, days=None,
                         extend=True, by="admin"):
     """Grant or extend premium and append the invoice.
-
-    Every path (💎 admin command · ✅ payment approval) funnels through here,
-    so the expiry rule and the invoice format can never drift apart.
 
     extend = True  → add `duration` on top of a plan that is still running
     extend = False → start `duration` from now
@@ -150,7 +148,7 @@ async def apply_premium(uid, plan_text, amount, duration=None, days=None,
         "amount": amount,
         "activated": fmt(now),
         "expire": fmt(expire_dt),
-        "created_at": now.timestamp(),
+        "created_at": now.replace(tzinfo=timezone.utc).timestamp(),
         "by": by,
     }
 
@@ -159,14 +157,16 @@ async def apply_premium(uid, plan_text, amount, duration=None, days=None,
     invoices = list(old.get("invoices") or [])
     invoices.append(invoice)
 
-    await db.update_plan(uid, {
+    if not await db.update_plan(uid, {
         "premium": True,
         "plan": plan_text,
-        "expire": expire_dt.timestamp(),
-        "activated_at": now.timestamp(),
+        "expire": expire_dt.replace(tzinfo=timezone.utc).timestamp(),
+        "activated_at": now.replace(tzinfo=timezone.utc).timestamp(),
         "invoices": invoices,
-    })
+    }, expected=old):
+        return None
 
+    temp.PREMIUM.pop(uid, None)
     return expire_dt, invoice
 
 
@@ -176,13 +176,15 @@ async def revoke_premium(uid):
     if not old.get("premium"):
         return None
 
-    await db.update_plan(uid, {
+    if not await db.update_plan(uid, {
         "premium": False,
         "plan": None,
         "expire": None,
         "activated_at": None,
         "invoices": list(old.get("invoices") or []),
-    })
+    }, expected=old):
+        return None
+    temp.PREMIUM.pop(uid, None)
     return old
 
 
@@ -239,6 +241,8 @@ def back_btn():
 
 
 def myplan_text(data):
+    if data["remaining"] <= timedelta(0):
+        return "⏳ Your plan has ended. Access continues during the 30-minute grace period. Use /plan to renew."
     return f"""
 🎉 **Premium Active**
 
@@ -433,7 +437,7 @@ async def admin_add_premium(client, message):
         extend=(cmd == "extendpremium"), by="admin",
     )
     if not result:
-        return await message.reply("❌ Could not update that plan.")
+        return await message.reply("❌ The plan changed during the update. Please check it and retry.")
 
     expire_dt, _invoice = result
     action = "Extended" if cmd == "extendpremium" else "Granted"
@@ -474,7 +478,7 @@ async def admin_remove_premium(client, message):
     uid = values[0]
     if not await revoke_premium(uid):
         return await message.reply(
-            f"ℹ️ <code>{uid}</code> has no active premium plan.",
+            f"ℹ️ <code>{uid}</code> has no active premium plan or the plan changed. Check it before retrying.",
             parse_mode=enums.ParseMode.HTML,
         )
 

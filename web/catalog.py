@@ -1541,8 +1541,8 @@ def _detail_body(kind: str, role: str, item: dict) -> str:
         gal_html = ""
         for i, u in enumerate(gallery):
             del_btn = (
-                f'<button class="cat-galdel" title="Remove" '
-                f'onclick="event.stopPropagation();deleteGallery(this.closest(\'.cat-galitem\').dataset.idx)">✕</button>'
+                '<button class="cat-galdel" title="Remove" '
+                'onclick="event.stopPropagation();deleteGallery(this.closest(\'.cat-galitem\').dataset.idx)">✕</button>'
                 if admin else ""
             )
             gal_html += (

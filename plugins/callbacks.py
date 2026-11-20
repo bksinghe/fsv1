@@ -11,7 +11,6 @@ from pyrogram.types import (
 from pyrogram.errors import (
     MessageNotModified,
     MessageIdInvalid,
-    MessageDeleteForbidden,
     QueryIdInvalid,
     BadRequest
 )
@@ -189,21 +188,6 @@ async def safe_edit_markup(msg, reply_markup, max_retries=3):
             print(f"Unexpected edit markup error: {e}")
             return False
     return False
-
-
-async def safe_delete_message(msg, delay=0):
-    """Safely delete a message with optional delay"""
-    try:
-        if delay > 0:
-            await asyncio.sleep(delay)
-        await msg.delete()
-        return True
-    except (MessageIdInvalid, MessageDeleteForbidden) as e:
-        print(f"Delete message error: {e}")
-        return False
-    except Exception as e:
-        print(f"Unexpected delete error: {e}")
-        return False
 
 
 async def safe_answer_query(query, text="", show_alert=False, max_retries=2):

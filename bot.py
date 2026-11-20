@@ -24,7 +24,7 @@ import uvloop
 from datetime import datetime
 import pytz
 
-from pyrogram import Client, filters
+from pyrogram import Client, filters, idle
 from pyrogram.handlers import MessageHandler
 from telegram_replies import ReplyWaiters
 from telegram_commands import sync_command_menus
@@ -35,13 +35,14 @@ from info import API_ID, API_HASH, BOT_TOKEN, PORT, LOG_CHANNEL, ADMINS
 
 from utils import (
     temp,
+    GRACE_PERIOD,
+    get_expiry_datetime,
     cleanup_files_memory,
     premium_expiry_reminder
 )
 
 from database.users_chats_db import db
 from database.search_expiry import run_worker as search_expiry_worker
-# ❌ REMOVED: from plugins.banned import auto_unban_worker
 
 
 # ==========================
@@ -74,26 +75,16 @@ async def check_and_remove_expired_premium(client):
                     plan = user.get("plan", {})
                     expire = plan.get("expire")
                     
-                    if not expire:
+                    exp_dt = get_expiry_datetime(expire)
+                    if exp_dt is None:
                         continue
-                    
-                    # Convert to datetime
-                    if isinstance(expire, (int, float)):
-                        exp_dt = datetime.utcfromtimestamp(expire)
-                    else:
-                        exp_dt = expire
-                    
+
                     # Check if expired
-                    if exp_dt <= now:
-                        uid = user.get("_id") or user.get("id")
-                        
-                        # Remove premium status
-                        await db.update_plan(uid, {
-                            "premium": False,
-                            "plan": None,
-                            "expire": None
-                        })
-                        
+                    if exp_dt + GRACE_PERIOD < now:
+                        uid = user.get("id")
+                        if not uid or not await db.expire_plan(uid, expire):
+                            continue
+                        temp.PREMIUM.pop(uid, None)
                         removed_count += 1
                         logger.info(f"✅ Removed expired premium for user {uid}")
                         
@@ -168,7 +159,7 @@ class Bot(Client):
         temp.B_NAME = me.first_name
 
         # ---- web server ----
-        runner = web.AppRunner(web_app)
+        self.web_runner = runner = web.AppRunner(web_app)
         await runner.setup()
         await web.TCPSite(
             runner,
@@ -182,21 +173,12 @@ class Bot(Client):
         # 🔁 BACKGROUND TASKS
         # ==========================
 
-        # One persistent search cleanup worker; pending records survive restarts.
-        self.search_expiry_task = asyncio.create_task(search_expiry_worker(self))
-
-        # 🔥 FILE MEMORY LEAK GUARD
-        asyncio.create_task(cleanup_files_memory())
-
-        # 🔔 PREMIUM EXPIRY REMINDER
-        asyncio.create_task(premium_expiry_reminder(self))
-
-        # ❌ REMOVED: auto_unban_worker — the moderation commands it served
-        #    (/ban, /mute, …) are gone, so the worker is not needed anymore.
-
-        # ⭐ PREMIUM AUTO-REMOVE (NEW)
-        asyncio.create_task(check_and_remove_expired_premium(self))
-        logger.info("✅ Premium auto-remove task started")
+        self.workers = [
+            asyncio.create_task(search_expiry_worker(self)),
+            asyncio.create_task(cleanup_files_memory()),
+            asyncio.create_task(premium_expiry_reminder(self)),
+            asyncio.create_task(check_and_remove_expired_premium(self)),
+        ]
 
         await sync_command_menus(self, ADMINS)
 
@@ -228,13 +210,17 @@ class Bot(Client):
 
         logger.info(f"Bot @{me.username} started successfully")
 
-    async def stop(self, *args):
-        task = getattr(self, "search_expiry_task", None)
-        if task:
+        return self
+
+    async def stop(self, *args, **kwargs):
+        workers = getattr(self, "workers", [])
+        for task in workers:
             task.cancel()
-            await asyncio.gather(task, return_exceptions=True)
-        await super().stop()
-        logger.info("Bot stopped cleanly")
+        await asyncio.gather(*workers, return_exceptions=True)
+        if getattr(self, "web_runner", None):
+            await self.web_runner.cleanup()
+            self.web_runner = None
+        return await super().stop(*args, **kwargs)
 
 
 # ==========================
@@ -244,9 +230,10 @@ async def main():
     bot = Bot()
     try:
         await bot.start()
-        await asyncio.Event().wait()
-    except (KeyboardInterrupt, SystemExit):
-        await bot.stop()
+        await idle()
+    finally:
+        if bot.is_connected:
+            await bot.stop()
 
 
 if __name__ == "__main__":

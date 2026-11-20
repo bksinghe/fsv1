@@ -2,7 +2,7 @@ import logging
 import asyncio
 import traceback
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from pyrogram.errors import FloodWait
 from telegram_buttons import styled_button, styled_keyboard
@@ -22,28 +22,13 @@ class temp(object):
     U_NAME = None
     B_NAME = None
 
-    SETTINGS = {}
     FILES = {}          # (recipient ID, message ID) -> file ID; removed on close or expiry
     PREMIUM = {}        # RAM premium cache
     KEYWORDS = {}       # learned keywords (RAM)
-    BANNED_USERS = set()  # banned users set
 
     # 🌐 Web login sessions / registration OTP (web/web_assets.py, web/auth_routes.py)
     USER_SESSIONS = {}  # session_id -> {'tg_id': int, 'expiry': float}
     REG_PENDING = {}    # tg_id -> {'email', 'password', 'otp', 'expiry', 'tries'}
-
-    INDEX_STATS = {
-        "running": False,
-        "start": 0,
-        "scanned": 0,
-        "saved": 0,
-        "dup": 0,
-        "err": 0
-    }
-    
-    # Koyeb optimization flags
-    _cleanup_running = False
-    _reminder_running = False
 
 
 # ======================================================
@@ -100,11 +85,10 @@ async def is_premium(user_id, bot=None) -> bool:
         return False
 
     # Get expiry date (older plans hold a raw timestamp, newer ones a datetime)
-    expire = plan.get("expire")
-    if not isinstance(expire, (int, float, datetime)):
+    expire = get_expiry_datetime(plan.get("expire"))
+    if expire is None:
         temp.PREMIUM[user_id] = {"expire": None, "checked_at": now_ts}
         return False
-    expire = get_expiry_datetime(expire)
 
     # Check if expired (with grace period)
     now_utc = datetime.utcnow()
@@ -128,8 +112,15 @@ def get_expiry_datetime(expire):
     ✅ REQUIRED BY PREMIUM.PY
     """
     if isinstance(expire, (int, float)):
-        return datetime.utcfromtimestamp(expire)
-    return expire
+        try:
+            return datetime.utcfromtimestamp(expire)
+        except (OverflowError, OSError, ValueError):
+            return None
+    if isinstance(expire, datetime):
+        if expire.tzinfo is not None:
+            return expire.astimezone(timezone.utc).replace(tzinfo=None)
+        return expire
+    return None
 
 
 def fmt(dt):
@@ -158,11 +149,6 @@ async def premium_expiry_reminder(bot):
     Sends reminders at: 1 day, 6 hours, 1 hour before expiry
     ✅ REQUIRED FOR PREMIUM SYSTEM
     """
-    if temp._reminder_running:
-        print("[INFO] Reminder task already running, skipping...")
-        return
-    
-    temp._reminder_running = True
     print("[INFO] ✅ Premium expiry reminder task started")
     
     while True:
@@ -178,7 +164,7 @@ async def premium_expiry_reminder(bot):
             
             for user in users:
                 try:
-                    uid = user.get("_id") or user.get("id")
+                    uid = user.get("id")
                     
                     if not uid or uid in ADMINS:
                         continue
@@ -187,18 +173,17 @@ async def premium_expiry_reminder(bot):
                     expire = plan.get("expire")
                     last = plan.get("last_reminder")
 
-                    if not expire or not isinstance(expire, (int, float, datetime)):
-                        continue
                     expire = get_expiry_datetime(expire)
+                    if expire is None:
+                        continue
 
                     # Check each reminder step
-                    for tag, delta in REMINDER_STEPS:
-                        # Skip if already sent this reminder
-                        if last == tag:
-                            continue
+                    for tag, delta in reversed(REMINDER_STEPS):
                         
                         # Check if it's time for this reminder
                         if expire - delta <= now < expire:
+                            if last == tag or not await db.mark_reminder(uid, plan["expire"], last, tag):
+                                break
                             try:
                                 await bot.send_message(
                                     uid,
@@ -207,17 +192,15 @@ async def premium_expiry_reminder(bot):
                                     "Use /plan to renew and continue enjoying premium benefits!"
                                 )
                                 
-                                # Update last reminder
-                                plan["last_reminder"] = tag
-                                await db.update_plan(uid, plan)
-                                
                                 reminder_count += 1
                                 print(f"[INFO] Sent {tag} reminder to user {uid}")
                                 
                             except FloodWait as e:
+                                await db.mark_reminder(uid, plan["expire"], tag, last)
                                 print(f"[WARN] FloodWait {e.value}s for user {uid}")
                                 await asyncio.sleep(e.value)
                             except Exception as e:
+                                await db.mark_reminder(uid, plan["expire"], tag, last)
                                 print(f"[ERROR] Failed to send reminder to {uid}: {e}")
                             
                             break  # Only send one reminder per user per iteration
@@ -301,11 +284,6 @@ async def cleanup_files_memory():
     Koyeb optimized memory cleanup
     Trims premium and keyword caches. File expiry is owned by the delivery task.
     """
-    if temp._cleanup_running:
-        print("[INFO] Cleanup task already running, skipping...")
-        return
-    
-    temp._cleanup_running = True
     print("[INFO] ✅ File memory cleanup task started")
     
     while True:
@@ -397,14 +375,3 @@ def get_readable_time(seconds):
     except Exception:
         logging.getLogger(__name__).debug("get_readable_time: optional operation failed", exc_info=True)
         return "0s"
-
-
-async def get_settings(group_id):
-    """Get group settings with caching"""
-    try:
-        if group_id not in temp.SETTINGS:
-            temp.SETTINGS[group_id] = await db.get_settings(group_id)
-        return temp.SETTINGS[group_id]
-    except Exception as e:
-        print(f"[ERROR] Get settings error for group {group_id}: {e}")
-        return {}

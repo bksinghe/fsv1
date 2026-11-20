@@ -1,4 +1,5 @@
 from pymongo import MongoClient, ReturnDocument
+from pymongo.errors import DuplicateKeyError
 from datetime import datetime, timezone
 import hashlib
 import hmac
@@ -62,9 +63,6 @@ class Database:
         self.bot_settings = dbase.bot_settings
         self.groups = dbase.groups
         self.premium = dbase.premium
-        self.reminders = dbase.reminders
-        self.bans = dbase.bans
-        self.warns = dbase.warns
 
         self._create_indexes()
 
@@ -72,11 +70,7 @@ class Database:
         try:
             self.users.create_index("id", unique=True)
             self.groups.create_index("id", unique=True)
-            self.bans.create_index("id")
-            self.bans.create_index("until")
-            self.warns.create_index([("user_id", 1), ("chat_id", 1)])
             self.premium.create_index("id", unique=True)
-            self.reminders.create_index([("sent", 1), ("remind_at", 1)])
         except Exception:
             logging.getLogger(__name__).debug("_create_indexes: optional operation failed", exc_info=True)
             pass
@@ -130,14 +124,39 @@ class Database:
 
         return data.get("plan", self.default_plan.copy())
 
-    async def update_plan(self, user_id: int, plan_data: dict):
-        await asyncio.to_thread(
+    async def update_plan(self, user_id: int, plan_data: dict, expected: dict):
+        """Do not replace invoices or expiry changed by a concurrent purchase."""
+        match = {"id": user_id, "plan": expected}
+        create = expected == self.default_plan
+        if create:
+            del match["plan"]
+            match["$or"] = [{"plan": expected}, {"plan": {"$exists": False}}]
+        try:
+            result = await asyncio.to_thread(
+                self.premium.update_one, match, {"$set": {"plan": plan_data}}, upsert=create
+            )
+        except DuplicateKeyError:
+            return False  # Another writer created the plan first.
+        return bool(result.matched_count or result.upserted_id is not None)
+
+    async def expire_plan(self, uid, expected_expire):
+        """Only expire the plan we inspected; never erase invoices or a renewal."""
+        result = await asyncio.to_thread(
             self.premium.update_one,
-            {"id": user_id},
-            {"$set": {"plan": plan_data}},
-            upsert=True
+            {"id": uid, "plan.premium": True, "plan.expire": expected_expire},
+            {"$set": {"plan.premium": False, "plan.plan": None, "plan.expire": None}},
         )
-        return True
+        return bool(result.modified_count)
+
+    async def mark_reminder(self, uid, expected_expire, previous, tag):
+        """Claim a reminder window only if neither plan nor reminder changed."""
+        result = await asyncio.to_thread(
+            self.premium.update_one,
+            {"id": uid, "plan.premium": True, "plan.expire": expected_expire,
+             "plan.last_reminder": previous},
+            {"$set": {"plan.last_reminder": tag}},
+        )
+        return bool(result.modified_count)
 
     async def get_premium_users(self):
         return await asyncio.to_thread(

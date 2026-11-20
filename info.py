@@ -14,7 +14,7 @@ def is_enabled(type, value):
         return False
     else:
         logger.error(f'{type} is invalid, exiting now')
-        exit()
+        raise SystemExit(1)
 
 def is_valid_ip(ip):
     ip_pattern = r'\b(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.' \
@@ -28,18 +28,18 @@ def is_valid_ip(ip):
 API_ID = environ.get('API_ID', '')
 if not API_ID:
     logger.error('API_ID is missing')
-    exit()
+    raise SystemExit(1)
 API_ID = int(API_ID)
 
 API_HASH = environ.get('API_HASH', '')
 if not API_HASH:
     logger.error('API_HASH is missing')
-    exit()
+    raise SystemExit(1)
 
 BOT_TOKEN = environ.get('BOT_TOKEN', '')
 if not BOT_TOKEN:
     logger.error('BOT_TOKEN is missing')
-    exit()
+    raise SystemExit(1)
 
 PORT = int(environ.get('PORT', '80'))
 
@@ -55,7 +55,7 @@ PICS = environ.get(
 ADMINS = environ.get('ADMINS', '')
 if not ADMINS:
     logger.error('ADMINS is missing')
-    exit()
+    raise SystemExit(1)
 ADMINS = [int(x) for x in ADMINS.split()]
 
 INDEX_CHANNELS = [
@@ -66,7 +66,7 @@ INDEX_CHANNELS = [
 LOG_CHANNEL = environ.get('LOG_CHANNEL', '')
 if not LOG_CHANNEL:
     logger.error('LOG_CHANNEL is missing')
-    exit()
+    raise SystemExit(1)
 LOG_CHANNEL = int(LOG_CHANNEL)
 
 # 🔥 INDEX LOG CHANNEL
@@ -80,7 +80,7 @@ else:
 BIN_CHANNEL = environ.get("BIN_CHANNEL", "")
 if not BIN_CHANNEL:
     logger.error('BIN_CHANNEL is missing')
-    exit()
+    raise SystemExit(1)
 BIN_CHANNEL = int(BIN_CHANNEL)
 
 # Private destination for copies of individually deleted indexed files.
@@ -101,7 +101,7 @@ CATALOG_STORAGE_CHANNEL = (
 DATA_DATABASE_URL = environ.get('DATA_DATABASE_URL', "")
 if not DATA_DATABASE_URL:
     logger.error('DATA_DATABASE_URL is missing')
-    exit()
+    raise SystemExit(1)
 
 DATABASE_NAME = environ.get('DATABASE_NAME', "bot_db")
 COLLECTION_NAME = environ.get('COLLECTION_NAME', 'files')
@@ -165,7 +165,7 @@ ALLOW_UNSIGNED_LINKS = is_enabled('ALLOW_UNSIGNED_LINKS', False)
 URL = environ.get("URL", "")
 if not URL:
     logger.error('URL is missing')
-    exit()
+    raise SystemExit(1)
 
 if URL.startswith(('https://', 'http://')):
     if not URL.endswith("/"):
@@ -174,7 +174,7 @@ elif is_valid_ip(URL):
     URL = f'http://{URL}/'
 else:
     logger.error('URL is invalid')
-    exit()
+    raise SystemExit(1)
 
 # ================= PREMIUM =================
 

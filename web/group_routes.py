@@ -404,7 +404,7 @@ async def group_cards(cards, normalize=None, auto_join=True, include_extra=None)
             for c in candidates:
                 virtual_group_for[str(c.get("file_id") or "")] = bucket_key
     elif auto_candidates:
-        for key, kind, candidates, bucket_key in auto_candidates:
+        for _, kind, candidates, bucket_key in auto_candidates:
             virtual_buckets[bucket_key] = {
                 "g": None,
                 "key": bucket_key,
