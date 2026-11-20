@@ -114,6 +114,9 @@ const v=element();Object.assign(v,{currentTime:0,duration:100,paused:false,addEv
 const els={'#player':v,'#modal':element(),'#pChoices':element(),'#pChoicesList':element(),'#pTitle':element(),'#pNote':element(),'#pDl':element()};
 global.document={querySelector:s=>els[s],createElement:element,dispatchEvent(){},addEventListener(){}};
 global.window={addEventListener(){}};global.Event=class{};global.location={origin:'https://example.com'};global.navigator={};
+const guest=process.argv[1]==='guest',stream='/download/42?e=123&s=abc';
+if(guest){els['#signedPlayer']={dataset:{account:'0',fileId:'abc',name:'Film',stream,poster:''}};
+ Object.assign(location,{pathname:'/watch/42',search:'?e=123&s=abc',assign(url){this.href=url}})}
 global.fetch=async(url,opt={})=>{
  calls.push({url,opt});
  if(url.startsWith('/api/progress?') && !opt.method){const fid=decodeURIComponent(url.split('=')[1]);return {ok:true,json:async()=>({item:saved[fid]||null})}}
@@ -125,6 +128,11 @@ global.fetch=async(url,opt={})=>{
 };
 ''' + js + r'''
 (async()=>{
+ if(guest){
+   await new Promise(r=>setTimeout(r,0));assert.equal(v.src,stream);assert.equal(els['#pDl'].href,stream);
+   window.copyLink();assert.equal(els['#pNote'].textContent,'https://example.com/watch/42?e=123&s=abc');
+   listeners.timeupdate();window.closePlayer();assert.equal(location.href,'/search');assert.deepEqual(calls,[]);return;
+ }
  await window.play('a','A');v.onloadedmetadata();assert.equal(v.currentTime,42);
  v.currentTime=55;listeners.timeupdate();await new Promise(r=>setTimeout(r,0));assert.equal(saved.a.position,55);
  await window.play('b','B');v.currentTime=23;listeners.pause();await new Promise(r=>setTimeout(r,0));assert.equal(saved.b.position,23);assert.equal(saved.a.position,55);
@@ -133,8 +141,10 @@ global.fetch=async(url,opt={})=>{
  window.closePlayer();
 })().catch(e=>{console.error(e);process.exitCode=1});
 '''
-        result = subprocess.run(['node', '-e', script], capture_output=True, text=True, timeout=10)
-        self.assertEqual(result.returncode, 0, result.stderr)
+        for mode in ('search', 'guest'):
+            with self.subTest(mode=mode):
+                result = subprocess.run(['node', '-e', script, mode], capture_output=True, text=True, timeout=10)
+                self.assertEqual(result.returncode, 0, result.stderr)
 
 
 class MongoPipelineTests(unittest.IsolatedAsyncioTestCase):

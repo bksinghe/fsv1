@@ -1352,6 +1352,8 @@ PLAYER_MODAL_HTML = """<div class="modal" id="modal" onclick="if(event.target===
 PLAYER_JS = r"""<script>
 (function(){
   const q = s => document.querySelector(s);
+  const standalone=q('#signedPlayer');
+  const account=!standalone || standalone.dataset.account==='1';
   let currentWatch = '', seq = 0, items = [], currentFile='', progressSuppressed=false, lastProgress=0;
   let progressQueue=Promise.resolve();
   function queueProgress(url, options){
@@ -1364,7 +1366,7 @@ PLAYER_JS = r"""<script>
   }
   function saveProgress(force){
     const v=q('#player');
-    if(!v||!currentFile||progressSuppressed||!Number.isFinite(v.duration)||v.duration<=0||!Number.isFinite(v.currentTime))return;
+    if(!account||!v||!currentFile||progressSuppressed||!Number.isFinite(v.duration)||v.duration<=0||!Number.isFinite(v.currentTime))return;
     if(!force && Date.now()-lastProgress<15000)return;
     lastProgress=Date.now();
     queueProgress('/api/progress',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -1402,43 +1404,47 @@ PLAYER_JS = r"""<script>
       list.appendChild(b);
     });
   }
-  window.play = async function(fid, name, context){
+  window.play = async function(fid, name, context, initial){
     const modal=q('#modal'), v=q('#player');
     if(!modal || !v) return;
     saveProgress(true);currentFile='';
     const request=++seq;
-    const progress=Promise.race([
+    const progress=account && fid ? Promise.race([
       progressQueue.then(()=>fetch('/api/progress?file_id='+encodeURIComponent(fid),{credentials:'same-origin',cache:'no-store'}))
         .then(r=>r.ok?r.json():null).catch(()=>null),
       new Promise(resolve=>setTimeout(()=>resolve(null),2000))
-    ]);
+    ]) : null;
     items=Array.isArray(context)?context:[]; renderChoices(fid);
     currentWatch=''; q('#pDl').removeAttribute('href');
     q('#pTitle').textContent='⏳ '+name;
     q('#pNote').textContent='Preparing the streaming link…';
     modal.classList.add('open');
     v.onloadedmetadata=null;v.pause(); v.removeAttribute('src'); v.load();
-    if(!items.length){
+    if(account && fid && !items.length){
       fetch('/api/player/group?file_id='+encodeURIComponent(fid),{credentials:'same-origin'})
         .then(r=>r.ok?r.json():null).then(d=>{
           if(request===seq && d && Array.isArray(d.items)){items=d.items;renderChoices(fid)}
         }).catch(()=>{});
     }
     try{
-      const r=await fetch('/api/stream',{method:'POST',credentials:'same-origin',
-        headers:{'Content-Type':'application/json'},body:JSON.stringify({file_id:fid})});
-      if(request!==seq) return;
-      if(r.status===401){location.href='/login?err='+encodeURIComponent('Session expired. Please sign in again.');return}
-      const d=await r.json();
-      if(request!==seq) return;
+      let d=initial;
+      if(!d){
+        const r=await fetch('/api/stream',{method:'POST',credentials:'same-origin',
+          headers:{'Content-Type':'application/json'},body:JSON.stringify({file_id:fid})});
+        if(request!==seq) return;
+        if(r.status===401){location.href='/login?err='+encodeURIComponent('Session expired. Please sign in again.');return}
+        d=await r.json();
+        if(request!==seq) return;
+      }
       if(!d.stream){q('#pTitle').textContent='❌ '+(d.error||'Stream unavailable');
         q('#pNote').textContent='This file could not be streamed right now.';return}
       const saved=await progress;
       if(request!==seq)return;
       currentFile=fid;progressSuppressed=false;lastProgress=0;
       currentWatch=location.origin+d.watch;
+      if(standalone && !initial) history.replaceState(null,'',d.watch);
       q('#pTitle').textContent='▶ '+name;
-      q('#pNote').textContent='Signed link · '+(d.expires_in||0)+' seconds valid · Range/seek supported';
+      q('#pNote').textContent=d.expires_in ? 'Signed link · '+d.expires_in+' seconds valid · Range/seek supported' : 'Signed streaming link — valid for a limited time.';
       q('#pDl').href=d.download;
       v.poster=d.poster||'';
       v.onloadedmetadata=()=>{
@@ -1460,6 +1466,7 @@ PLAYER_JS = r"""<script>
     const v=q('#player'); if(!v) return;
     v.onloadedmetadata=null;v.pause(); v.removeAttribute('src'); v.load();
     const m=q('#modal'); if(m) m.classList.remove('open');
+    if(standalone) location.assign('/search');
   };
   window.copyLink = function(){
     if(!currentWatch) return;
@@ -1469,6 +1476,10 @@ PLAYER_JS = r"""<script>
       if(note) note.textContent='🔗 Link copied: '+currentWatch;
     }).catch(()=>{ if(note) note.textContent=currentWatch; });
   };
+  if(standalone){
+    const {fileId,name,stream,poster}=standalone.dataset;
+    window.play(fileId,name,null,{stream,download:stream,watch:location.pathname+location.search,poster});
+  }
   document.addEventListener('keydown',e=>{ if(e.key==='Escape') window.closePlayer(); });
 })();
 </script>"""

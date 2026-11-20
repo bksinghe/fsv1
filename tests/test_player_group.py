@@ -1,5 +1,7 @@
 import ast
 import json
+import html
+from urllib.parse import quote
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -69,26 +71,28 @@ class PlayerGroupTests(unittest.IsolatedAsyncioTestCase):
 
     def test_choice_cards_show_current_item_and_metadata_accessibly(self):
         assets = (ROOT / 'web/web_assets.py').read_text()
-        watch = (ROOT / 'web/utils/render_template.py').read_text()
-        for content in (assets, watch):
-            for part in ('choice-label', 'choice-name', 'choice-meta', 'choice-state',
-                         "state.textContent='Selected'", "setAttribute('aria-pressed'",
-                         'focus-visible', 'grid-template-columns:repeat(2,minmax(0,1fr))'):
-                self.assertIn(part, content)
-            self.assertIn('name.textContent=item.name', content)
+        for part in ('choice-label', 'choice-name', 'choice-meta', 'choice-state',
+                     "state.textContent='Selected'", "setAttribute('aria-pressed'",
+                     'focus-visible', 'grid-template-columns:repeat(2,minmax(0,1fr))',
+                     'name.textContent=item.name', 'item.duration', 'item.size'):
+            self.assertIn(part, assets)
 
-    def test_player_race_guards_and_watch_page(self):
+    def test_player_race_guards(self):
         assets = (ROOT / 'web/web_assets.py').read_text()
-        watch = (ROOT / 'web/utils/render_template.py').read_text()
-        self.assertIn('duration:v.duration', assets)
-        self.assertIn('size:v.size', assets)
-        for content in (assets, watch):
-            self.assertIn('item.duration', content)
-            self.assertIn('item.size', content)
-            self.assertIn('choice-meta', content)
-        self.assertIn('request!==seq', assets)
-        self.assertIn('playerGroupContext(el)', assets)
-        self.assertIn('seq!==request', watch)
-        self.assertIn('unpack_new_file_id(info.file_id)', watch)
-        self.assertIn("v.querySelectorAll('source').forEach", watch)
-        self.assertIn('html.escape(file_id[:512], quote=True)', watch)
+        for part in ('duration:v.duration', 'size:v.size', 'request!==seq', 'playerGroupContext(el)'):
+            self.assertIn(part, assets)
+
+    async def test_signed_page_reuses_search_player_and_signed_download(self):
+        info = SimpleNamespace(file_name='Title <HD>.mp4', file_id='tg', mime_type=None, is_video=False)
+        ns = dict(html=html, quote=quote, get_media_info=AsyncMock(return_value=info),
+                  unpack_new_file_id=lambda _: 'group-id', PLAYER_JS='PLAYER SCRIPT',
+                  PLAYER_MODAL_HTML='SHARED MODAL', page=lambda title, body, **kwargs: body)
+        watch = load_function(ROOT / 'web/utils/render_template.py', 'media_watch', ns)
+        guest = await watch(42, 'e=123&s=abc')
+        for part in ('SHARED MODAL', 'PLAYER SCRIPT', 'data-stream="/download/42?e=123&amp;s=abc"',
+                     'data-name="Title &lt;HD&gt;.mp4"', 'data-file-id="group-id"', 'data-account="0"',
+                     'data-poster=""'):
+            self.assertIn(part, guest)
+        signed_in = await watch(42, signed_in=True, poster='https://example.org/untrusted')
+        self.assertIn('data-poster="/api/thumb?file_id=group-id"', signed_in)
+        self.assertIn('data-account="1"', signed_in)

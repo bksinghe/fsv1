@@ -68,15 +68,13 @@ async def watch_handler(request):
         return web.Response(status=403, text="Link expired or invalid")
 
     try:
-        return web.Response(
-            text=await media_watch(
-                message_id,
-                query=_signed_query(request),
-                poster=request.query.get("poster", ""),
-                file_id=request.query.get("file_id", ""),
-            ),
-            content_type="text/html",
-            charset="utf-8",
+        role, _ = await get_auth(request)
+        return await media_watch(
+            message_id,
+            query=_signed_query(request),
+            poster=request.query.get("poster", ""),
+            file_id=request.query.get("file_id", ""),
+            signed_in=bool(role),
         )
     except Exception as e:
         logger.error(f"Watch page error: {e}")
