@@ -55,10 +55,11 @@ class PlayerGroupTests(unittest.IsolatedAsyncioTestCase):
 
     def test_modal_actions_share_one_row_and_keep_signed_copy_link(self):
         tree = ast.parse((ROOT / 'web/web_assets.py').read_text())
-        values = {n.targets[0].id: ast.literal_eval(n.value) for n in tree.body
-                  if isinstance(n, ast.Assign) and len(n.targets) == 1
-                  and isinstance(n.targets[0], ast.Name)
-                  and n.targets[0].id in ('PLAYER_MODAL_HTML', 'PLAYER_JS', 'SITE_CSS')}
+        names = {'PLAYER_MODAL_HTML', 'PLAYER_JS', 'SITE_CSS', 'PLAYER_CHOICES_HTML', 'PLAYER_ACTIONS_HTML'}
+        nodes = [n for n in tree.body if isinstance(n, ast.Assign) and
+                 isinstance(n.targets[0], ast.Name) and n.targets[0].id in names]
+        values = {}
+        exec(compile(ast.Module(body=nodes, type_ignores=[]), '<assets>', 'exec'), values)
         modal, js, css = values['PLAYER_MODAL_HTML'], values['PLAYER_JS'], values['SITE_CSS']
         self.assertNotIn('pWatch', modal + js)
         self.assertNotIn('Copy stream link', modal)
@@ -86,10 +87,14 @@ class PlayerGroupTests(unittest.IsolatedAsyncioTestCase):
         info = SimpleNamespace(file_name='Title <HD>.mp4', file_id='tg', mime_type=None, is_video=False)
         ns = dict(html=html, quote=quote, get_media_info=AsyncMock(return_value=info),
                   unpack_new_file_id=lambda _: 'group-id', PLAYER_JS='PLAYER SCRIPT',
-                  PLAYER_MODAL_HTML='SHARED MODAL', page=lambda title, body, **kwargs: body)
+                  PLAYER_ACTIONS_HTML='<a href="{download}">Download</a>{close}',
+                  PLAYER_CHOICES_HTML='CHOICES', SITE_CSS='', html_response=lambda body: body)
         watch = load_function(ROOT / 'web/utils/render_template.py', 'media_watch', ns)
-        guest = await watch(42, 'e=123&s=abc')
-        for part in ('SHARED MODAL', 'PLAYER SCRIPT', 'data-stream="/download/42?e=123&amp;s=abc"',
+        guest = await watch(42, 'e=123&s=abc', bot_username='ExampleBot')
+        self.assertNotIn('class="modal"', guest)
+        self.assertNotIn('Back to Search', guest)
+        for part in ('CHOICES', 'PLAYER SCRIPT', 'preload="metadata" src="/download/42?e=123&amp;s=abc"',
+                     'id="pReturn" href="https://t.me/ExampleBot"', 'data-stream="/download/42?e=123&amp;s=abc"',
                      'data-name="Title &lt;HD&gt;.mp4"', 'data-file-id="group-id"', 'data-account="0"',
                      'data-poster=""'):
             self.assertIn(part, guest)

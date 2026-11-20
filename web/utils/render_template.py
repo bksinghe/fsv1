@@ -8,7 +8,7 @@ requests work through that link too. The thumbnail is also shown as the poster.
 import html
 from urllib.parse import quote
 
-from web.web_assets import PLAYER_JS, PLAYER_MODAL_HTML, html_response, page
+from web.web_assets import PLAYER_ACTIONS_HTML, PLAYER_CHOICES_HTML, PLAYER_JS, SITE_CSS, html_response
 
 from web.utils.media_info import get_media_info
 from database.ia_filterdb import unpack_new_file_id
@@ -25,7 +25,7 @@ border-radius:8px;text-decoration:none;font-weight:800}}</style></head>
 <a href="{src}" download>⬇ Direct Download</a></div></body></html>"""
 
 
-async def media_watch(message_id: int, query: str = "", poster: str = "", file_id: str = "", *, signed_in=False):
+async def media_watch(message_id: int, query: str = "", poster: str = "", file_id: str = "", *, signed_in=False, bot_username=""):
     info = await get_media_info(message_id)
     if not info:
         return html_response("<h2>❌ File Not Found</h2>", status=404)
@@ -53,10 +53,20 @@ async def media_watch(message_id: int, query: str = "", poster: str = "", file_i
     safe_poster = ""
     if signed_in and file_id:
         safe_poster = poster if poster.startswith("/api/thumb?") else f"/api/thumb?file_id={quote(file_id, safe='')}"
-    body = (
-        f'<main id="signedPlayer" data-file-id="{html.escape(file_id[:512], quote=True)}" '
-        f'data-name="{name}" data-stream="{src}" data-poster="{html.escape(safe_poster, quote=True)}" '
-        f'data-account="{int(signed_in)}">{PLAYER_MODAL_HTML}</main>'
-        f'<noscript><a href="{src}">Download {name}</a></noscript>{PLAYER_JS}'
-    )
-    return page(f"Watch {raw_name}", body, topbar='<a class="top" href="/search">← Back to Search</a>')
+    # Close is a real link: it also works if scripts or autoplay are disabled.
+    return_url = "https://t.me/" + quote(bot_username or "", safe="")
+    actions = PLAYER_ACTIONS_HTML.format(download=src, close=f'<a id="pReturn" href="{return_url}" rel="noreferrer">Close</a>')
+    return html_response(f"""<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer">
+<title>Watch {name}</title><style>{SITE_CSS}
+#signedPlayer{{max-width:1000px;margin:22px auto;padding:0 16px 40px}}
+#signedPlayer .video-wrap{{overflow:hidden;border:1px solid var(--line);border-radius:12px}}
+#signedPlayer .pchoices{{margin-top:14px;background:var(--card);border:1px solid var(--line);border-radius:12px}}
+#signedPlayer .mtitle{{margin:16px 0 0;white-space:normal;overflow-wrap:anywhere}}
+#signedPlayer .mactions,#signedPlayer .mnote{{padding-inline:0}}
+</style></head><body><header class="top"><div class="logo"><span class="nfi">F</span>
+<span class="brand-txt">FAST FINDER<small>WEB FILE SEARCH</small></span></div></header>
+<main id="signedPlayer" data-file-id="{html.escape(file_id[:512], quote=True)}" data-name="{name}"
+ data-stream="{src}" data-poster="{html.escape(safe_poster, quote=True)}" data-account="{int(signed_in)}">
+<div class="video-wrap"><video id="player" controls playsinline preload="metadata" src="{src}" poster="{html.escape(safe_poster, quote=True)}"></video></div>
+{PLAYER_CHOICES_HTML}<h1 class="mtitle" id="pTitle">{name}</h1>{actions}</main>{PLAYER_JS}</body></html>""")

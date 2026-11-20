@@ -1334,18 +1334,23 @@ def form_page(title: str, inner: str, err: str = "", msg: str = "", heading: str
 # PLAYER_JS exposes `window.play/closePlayer/copyLink` from an IIFE,
 # so there are no name collisions with a page's own `$` / `esc` / `const`.
 # ─────────────────────────────────────────────────────────────
+PLAYER_CHOICES_HTML = """<section class="pchoices" id="pChoices" hidden aria-label="Episodes and qualities"><div class="pchoices-head"><span class="pchoices-icon" aria-hidden="true">▤</span><div><div class="pchoices-title">Episodes &amp; qualities</div><div class="pchoices-sub">Choose a version to play</div></div></div><div class="pchoices-list" id="pChoicesList"></div></section>"""
+
+PLAYER_ACTIONS_HTML = """<div class="mactions">
+      <a id="pDl" href="{download}">⬇ Download</a>
+      <button onclick="copyLink()">🔗 Copy link</button>
+      {close}
+    </div>
+    <div class="mnote" id="pNote">Signed streaming link — valid for a limited time.</div>"""
+
 PLAYER_MODAL_HTML = """<div class="modal" id="modal" onclick="if(event.target===this)closePlayer()">
   <div class="mcard">
     <div class="mhead"><div class="mtitle" id="pTitle">Loading stream…</div>
       <button class="xbtn" onclick="closePlayer()">✕</button></div>
     <div class="video-wrap"><video id="player" controls playsinline></video></div>
-    <section class="pchoices" id="pChoices" hidden aria-label="Episodes and qualities"><div class="pchoices-head"><span class="pchoices-icon" aria-hidden="true">▤</span><div><div class="pchoices-title">Episodes &amp; qualities</div><div class="pchoices-sub">Choose a version to play</div></div></div><div class="pchoices-list" id="pChoicesList"></div></section>
-    <div class="mactions">
-      <a id="pDl" href="#">⬇ Download</a>
-      <button onclick="copyLink()">🔗 Copy link</button>
-      <button onclick="closePlayer()">Close</button>
-    </div>
-    <div class="mnote" id="pNote">Signed streaming link — valid for a limited time.</div>
+    """ + PLAYER_CHOICES_HTML + PLAYER_ACTIONS_HTML.format(
+        download="#", close='<button onclick="closePlayer()">Close</button>'
+    ) + """
   </div>
 </div>"""
 
@@ -1406,7 +1411,7 @@ PLAYER_JS = r"""<script>
   }
   window.play = async function(fid, name, context, initial){
     const modal=q('#modal'), v=q('#player');
-    if(!modal || !v) return;
+    if((!modal && !standalone) || !v) return;
     saveProgress(true);currentFile='';
     const request=++seq;
     const progress=account && fid ? Promise.race([
@@ -1415,11 +1420,11 @@ PLAYER_JS = r"""<script>
       new Promise(resolve=>setTimeout(()=>resolve(null),2000))
     ]) : null;
     items=Array.isArray(context)?context:[]; renderChoices(fid);
-    currentWatch=''; q('#pDl').removeAttribute('href');
+    currentWatch=''; if(!initial) q('#pDl').removeAttribute('href');
     q('#pTitle').textContent='⏳ '+name;
     q('#pNote').textContent='Preparing the streaming link…';
-    modal.classList.add('open');
-    v.onloadedmetadata=null;v.pause(); v.removeAttribute('src'); v.load();
+    if(modal) modal.classList.add('open');
+    if(!initial){v.onloadedmetadata=null;v.pause(); v.removeAttribute('src'); v.load();}
     if(account && fid && !items.length){
       fetch('/api/player/group?file_id='+encodeURIComponent(fid),{credentials:'same-origin'})
         .then(r=>r.ok?r.json():null).then(d=>{
@@ -1454,8 +1459,8 @@ PLAYER_JS = r"""<script>
         }
         v.onloadedmetadata=null;
       };
-      v.src=d.stream;
-      v.load();
+      if(!initial){v.src=d.stream; v.load();}
+      else if(v.readyState>=1){v.onloadedmetadata();}
       const pr=v.play(); if(pr && typeof pr.catch==='function') pr.catch(()=>{});
     }catch(e){if(request!==seq)return;q('#pTitle').textContent='❌ Stream error';
       q('#pNote').textContent=String(e.message||e)}
@@ -1463,10 +1468,10 @@ PLAYER_JS = r"""<script>
   window.closePlayer = function(){
     saveProgress(true);currentFile='';
     ++seq; items=[]; currentWatch='';
+    if(standalone){video.pause(); location.assign(q('#pReturn').href); return;}
     const v=q('#player'); if(!v) return;
     v.onloadedmetadata=null;v.pause(); v.removeAttribute('src'); v.load();
     const m=q('#modal'); if(m) m.classList.remove('open');
-    if(standalone) location.assign('/search');
   };
   window.copyLink = function(){
     if(!currentWatch) return;
@@ -1477,6 +1482,7 @@ PLAYER_JS = r"""<script>
     }).catch(()=>{ if(note) note.textContent=currentWatch; });
   };
   if(standalone){
+    q('#pReturn').addEventListener('click',()=>video.pause());
     const {fileId,name,stream,poster}=standalone.dataset;
     window.play(fileId,name,null,{stream,download:stream,watch:location.pathname+location.search,poster});
   }

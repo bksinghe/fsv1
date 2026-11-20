@@ -115,7 +115,7 @@ const els={'#player':v,'#modal':element(),'#pChoices':element(),'#pChoicesList':
 global.document={querySelector:s=>els[s],createElement:element,dispatchEvent(){},addEventListener(){}};
 global.window={addEventListener(){}};global.Event=class{};global.location={origin:'https://example.com'};global.navigator={};
 const guest=process.argv[1]==='guest',stream='/download/42?e=123&s=abc';
-if(guest){els['#signedPlayer']={dataset:{account:'0',fileId:'abc',name:'Film',stream,poster:''}};
+if(guest){delete els['#modal'];v.src=stream;els['#pReturn']=Object.assign(element(),{href:'https://t.me/ExampleBot'});els['#signedPlayer']={dataset:{account:'0',fileId:'abc',name:'Film',stream,poster:''}};
  Object.assign(location,{pathname:'/watch/42',search:'?e=123&s=abc',assign(url){this.href=url}})}
 global.fetch=async(url,opt={})=>{
  calls.push({url,opt});
@@ -131,7 +131,7 @@ global.fetch=async(url,opt={})=>{
  if(guest){
    await new Promise(r=>setTimeout(r,0));assert.equal(v.src,stream);assert.equal(els['#pDl'].href,stream);
    window.copyLink();assert.equal(els['#pNote'].textContent,'https://example.com/watch/42?e=123&s=abc');
-   listeners.timeupdate();window.closePlayer();assert.equal(location.href,'/search');assert.deepEqual(calls,[]);return;
+   listeners.timeupdate();window.closePlayer();assert.equal(location.href,'https://t.me/ExampleBot');assert.deepEqual(calls,[]);return;
  }
  await window.play('a','A');v.onloadedmetadata();assert.equal(v.currentTime,42);
  v.currentTime=55;listeners.timeupdate();await new Promise(r=>setTimeout(r,0));assert.equal(saved.a.position,55);

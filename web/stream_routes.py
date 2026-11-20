@@ -75,6 +75,7 @@ async def watch_handler(request):
             poster=request.query.get("poster", ""),
             file_id=request.query.get("file_id", ""),
             signed_in=bool(role),
+            bot_username=temp.U_NAME,
         )
     except Exception as e:
         logger.error(f"Watch page error: {e}")
