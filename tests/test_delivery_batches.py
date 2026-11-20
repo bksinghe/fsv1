@@ -21,8 +21,8 @@ class BatchTests(unittest.IsolatedAsyncioTestCase):
         self.ns = dict(store=self.store, BatchOffer=Offer, KIND_EPISODES='episodes', re=re,
                        episode_label=lambda name, idx:(name, int(name[-2:])), logging=logging,
                        asyncio=asyncio, batch_offers={}, batch_jobs={}, has_premium_or_grace=AsyncMock(return_value=True),
-                       db=NS(get_settings=AsyncMock(return_value={})), enums=NS(ChatType=NS(GROUP='g', SUPERGROUP='sg')))
-        load('plugins/file_deliver.py', {'lookup_offer','remaining_files','send_all','send_batch'}, self.ns)
+                       db=NS(send_all_enabled=AsyncMock(return_value=True), set_send_all_enabled=AsyncMock(), get_settings=AsyncMock(return_value={})), enums=NS(ChatType=NS(GROUP='g', SUPERGROUP='sg')))
+        load('plugins/file_deliver.py', {'lookup_offer','remaining_files','send_all','send_batch','send_all_setting'}, self.ns)
 
     async def test_only_grouped_files_offer_and_select_remaining_in_episode_order(self):
         offer = await self.ns['lookup_offer'](7, 'seed')
@@ -58,3 +58,35 @@ class BatchTests(unittest.IsolatedAsyncioTestCase):
         self.ns['send_delivery'].assert_awaited_once_with(None,-100,7,'one',{'_id':'one','file_name':'Z'},
                                                          group=True,topic=4,offer_batch=False)
         msg.reply_text.assert_awaited_once()
+
+    async def test_global_off_blocks_new_and_old_buttons(self):
+        self.ns['db'].send_all_enabled.return_value = False
+        self.assertIsNone(await self.ns['lookup_offer'](7, 'seed'))
+        self.store.by_members.assert_not_awaited()
+        msg = NS(chat=NS(id=7, type='pm'), id=12)
+        query = NS(message=msg, from_user=NS(id=7), answer=AsyncMock())
+        self.ns['batch_offers'][(7,12)] = Offer(7,'seed','g','Button')
+        await self.ns['send_all'](None, query)
+        self.assertFalse(self.ns['batch_jobs'])
+        self.assertIn('disabled', query.answer.await_args.args[0])
+
+    async def test_switch_off_mid_batch_stops_even_in_pm(self):
+        self.ns.update(send_delivery=AsyncMock(), asyncio=NS(sleep=AsyncMock()))
+        self.ns['db'].send_all_enabled.side_effect = [True, False]
+        msg = NS(chat=NS(id=7), message_thread_id=None, reply_text=AsyncMock())
+        await self.ns['send_batch'](None, msg, Offer(7,'seed','g','Button'), False)
+        self.ns['send_delivery'].assert_awaited_once()
+        msg.reply_text.assert_awaited_once()
+
+    async def test_command_status_invalid_input_and_toggle(self):
+        db = self.ns['db']
+        msg = NS(command=['sendAll'], reply_text=AsyncMock())
+        await self.ns['send_all_setting'](None, msg)
+        self.assertIn('ON', msg.reply_text.await_args.args[0])
+        msg.command.append('other')
+        await self.ns['send_all_setting'](None, msg)
+        db.set_send_all_enabled.assert_not_awaited()
+        for arg, expected in [('OFF', False), ('on', True)]:
+            msg.command[1] = arg
+            await self.ns['send_all_setting'](None, msg)
+            db.set_send_all_enabled.assert_awaited_with(expected)

@@ -9,7 +9,7 @@ from telegram_buttons import styled_button, styled_keyboard
 from pyrogram.types import CallbackQuery
 from pyrogram.errors import FloodWait
 
-from info import IS_STREAM, PM_FILE_DELETE_TIME, PROTECT_CONTENT
+from info import ADMINS, IS_STREAM, PM_FILE_DELETE_TIME, PROTECT_CONTENT
 from database.ia_filterdb import get_file_details
 from database.group_db import store, episode_label, KIND_EPISODES
 from database import search_expiry
@@ -237,8 +237,27 @@ batch_offers = {}
 batch_jobs = {}
 
 
+@Client.on_message(filters.command("sendall") & filters.user(ADMINS))
+async def send_all_setting(client, message):
+    args = message.command[1:]
+    if args and (len(args) != 1 or args[0].lower() not in ("on", "off")):
+        return await message.reply_text("Usage: /sendall on or /sendall off")
+    try:
+        if args:
+            enabled = args[0].lower() == "on"
+            await db.set_send_all_enabled(enabled)
+        else:
+            enabled = await db.send_all_enabled()
+    except Exception:
+        logging.exception("Could not access the Send All setting")
+        return await message.reply_text("Could not access the Send All setting. Please retry.")
+    await message.reply_text(f"Send All is {'ON' if enabled else 'OFF'} for all PMs and groups.")
+
+
 async def lookup_offer(owner, fid):
     try:
+        if not await db.send_all_enabled():
+            return None
         groups = await store.by_members([fid])
         if groups:
             g = groups[0]
@@ -300,7 +319,7 @@ async def send_batch(client, msg, offer, group):
                 await asyncio.sleep(3 if group else 1)
             for attempt in range(2):
                 # Recheck after pacing or a FloodWait: the admin may switch to PM-only mode.
-                if not await has_premium_or_grace(offer.owner) or (
+                if not await db.send_all_enabled() or not await has_premium_or_grace(offer.owner) or (
                     group and not (await db.get_settings(msg.chat.id)).get('group_mode', True)
                 ):
                     await msg.reply_text("Batch stopped: delivery is no longer enabled.")
@@ -331,6 +350,8 @@ async def send_all(client, query):
         return await query.answer("Already requested or expired.", show_alert=True)
     if query.from_user.id != offer.owner:
         return await query.answer("Only the original requester can send this group.", show_alert=True)
+    if not await db.send_all_enabled():
+        return await query.answer("Send All is disabled by the bot admin.", show_alert=True)
     group = msg.chat.type in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP)
     if not await has_premium_or_grace(offer.owner):
         return await query.answer("Premium access required.", show_alert=True)

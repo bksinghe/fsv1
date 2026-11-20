@@ -25,6 +25,7 @@ GROUP_ADMIN = (
     ('group_mode', 'Choose group file buttons (on) or PM links (off)'),
 )
 BOT_ADMIN = (
+    ('sendall', 'Check or switch Send All on/off for the whole bot'),
     ('stats', 'Show bot, web and database statistics'),
     ('addpremium', 'Grant a premium plan: user_id days'),
     ('extendpremium', 'Extend a premium plan: user_id days'),

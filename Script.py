@@ -69,6 +69,7 @@ class script(object):
     ADMIN_COMMAND_TXT = (
         "<b>🛡️ ADMIN COMMANDS</b>\n\n"
 
+        "• /sendall on|off – Toggle batch delivery bot-wide\n\n"
         "📊 <b>Stats</b>\n"
         "• /stats – Users, groups, files, premium,\n"
         "  index speed, DB size &amp; uptime\n\n"

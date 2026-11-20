@@ -69,6 +69,7 @@ The bot registers the Telegram slash menu automatically on startup; no BotFather
 | 👤 PM | `/plan` · `/myplan` · `/invoice` | Premium plans, your plan/expiry/renew, latest invoice |
 | 👤 PM or group 💎 | `/link` | Reply to a file for signed Watch Online and Download links valid for **5 hours**. Anyone with the link can use it until expiry; non-video files are download-only. Requires streaming enabled. |
 | 👤 PM 💎 | `/upload` · `/cancel_upload` | Reply to a file (**max 200 MB**) → 🟢 GoFile or 🔵 TmpFiles, with per-site limits and an automatic fallback if the chosen host fails (`plugins/tools.py`) |
+| 🛡️ Bot admin | `/sendall` · `/sendall on` · `/sendall off` | Check or toggle Send All globally (default on; saved across restarts). Off hides new offers, blocks existing buttons and stops batches before the next file. Single-file delivery is unchanged. |
 | 🛡️ PM | `/stats` | Text-only report (**no buttons**): 🤖 bot — users, groups, indexed files, premium users, DB size, uptime · 🌐 web — server state, URL, port, web uptime, web accounts, live sessions, posts, profiles, catalog groups, posters, thumb queue |
 | 🛡️ PM | `/addpremium <user_id> <days>` · `/extendpremium <user_id> <days>` · `/removepremium <user_id>` | Grant (`/addpremium` restarts the clock) · **extend** (`/extendpremium` adds on top of the running plan) · revoke (invoices are kept) |
 | 🛡️ PM | `/delete <keyword>` · `/deleteall` | Delete matching files · delete everything (asks `CONFIRM DELETE ALL`) |

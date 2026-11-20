@@ -59,6 +59,7 @@ class Database:
             raise Exception("Database not connected")
 
         self.users = dbase.users
+        self.bot_settings = dbase.bot_settings
         self.groups = dbase.groups
         self.premium = dbase.premium
         self.reminders = dbase.reminders
@@ -90,6 +91,14 @@ class Database:
     # =========================
     # GROUPS
     # =========================
+
+    async def send_all_enabled(self) -> bool:
+        doc = await asyncio.to_thread(self.bot_settings.find_one, {"_id": "send_all"})
+        return doc is None or doc.get("enabled") is True
+
+    async def set_send_all_enabled(self, enabled: bool):
+        await asyncio.to_thread(self.bot_settings.update_one, {"_id": "send_all"},
+                                {"$set": {"enabled": enabled}}, upsert=True)
 
     async def get_settings(self, chat_id: int):
         group = await asyncio.to_thread(self.groups.find_one, {"id": chat_id})
