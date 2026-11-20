@@ -277,8 +277,10 @@ In `JoneySin/v5`, these features were split between `post_routes.py` (~790 lines
 ### Runtime dependencies
 
 `requirements.txt` pins direct dependencies tested on the Docker image's Python 3.11/Linux.
-Kurigram 2.2.27 provides the `pyrogram` module and native colored inline buttons; TgCrypto and uvloop retain its fast crypto/event loop
-on Linux. Use a fresh virtual environment (do not co-install Pyrogram or Pyrofork).
+Kurigram 2.2.27 provides the `pyrogram` module and native colored inline buttons.
+On Linux we install `kurigram[fast]` with pinned `kuricrypt` (MTProto encryption/decryption)
+and `uvloop` (event loop). This reduces crypto overhead for media passing through the bot;
+forwarding or resending a cached Telegram file does not transfer the whole file through the bot. Use a fresh virtual environment (do not co-install Pyrogram or Pyrofork).
 The bot creates a fresh `Auto_Filter_Bot_Kurigram.session` with the existing bot token;
 stop the old instance before redeploying. MongoDB data and callback IDs are unchanged.
 Button colors appear on newly sent or updated keyboards in compatible Telegram clients.
