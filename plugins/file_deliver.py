@@ -62,7 +62,7 @@ async def file_button_handler(client: Client, query: CallbackQuery):
     try:
         sent = await client.send_cached_media(
             chat_id=msg.chat.id, message_thread_id=msg.message_thread_id,
-            reply_to_message_id=msg.id, file_id=file_id, caption=file_caption(file),
+            file_id=file_id, caption=file_caption(file),
             parse_mode=enums.ParseMode.HTML, protect_content=PROTECT_CONTENT,
         )
     except Exception:

@@ -53,7 +53,7 @@ class GroupDeliveryTests(unittest.IsolatedAsyncioTestCase):
                               reply_markup=SimpleNamespace(inline_keyboard=[[SimpleNamespace(callback_data='file#abc')]]))
         query = SimpleNamespace(message=msg, data='file#abc', from_user=SimpleNamespace(id=42), answer=AsyncMock())
         await ns['file_button_handler'](client, query)
-        client.send_cached_media.assert_awaited_once_with(chat_id=-100, reply_to_message_id=10, message_thread_id=3,
+        client.send_cached_media.assert_awaited_once_with(chat_id=-100, message_thread_id=3,
             file_id='abc', caption='<b>A&amp;B</b>', parse_mode='html', protect_content=True)
         ns['track_expiry'].assert_called_once_with(client, client.send_cached_media.return_value, -100, 'abc', group=True)
         for premium, active in [(False, True), (True, False)]:
