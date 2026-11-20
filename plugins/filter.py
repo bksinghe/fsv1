@@ -368,6 +368,10 @@ def build_results_text(files, search, total, page, total_pages, source_chat_id, 
         f"📄 Page: {page} / {total_pages}</i></b></blockquote>\n\n"
     )
 
+    # HTML links can only open the bot in PM. Group results use callback rows.
+    if source_chat_id:
+        return text + "📁 Select a file to send it here."
+
     for f in files:
         try:
             size = html.escape(str(get_size(f.get("file_size", 0))))
@@ -382,7 +386,7 @@ def build_results_text(files, search, total, page, total_pages, source_chat_id, 
     return text
 
 
-def build_nav(search, offset, next_offset, results_per_page, source_chat_id, owner, is_pm):
+def build_nav(search, offset, next_offset, results_per_page, source_chat_id, owner, is_pm, files):
     """◀️ Prev / Next ▶️ row — None when the page stands alone"""
     nav = []
 
@@ -398,7 +402,15 @@ def build_nav(search, offset, next_offset, results_per_page, source_chat_id, own
         )
         nav.append(styled_button("Next ▶️", callback_data=f"page#{callback_key}"))
 
-    return styled_keyboard([nav]) if nav else None
+    rows = []
+    if not is_pm:
+        # Indexed _ids are compact Telegram file IDs (not the long file_reference).
+        for doc in files:
+            label = f"📁 [{get_size(doc.get('file_size', 0))}] {doc.get('file_name') or 'Untitled'}"
+            rows.append([styled_button(label, callback_data=f"file#{doc['_id']}")])
+    if nav:
+        rows.append(nav)
+    return styled_keyboard(rows) if rows else None
 
 
 async def _send_new(client, chat_id, reply_msg, text, fallback_prefix="", **kwargs):
@@ -497,7 +509,7 @@ async def send_results(
 
         # -------- PAGINATION --------
         markup = build_nav(
-            search, offset, next_offset, results_per_page, source_chat_id, owner, is_pm
+            search, offset, next_offset, results_per_page, source_chat_id, owner, is_pm, files
         )
 
         if message:

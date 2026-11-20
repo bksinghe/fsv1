@@ -8,6 +8,7 @@ from pyrogram.types import CallbackQuery
 
 from info import IS_STREAM, PM_FILE_DELETE_TIME, PROTECT_CONTENT
 from database.ia_filterdb import get_file_details
+from database import search_expiry
 from utils import temp, is_premium, premium_required_text, premium_buy_markup
 
 
@@ -41,49 +42,34 @@ async def has_premium_or_grace(user_id: int) -> bool:
 # ======================================================
 @Client.on_callback_query(filters.regex(r"^file#"))
 async def file_button_handler(client: Client, query: CallbackQuery):
-    """Handle file button clicks in groups"""
-    _, file_id = query.data.split("#", 1)
+    """A group selection is delivered only to the chat containing the result."""
+    msg = query.message
+    if not msg or msg.chat.type not in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP):
+        return await query.answer("Open the original group result.", show_alert=True)
+    if not await has_premium_or_grace(query.from_user.id):
+        return await query.answer("🔒 Premium required to request files. See /plan in PM.", show_alert=True)
 
-    # Get file details
+    # Do not accept a stale/forged payload or a copy forwarded to another chat.
+    rows = getattr(msg.reply_markup, 'inline_keyboard', [])
+    if not any(b.callback_data == query.data for row in rows for b in row) or not await search_expiry.touch(msg.chat.id, msg.id):
+        return await query.answer("⌛ Result expired. Search again.", show_alert=True)
+    file_id = query.data.split("#", 1)[1]
     file = await get_file_details(file_id)
     if not file:
         return await query.answer("❌ File not found", show_alert=True)
 
-    uid = query.from_user.id
-    group_id = query.message.chat.id
-    
-    
-    # ========================================
-    # PREMIUM CHECK (Bot Admin or Premium User)
-    # ========================================
-    is_user_premium = await has_premium_or_grace(uid)
-    
-    # Premium users (Bot Admin + Premium) get direct PM link
-    if is_user_premium:
-        await query.answer(
-            url=f"https://t.me/{temp.U_NAME}?start=file_{group_id}_{file_id}"
+    await query.answer()
+    try:
+        sent = await client.send_cached_media(
+            chat_id=msg.chat.id, message_thread_id=msg.message_thread_id,
+            reply_to_message_id=msg.id, file_id=file_id, caption=file_caption(file),
+            parse_mode=enums.ParseMode.HTML, protect_content=PROTECT_CONTENT,
         )
+    except Exception:
+        logging.exception("Could not deliver group search result")
+        await msg.reply_text("❌ Couldn't send the file here. Check the bot's media permissions.")
         return
-    
-    # ========================================
-    # NON-PREMIUM: Show Premium Required Message
-    # ========================================
-    text = premium_required_text(
-        "PM search is only available for premium users."
-    )
-    btn = premium_buy_markup(close=True)
-    
-    # Send premium required message
-    await query.message.reply_text(
-        text,
-        reply_markup=btn,
-        parse_mode=enums.ParseMode.HTML
-    )
-    
-    await query.answer(
-        "🔒 Premium required for PM file access",
-        show_alert=True
-    )
+    track_expiry(client, sent, msg.chat.id, file_id, group=True)
 
 
 # ======================================================
@@ -164,18 +150,19 @@ async def start_file_delivery(client: Client, message):
 # ======================================================
 # SCHEDULE FILE DELETION
 # ======================================================
-async def schedule_file_deletion(client, sent_msg, uid, file_id):
+async def schedule_file_deletion(client, sent_msg, uid, file_id, *, group=False):
     """Schedule auto-deletion of file message"""
     message_key = (uid, sent_msg.id)
     
-    temp.FILES[message_key] = file_id
+    if not group:
+        temp.FILES[message_key] = file_id
 
     try:
         # Wait for expiry
         await asyncio.sleep(PM_FILE_DELETE_TIME)
         
         # Remove from tracking
-        if temp.FILES.pop(message_key, None) is None:
+        if not group and temp.FILES.pop(message_key, None) is None:
             return  # Closed manually: do not send a resend prompt.
         
         # Delete the file message
@@ -185,6 +172,9 @@ async def schedule_file_deletion(client, sent_msg, uid, file_id):
             logging.getLogger(__name__).debug("schedule_file_deletion: optional operation failed", exc_info=True)
             pass
         
+        if group:
+            return  # No private stream/resend controls in a shared chat.
+
         # Send resend button
         resend = await client.send_message(
             uid,
@@ -214,6 +204,18 @@ async def schedule_file_deletion(client, sent_msg, uid, file_id):
 # ======================================================
 # CORE FILE DELIVERY
 # ======================================================
+def file_caption(file):
+    name = (file.get("file_name") or "").strip()
+    return f"<b>{html.escape(name)}</b>" if name else ""
+
+
+def track_expiry(client, sent, chat_id, file_id, *, group=False):
+    key = (chat_id, sent.id)
+    task = asyncio.create_task(schedule_file_deletion(client, sent, chat_id, file_id, group=group))
+    active_tasks[key] = task
+    task.add_done_callback(lambda _: active_tasks.pop(key, None))
+
+
 async def deliver_file(client, uid, grp_id, file_id):
     """Deliver file to premium user in PM"""
     try:
@@ -237,9 +239,6 @@ async def deliver_file(client, uid, grp_id, file_id):
             )
             return
 
-        file_name = (file.get("file_name") or "").strip()
-        caption = f"<b>{html.escape(file_name)}</b>" if file_name else ""
-
         # Build buttons
         buttons = []
         if IS_STREAM:
@@ -259,27 +258,14 @@ async def deliver_file(client, uid, grp_id, file_id):
         sent = await client.send_cached_media(
             chat_id=uid,
             file_id=file_id,
-            caption=caption,
+            caption=file_caption(file),
             parse_mode=enums.ParseMode.HTML,
             protect_content=PROTECT_CONTENT,
             reply_markup=markup
         )
 
-        # Schedule deletion
-        deletion_task = asyncio.create_task(
-            schedule_file_deletion(client, sent, uid, file_id)
-        )
-        
-        # Track deletion task
-        task_key = (uid, sent.id)
-        active_tasks[task_key] = deletion_task
-        
-        # Cleanup callback
-        def cleanup_deletion(t):
-            active_tasks.pop(task_key, None)
-        
-        deletion_task.add_done_callback(cleanup_deletion)
-        
+        track_expiry(client, sent, uid, file_id)
+
     except Exception as e:
         logging.error(f"Error delivering file: {e}")
 

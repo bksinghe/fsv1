@@ -15,14 +15,15 @@ SOURCE = (Path(__file__).resolve().parents[1] / 'plugins/filter.py').read_text()
 
 def load():
     tree = ast.parse(SOURCE)
-    names = {'build_results_text', '_send_new', 'send_results'}
+    names = {'build_results_text', 'build_nav', '_send_new', 'send_results'}
     nodes = [n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name in names]
     ns = dict(LinkPreviewOptions=SimpleNamespace, html=html, logging=logging, asyncio=asyncio, ceil=ceil,
               enums=SimpleNamespace(ParseMode=SimpleNamespace(HTML='html')),
               temp=SimpleNamespace(U_NAME='ExampleBot'), get_size=lambda n: f'{n} MB',
               RESULTS_PER_PAGE_PM=12, RESULTS_PER_PAGE_GROUP=10,
               get_search_results=AsyncMock(), suggest_query=Mock(return_value=None),
-              build_nav=Mock(return_value='buttons'), check_premium=AsyncMock(return_value=False),
+              styled_button=lambda label, **kw: kw['callback_data'], styled_keyboard=lambda rows: rows,
+              make_callback_key=Mock(return_value='nav'), check_premium=AsyncMock(return_value=False),
               _register_expiry=AsyncMock(), log_error=Mock())
     exec(compile(ast.fix_missing_locations(ast.Module(body=nodes, type_ignores=[])), '<filter>', 'exec'), ns)
     return ns
@@ -39,9 +40,9 @@ class FilterResultLayoutTests(unittest.IsolatedAsyncioTestCase):
     def test_layout_escaping_and_deep_links(self):
         text = self.ns['build_results_text']([{'_id':'abc_1', 'file_size':196,
                                               'file_name':'Rock & <Roll> "movie"'}],
-                                              'search', 5, 1, 2, -100, '👑 ')
+                                              'search', 5, 1, 2, 0, '👑 ')
         self.assertIn('<blockquote><b><i>👑 🎬 Total Files: 5\n📄 Page: 1 / 2</i></b></blockquote>', text)
-        self.assertIn('https://t.me/ExampleBot?start=file_-100_abc_1', text)
+        self.assertIn('https://t.me/ExampleBot?start=file_0_abc_1', text)
         self.assertIn('📁 <a href=', text)
         self.assertIn('[196 MB] Rock &amp; &lt;Roll&gt; &quot;movie&quot;', text)
         class Reader(HTMLParser):
@@ -53,7 +54,7 @@ class FilterResultLayoutTests(unittest.IsolatedAsyncioTestCase):
                 if not self.stack or self.stack.pop() != tag: raise AssertionError(tag)
         parser = Reader(); parser.feed(text)
         self.assertEqual(parser.stack, [])
-        self.assertEqual(parser.links, ['https://t.me/ExampleBot?start=file_-100_abc_1'])
+        self.assertEqual(parser.links, ['https://t.me/ExampleBot?start=file_0_abc_1'])
 
     async def test_initial_reply_and_pagination(self):
         self.ns['get_search_results'].return_value = ([{'_id':'a','file_name':'Name'}], '10', 20)
@@ -67,7 +68,8 @@ class FilterResultLayoutTests(unittest.IsolatedAsyncioTestCase):
         result = SimpleNamespace(id=55, edit_text=AsyncMock())
         await self.ns['send_results'](*self.args, message=result, premium=True)
         self.assertIn('<blockquote>', result.edit_text.await_args.args[0])
-        self.assertEqual(result.edit_text.await_args.kwargs['reply_markup'], 'buttons')
+        self.assertEqual(result.edit_text.await_args.kwargs['reply_markup'], [['file#a'], ['page#nav']])
+        self.assertNotIn('?start=file_', text)
         self.client.send_message.assert_not_awaited()
 
     async def test_reply_failure_preserves_search_context_and_links(self):
@@ -78,7 +80,8 @@ class FilterResultLayoutTests(unittest.IsolatedAsyncioTestCase):
         text = self.client.send_message.await_args.args[1]
         self.assertIn('<code>search</code>', text)
         self.assertIn('<blockquote>', text)
-        self.assertIn('start=file_-100_a', text)
+        self.assertNotIn('?start=file_', text)
+        self.assertEqual(self.client.send_message.await_args.kwargs['reply_markup'], [['file#a']])
 
     async def test_suggestion_retains_reply_and_crown(self):
         self.ns['get_search_results'].side_effect = [([], '', 0), ([{'_id':'a'}], '', 1)]
