@@ -11,11 +11,13 @@
 """
 
 import logging
+from html import escape
 
 from aiohttp import web
 
 from info import PORT
 from database.stats_db import snapshot, uptime, web_numbers
+from web.admin_ui import ADMIN_CSS, ADMIN_CONFIRM_JS, admin_header
 from web.web_assets import get_auth, app_page
 
 logger = logging.getLogger(__name__)
@@ -33,7 +35,8 @@ _STATS_JS = """<script>
       if(p<1)requestAnimationFrame(step);
     });
   }
-  document.querySelectorAll('[data-count]').forEach(function(el){
+  if(window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+  document.querySelectorAll('#statsDashboard [data-count]').forEach(function(el){
     countUp(el, parseFloat(el.dataset.count), 360);
   });
 })();
@@ -70,7 +73,8 @@ _SCAN_JS = """<script>
     }
   }
   button.addEventListener('click',async function(){
-    if(button.disabled||!confirm('Scan the whole library and build permanent groups? This can take a few minutes.'))return;
+    if(button.disabled)return;
+    if(!await confirmAdminAction('Build permanent groups?', 'Scan the whole library to build or update groups. This can take a few minutes.', 'Start scan') || button.disabled)return;
     ++requestId;button.disabled=true;clearTimeout(timer);message('⏳ Starting scan…');
     try{
       await json('/api/group/scan_all',{method:'POST',credentials:'same-origin'});
@@ -98,96 +102,47 @@ async def stats_page(req):
 
     s = await _stats_numbers()
 
-    body = f'''<style>
-#statsDashboard{{max-width:1160px;margin:0 auto;padding:26px 4% 40px}}
-#statsDashboard .stat-title{{font-size:26px;letter-spacing:-.6px}}
-#statsDashboard .stat-lead{{margin-bottom:18px}}
-#statsDashboard .stat-hero{{display:grid;grid-template-columns:1fr auto;align-items:center;padding:20px 24px;border-radius:14px;background:linear-gradient(115deg,var(--card),var(--bg3));}}
-#statsDashboard .stat-hero::before{{width:4px;height:auto;bottom:0;right:auto;background:var(--red)}}
-#statsDashboard .stat-hero-label{{margin:0 0 5px}}
-#statsDashboard .stat-hero-num{{font-size:40px}}
-#statsDashboard .stat-hero-sub{{grid-column:1/-1;margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}}
-#statsDashboard .stat-grid{{grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}}
-#statsDashboard .st-card{{padding:15px;border-radius:11px;background:linear-gradient(150deg,var(--card),color-mix(in srgb,var(--card) 88%,var(--bg3)));}}
-#statsDashboard .st-card:nth-child(7){{grid-column:span 2;border-color:rgba(229,9,20,.28);background:linear-gradient(120deg,var(--card),rgba(229,9,20,.07))}}
-#statsDashboard .st-card:nth-child(7) .st-sub{{font-size:11px}}
-#statsDashboard .st-label{{font-size:9px;letter-spacing:.65px}}
-#statsDashboard .st-val{{font-size:28px;margin-bottom:5px}}
-#statsDashboard .st-sub{{font-size:10px;line-height:1.4}}
-#statsDashboard .scan-tools{{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:16px;margin:4px 0 18px;background:var(--card);border:1px solid var(--line);border-radius:11px}}
-#statsDashboard .scan-button{{padding:11px 16px;border:0;border-radius:8px;background:var(--red);color:#fff;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;min-height:42px}}
-#statsDashboard .scan-button:disabled{{opacity:.55;cursor:wait}}
-#statsDashboard .scan-button:focus-visible{{outline:2px solid var(--red);outline-offset:3px}}
-#statsDashboard .scan-status{{flex:1 1 220px;color:var(--mut);font-size:12px;line-height:1.5;overflow-wrap:anywhere}}
-@media(max-width:850px){{#statsDashboard .stat-grid{{grid-template-columns:repeat(2,minmax(0,1fr))}}}}
-@media(max-width:520px){{#statsDashboard{{padding:18px 4% 28px}}#statsDashboard .stat-hero{{padding:17px}}#statsDashboard .stat-hero-num{{font-size:34px}}#statsDashboard .st-card:nth-child(7){{grid-column:span 2}}}}
-@media(prefers-reduced-motion:reduce){{#statsDashboard .anim-card{{animation:none}}}}
-</style><div id="statsDashboard" class="main">
-  <div class="stat-title anim-card">📊 Database Stats</div>
-  <div class="stat-lead anim-card">A quick overview of your files, users and library activity.</div>
+    def metric(label, value, detail):
+        number = (f'<span data-count="{value}">{value:,}</span>' if isinstance(value, int)
+                  else escape(str(value)))
+        return (f'<article class="metric"><h3>{escape(label)}</h3><strong>{number}</strong>'
+                f'<p>{escape(detail)}</p></article>')
 
-  <div class="stat-hero anim-card">
-    <div class="stat-hero-label">🆕 Recently Added Files</div>
-    <div class="stat-hero-num" data-count="{s['recent_files']}" data-delay="0">{s['recent_files']:,}</div>
-    <div class="stat-hero-sub">Total files in the "Recently Added" grid for an empty search · <a href="/search" style="color:var(--red)">Home / Search →</a></div>
-  </div>
+    def section(label, rows):
+        return (f'<section><h2 class="admin-section-title">{escape(label)}</h2><div class="metrics">'
+                + ''.join(metric(*row) for row in rows) + '</div></section>')
 
-  <div class="stat-grid">
-    <div class="st-card anim-card"><div class="st-bar" style="background:#3399ff"></div>
-      <div class="st-label">Total Files in Database</div>
-      <div class="st-val" data-count="{s['total_files']}" data-delay="100">{s['total_files']:,}</div>
-      <div class="st-sub">Indexed media documents</div></div>
-
-    <div class="st-card anim-card"><div class="st-bar" style="background:#9933ff"></div>
-      <div class="st-label">🖼️ Poster IDs saved</div>
-      <div class="st-val" data-count="{s['thumbnails']}" data-delay="160">{s['thumbnails']:,}</div>
-      <div class="st-sub">Files with a Telegram poster reference</div></div>
-
-    <div class="st-card anim-card"><div class="st-bar" style="background:#00d2c4"></div>
-      <div class="st-label">🌐 Web Accounts</div>
-      <div class="st-val" data-count="{s['web_accounts']}" data-delay="220">{s['web_accounts']:,}</div>
-      <div class="st-sub">Registered email logins</div></div>
-
-    <div class="st-card anim-card"><div class="st-bar" style="background:#ff9933"></div>
-      <div class="st-label">🤖 Bot Users</div>
-      <div class="st-val" data-count="{s['bot_users']}" data-delay="280">{s['bot_users']:,}</div>
-      <div class="st-sub">Active database records</div></div>
-
-    <div class="st-card anim-card"><div class="st-bar" style="background:var(--gold)"></div>
-      <div class="st-label">💎 Premium Users</div>
-      <div class="st-val" data-count="{s['premium_users']}" data-delay="340">{s['premium_users']:,}</div>
-      <div class="st-sub">Active premium plans</div></div>
-
-    <div class="st-card anim-card"><div class="st-bar" style="background:#28a745"></div>
-      <div class="st-label">🟢 Server Uptime</div>
-      <div class="st-val" style="font-size:22px">{uptime(short=True)}</div>
-      <div class="st-sub">Port {PORT} · worker operational</div></div>
-
-    <div class="st-card anim-card"><div class="st-bar" style="background:var(--red)"></div>
-      <div class="st-label">⏳ Thumb Warmup Queue</div>
-      <div class="st-val" style="color:var(--red)" data-count="{s['thumb_queue']['queued']}" data-delay="400">{s['thumb_queue']['queued']:,}</div>
-      <div class="st-sub">posters <b>one at a time</b> · {s['thumb_queue'].get('ok', 0):,} verified · {s['thumb_queue'].get('meta', 0):,} meta saved · {s['thumb_queue'].get('rejected', 0):,} fake rejected · {s['thumb_queue'].get('no_thumb', 0):,} NO_THUMB</div></div>
-
-    <div class="st-card anim-card"><div class="st-bar" style="background:#e50914"></div>
-      <div class="st-label">📝 Content Posts</div>
-      <div class="st-val" data-count="{s['posts']}" data-delay="440">{s['posts']:,}</div>
-      <div class="st-sub">Published catalog entries</div></div>
-
-    <div class="st-card anim-card"><div class="st-bar" style="background:#00d2c4"></div>
-      <div class="st-label">🎭 Directory Profiles</div>
-      <div class="st-val" data-count="{s['actors']}" data-delay="480">{s['actors']:,}</div>
-      <div class="st-sub">Actors · Apps · Websites</div></div>
-
-    <div class="st-card anim-card"><div class="st-bar" style="background:#7dd3fc"></div>
-      <div class="st-label">🗂️ Permanent Groups</div>
-      <div class="st-val" data-count="{s['groups']}" data-delay="520">{s['groups']:,}</div>
-      <div class="st-sub">🎞️ {s['quality_groups']:,} quality groups · 📺 {s['episode_groups']:,} series groups ({s['episodes_total']:,} episodes) — every group has its own id / #number</div></div>
-  </div>
-  <section class="scan-tools" aria-label="Group scan">
-    <button id="statsGroupScan" class="scan-button" type="button" disabled>⚙️ Scan &amp; Build Groups</button>
-    <div id="statsGroupScanStatus" class="scan-status" role="status" aria-live="polite">Checking scan status…</div>
-  </section>
-</div>{_STATS_JS}{_SCAN_JS}'''
+    queue = s['thumb_queue']
+    library = section('Library inventory', [
+        ('Indexed files', s['total_files'], 'Media in the active library'),
+        ('Saved posters', s['thumbnails'], 'Files with a Telegram poster reference'),
+        ('Content posts', s['posts'], 'Published catalog entries'),
+        ('Directory profiles', s['actors'], 'Actors, apps and websites'),
+    ])
+    accounts = section('Accounts', [
+        ('Web accounts', s['web_accounts'], 'Registered email logins'),
+        ('Bot users', s['bot_users'], 'Active database records'),
+        ('Premium users', s['premium_users'], 'Active premium plans'),
+    ])
+    operations = section('Library operations', [
+        ('Permanent groups', s['groups'], f"{s['quality_groups']:,} quality groups · {s['episode_groups']:,} series · {s['episodes_total']:,} episodes"),
+        ('Poster warmup queue', queue['queued'], f"{queue.get('ok', 0):,} verified · {queue.get('meta', 0):,} metadata saved · {queue.get('rejected', 0):,} rejected · {queue.get('no_thumb', 0):,} without posters"),
+        ('Server uptime', uptime(short=True), f'Worker operational · Port {PORT}'),
+    ])
+    header = admin_header('Database Stats', 'A snapshot of your media library, accounts and background jobs.', 'stats')
+    body = ADMIN_CSS + f'''<style>
+#statsDashboard{{max-width:64rem;margin:2rem auto;padding:0 1rem 2rem}}
+.stats-recent,.scan-tools{{display:flex;align-items:center;gap:14px;padding:16px 18px;background:var(--card);border:1px solid var(--line);border-radius:12px;margin-top:14px}}
+.stats-recent strong{{font-size:clamp(25px,4vw,36px);letter-spacing:-.04em;font-variant-numeric:tabular-nums}}.stats-recent span,.scan-status,.metric p{{color:var(--mut);font-size:13px;line-height:1.45}}.stats-recent a{{margin-left:auto;white-space:nowrap}}
+.metrics{{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,185px),1fr));gap:10px}}.metric{{padding:17px;border:1px solid var(--line);border-radius:12px;background:var(--card);min-width:0;overflow-wrap:anywhere}}.metric h3{{font-size:13px;color:var(--mut);font-weight:700}}.metric strong{{display:block;font-size:clamp(23px,3vw,30px);font-variant-numeric:tabular-nums;letter-spacing:-.04em;margin:7px 0 5px}}.metric p{{font-size:12px}}
+.scan-tools{{flex-wrap:wrap}}.scan-tools>div{{flex:1 1 14rem}}.scan-tools h3{{font-size:16px;margin-bottom:4px}}.scan-button{{background:var(--red);border:none;color:white;border-radius:9px;padding:11px 16px;font:inherit;font-size:13px;font-weight:750;cursor:pointer}}.scan-button:disabled{{opacity:.55;cursor:wait}}#statsDashboard :focus-visible{{outline:2px solid var(--red);outline-offset:2px}}
+@media(max-width:520px){{.metrics{{grid-template-columns:repeat(2,minmax(0,1fr))}}.metric{{padding:13px}}.metric:last-child:nth-child(odd){{grid-column:1/-1}}.stats-recent{{flex-wrap:wrap}}}}
+</style><main id="statsDashboard">{header}
+  <div class="stats-recent"><strong data-count="{s['recent_files']}">{s['recent_files']:,}</strong><span>Recently added files</span><a class="tbtn" href="/search">View library →</a></div>
+  {library}{accounts}{operations}
+  <section class="scan-tools" aria-label="Group scan"><div><h3>Group scan</h3><p id="statsGroupScanStatus" class="scan-status" role="status" aria-live="polite">Checking scan status…</p></div>
+    <button id="statsGroupScan" class="scan-button" type="button" disabled>⚙️ Scan &amp; Build Groups</button></section>
+</main>{ADMIN_CONFIRM_JS}{_STATS_JS}{_SCAN_JS}'''
 
     return app_page(
         "Database Stats - Fast Finder", body,

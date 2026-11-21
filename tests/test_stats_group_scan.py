@@ -1,6 +1,7 @@
 """Admin stats scan controls, progress, and per-worker scan reservation."""
 import ast
 import asyncio
+import runpy
 import shutil
 import subprocess
 import unittest
@@ -23,13 +24,16 @@ class StatsScanRouteTests(unittest.IsolatedAsyncioTestCase):
         counts = dict.fromkeys(('recent_files','total_files','thumbnails','web_accounts','bot_users','premium_users','posts','actors','groups','quality_groups','episode_groups','episodes_total'), 0)
         counts['thumb_queue'] = {'queued': 0}
         auth = AsyncMock(return_value=(None,None))
+        ui = runpy.run_path(str(ROOT / "web/admin_ui.py"))
         ns = {'get_auth':auth, 'web':SimpleNamespace(HTTPFound=lambda x:x), '_stats_numbers':AsyncMock(return_value=counts),
-              'uptime':lambda **kwargs:'now', 'PORT':80, '_STATS_JS':'', '_SCAN_JS':'scan-js', 'app_page':lambda title,body,**kw:body}
+              **{k:ui[k] for k in ('admin_header','ADMIN_CSS','ADMIN_CONFIRM_JS','escape')}, 'uptime':lambda **kwargs:'now', 'PORT':80, '_STATS_JS':'', '_SCAN_JS':'scan-js', 'app_page':lambda title,body,**kw:body}
         exec(compile(ast.fix_missing_locations(ast.Module(body=[fn], type_ignores=[])), '<stats>', 'exec'),ns)
         self.assertEqual(await ns['stats_page'](None),'/login')
         auth.return_value=('user',1);self.assertEqual(await ns['stats_page'](None),'/search')
         ns['_stats_numbers'].assert_not_awaited()
         auth.return_value=('admin',1);body=await ns['stats_page'](None)
+        self.assertEqual(body.count('<article class="metric">'), 10)
+        self.assertIn('<h1>Database Stats</h1>',body)
         self.assertIn('⚙️ Scan &amp; Build Groups',body)
         self.assertIn('id="statsGroupScan"',body)
         self.assertIn('aria-live="polite"',body)
@@ -64,7 +68,7 @@ class StatsScanJavascriptTests(unittest.TestCase):
 const assert=require('assert'); let handler, confirms=false, timers=[], requests=[];
 const button={disabled:true,addEventListener:(event,fn)=>handler=fn},status={textContent:''};
 const document={getElementById:id=>id==='statsGroupScan'?button:status};
-const confirm=()=>confirms;
+const confirmAdminAction=async()=>confirms;
 const setTimeout=fn=>{timers.push(fn);return timers.length},clearTimeout=()=>{};
 let replies=[];const fetch=(url,options)=>{requests.push({url,options});return Promise.resolve(replies.shift())};
 const response=data=>({ok:true,json:async()=>data});

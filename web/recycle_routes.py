@@ -16,6 +16,7 @@ from utils import temp
 from web.stream_routes import stream_response
 from web.utils.media_info import MediaInfo
 from database.ia_filterdb import collection, restore_file, unpack_new_file_id
+from web.admin_ui import ADMIN_CSS, ADMIN_CONFIRM_JS, admin_header
 from web.web_assets import app_page, filter_select, get_auth
 from web.thumb_engine import get_image_bytes, image_content_type, thumb_id_from_doc
 from web.image_validate import is_image_magic
@@ -148,13 +149,14 @@ async def recycle_bin(req):
         return '?' + escape(urlencode({'q': query, 'page': n}))
     prev = f'<a href="{page_url(page-1)}">← Previous</a>' if page else ''
     nxt = f'<a href="{page_url(page+1)}">Next →</a>' if len(docs) > PAGE_SIZE else ''
-    items = cards or f'<li>{empty}</li>'
+    hint = 'Try a different filename.' if query else 'Files moved here can be restored to the library.'
+    items = cards or f'<li class="bin-empty"><strong>{empty}</strong><p>{hint}</p></li>'
     navigation = prev + nxt
     headers = {'Cache-Control': 'private, no-store', 'Vary': 'Accept'}
     if req.headers.get('Accept') == 'application/json':
         return web.json_response({'items': items, 'navigation': navigation}, headers=headers)
     mode = filter_select('binMode', options='view', cap='View mode', label='View mode', vm=True)
-    body = '''<style>.bin{margin:2rem auto;padding:0 1rem;max-width:68rem}.bin ul{list-style:none;margin:1rem 0}
+    body = ADMIN_CSS + '''<style>.bin{margin:2rem auto;padding:0 1rem;max-width:64rem}.bin ul{list-style:none;margin:1rem 0}
 .bin form,.bin nav{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin:1rem 0}
 .bin form{flex-wrap:nowrap}.bin input{flex:1;min-width:0;background:var(--bg2);color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:.7rem}
 .bin-card{overflow:hidden;border:1px solid var(--line);border-radius:10px;background:var(--card)}
@@ -167,8 +169,12 @@ async def recycle_bin(req):
 .bin-actions:not([hidden]){display:flex;flex-wrap:wrap;gap:.5rem;padding:.7rem;background:var(--bg2);border-top:1px solid var(--line)}
 .bin dialog{margin:auto;border:1px solid var(--line);border-radius:.8rem;padding:1rem;background:var(--card);color:var(--txt);max-width:min(94vw,52rem)}
 .bin dialog::backdrop{background:#000a}.bin dialog h2{font-size:1rem;overflow-wrap:anywhere;margin-bottom:1rem}
-.bin video{width:min(76vw,48rem);max-height:65vh;background:black}.bin .bin-danger{color:var(--danger-ink);background:color-mix(in srgb,var(--red) 10%,var(--card))}</style>
-<main class="bin"><h1>♻️ Recycle Bin</h1><p>Select a file name for a private preview, or its poster for file options.</p>'''
+.bin video{width:min(76vw,48rem);max-height:65vh;background:black}.bin .bin-danger{color:var(--danger-ink);background:color-mix(in srgb,var(--red) 10%,var(--card))}
+.bin-help{font-size:13px;color:var(--mut);line-height:1.5}.bin input[type=search]{font:inherit;font-size:16px;background:var(--card);border-radius:10px}.bin :focus-visible{outline:2px solid var(--red);outline-offset:2px}
+.bin-card{border-radius:12px}.bin .mode-text{grid-template-columns:minmax(0,1fr)}.bin .mode-text .bin-card{display:block;padding:0}.bin .mode-text .bin-info{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:12px 14px;align-items:center}.bin .mode-text .bin-options{grid-column:2;grid-row:1/3;align-self:center;border-radius:8px}.bin-name{font-size:14px;line-height:1.4}.bin-info small{font-size:12px}.bin .bin-actions button{padding:9px 12px;border-radius:8px;font-weight:700}.bin [data-do=restore]{color:var(--success-ink)}
+.bin-empty{grid-column:1/-1;text-align:center;border:1px dashed var(--line);padding:30px 14px;background:var(--card);border-radius:12px}.bin-empty p{color:var(--mut);font-size:13px;margin-top:6px}.bin nav{justify-content:center}.bin nav a{border:1px solid var(--line);border-radius:9px;padding:8px 12px;font-size:13px}.bin [role=status]{color:var(--mut);font-size:13px}.bin video{border-radius:10px;margin-bottom:10px}
+</style><main class="bin">''' + admin_header('Recycle Bin', 'Deleted files stay hidden from the library until you restore them.', 'bin')
+    body += '<h2 class="admin-section-title">Deleted files</h2><p class="bin-help">Select a filename to preview it. Select its poster or Options to restore or permanently delete it.</p>'
     body += (f'<form action="/recycle-bin" role="search"><input type="search" name="q" maxlength="120" '
              f'aria-label="Search deleted files by name" placeholder="Search deleted files by name…" value="{escape(query)}">'
              f'{mode}</form>'
@@ -176,7 +182,7 @@ async def recycle_bin(req):
              f'<nav>{navigation}</nav><p role="status"></p>'
              '<dialog id="binPlayer" aria-labelledby="binPlayerName"><h2 id="binPlayerName"></h2><video controls playsinline></video>'
              '<p role="alert"></p><button class="tbtn" data-close>Close</button></dialog></main>')
-    body += '''<script>(()=>{ViewMode.init({storage:ViewMode.storageFor()});
+    body += ADMIN_CONFIRM_JS + '''<script>(()=>{ViewMode.init({storage:ViewMode.storageFor()});
 const bin=document.querySelector('.bin'),form=bin.querySelector('form'),input=form.elements.q;
 const grid=bin.querySelector('.vm-grid'),nav=bin.querySelector('nav'),status=bin.querySelector('[role=status]');
 let timer,request;
@@ -222,9 +228,9 @@ bin.addEventListener('click',async e=>{
     video.src='/api/recycle-bin/preview?'+new URLSearchParams({id:card.dataset.id});video.play().catch(()=>{});return;
   }
   const action=b.dataset.do;if(!action||actions.hidden||actions.dataset.busy)return;
-  if(action==='delete'&&!confirm('Permanently delete '+name+'? This cannot be undone.'))return;
   const id=card.dataset.id;actions.dataset.busy='1';b.disabled=true;
-  try{const r=await fetch('/api/recycle-bin/'+action,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,confirmed:action==='delete'})});
+  try{if(action==='delete'&&!await confirmAdminAction('Delete permanently?',name+' will be removed from the recycle bin. This cannot be undone.','Delete permanently'))return;
+    const r=await fetch('/api/recycle-bin/'+action,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,confirmed:action==='delete'})});
     if(!r.ok && r.status!==404)throw Error();location.reload();}
   catch(err){status.textContent='Action failed. Please retry.';}
   finally{delete actions.dataset.busy;b.disabled=false;}
