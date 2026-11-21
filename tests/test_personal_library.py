@@ -94,6 +94,47 @@ class PersonalLibraryTests(unittest.IsolatedAsyncioTestCase):
         await self.post(path, {"action": "remove", "list": pid, "file_id": "1"})
         self.assertTrue(self.files.find_one({"_id": "1"}))
 
+    async def test_live_search_in_both_libraries(self):
+        for fid in ("1", "21"):
+            await self.post(
+                "/api/library/playlists",
+                {"action": "add", "list": "later", "file_id": fid},
+            )
+            await self.post(
+                "/api/progress",
+                {"file_id": fid, "position": 6, "duration": 60, "played": 6},
+            )
+        for path in ("/playlists", "/watch-history"):
+            form = (
+                (await self.body(path))
+                .split('<form role="search">')[1]
+                .split("</form>")[0]
+            )
+            self.assertIn('id="libMode"', form)
+            self.assertNotIn(">Search</button>", form)
+            for q, uid, count in (
+                ("MOVIE 21", 8, 1),
+                ("", 8, 2),
+                ("unknown", 8, 0),
+                ("", 9, 0),
+            ):
+                r = await self.http.get(
+                    path,
+                    params={"q": q},
+                    headers={"Accept": "application/json"},
+                    cookies={"user_session": str(uid)},
+                )
+                self.assertIn("no-store", r.headers["Cache-Control"])
+                data = await r.json()
+                self.assertEqual(data["items"].count('class="vm-card"'), count)
+                if count:
+                    self.assertIn('data-file="21"', data["items"])
+                    self.assertIn("&lt;HD&gt;", data["items"])
+                    self.assertIn(
+                        'value="1"', data["queue"]
+                    )  # playback order stays unfiltered
+                self.assertIn("Page 1", data["navigation"])
+
     async def test_history_threshold_completion_privacy_pause_remove_clear(self):
         path = "/api/library/history"
 

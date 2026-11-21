@@ -207,13 +207,17 @@ async def personal_page(req):
         f'<option data-resume="{resume.get(f, "")}" value="{escape(f)}">{escape(names[f])}</option>'
         for f in visible_ids
     )
+    items = "".join(cards) or (
+        "<p>No videos match this search.</p>" if query else "<p>No videos here yet.</p>"
+    )
+    if req.headers.get("Accept") == "application/json":
+        return json({"items": items, "navigation": paging, "queue": queue})
     body = (
         LIBRARY_CSS
         + f'<main class="library" data-kind="{kind}" data-list="{escape(pid)}" data-last="{escape(last)}"><h1>{title}</h1><div>{toolbar}</div>'
-        f'<form><input type="hidden" name="list" value="{escape(pid)}"><input type="search" name="q" value="{escape(query)}" placeholder="Search by filename" aria-label="Search by filename" maxlength="120"><button class="tbtn">Search</button>{mode}</form>{controls}'
+        f'<form role="search"><input type="hidden" name="list" value="{escape(pid)}"><input type="search" name="q" value="{escape(query)}" placeholder="Search by filename" aria-label="Search by filename" maxlength="120">{mode}</form>{controls}'
         f'<select hidden id="libQueue">{queue}</select><section class="vgrid vm-grid mode-text">'
-        + ("".join(cards) or "<p>No videos here yet.</p>")
-        + f"</section><nav>{paging}</nav></main>"
+        f'{items}</section><nav id="libPaging">{paging}</nav><p role="status"></p></main>'
         + PLAYER_MODAL_HTML
         + PLAYER_JS
         + LIBRARY_JS
