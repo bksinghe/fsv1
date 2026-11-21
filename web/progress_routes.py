@@ -5,6 +5,7 @@ import math
 import time
 
 from aiohttp import web
+from database.personal_library import edit_history
 from database.users_chats_db import dbase
 from database.ia_filterdb import get_file_details, recycled_ids
 from web.web_assets import get_auth
@@ -66,12 +67,15 @@ async def save_progress(req):
             raise ValueError('invalid payload')
         fid = _file_id(data.get('file_id'))
         position, duration = _position(data.get('position')), _position(data.get('duration'))
+        played = _position(data.get('played', 0))
         if not fid or duration <= 0 or position > duration + 1:
             raise ValueError('invalid progress')
     except (ValueError, TypeError):
         return web.json_response({'error': 'Invalid progress'}, status=400)
     try:
         files = _collection()
+        if played >= 5 and await get_file_details(fid):
+            await edit_history(user_id, 'record', fid, position, duration)
         # Completion removes the entry instead of keeping a near-finished video.
         if position >= duration * .95:
             await asyncio.to_thread(files.update_one, {'_id': user_id}, {'$pull': {'items': {'file_id': fid}}})

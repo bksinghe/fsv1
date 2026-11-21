@@ -216,7 +216,7 @@ VCARD_TEMPLATE = (
     '<span class="vplay vm-overlay">▶</span>'
     '<div class="vadmin vm-actions"><button class="va-edit" data-fid="{RAW_FID}">✏️ Edit</button>'
     '<button class="va-del" data-fid="{RAW_FID}">🗑️ Delete</button></div>'
-    '</div><div class="vbody vm-body"><div class="vtitle vm-title">{NAME}</div></div></div>'
+    '</div><div class="vbody vm-body"><div class="vtitle vm-title">{NAME}</div><button type="button" class="tbtn" data-save-file="{RAW_FID}">＋ Playlist</button></div></div>'
 )
 
 _VIDEO_EXT = (".mp4", ".mkv", ".avi", ".mov", ".webm", ".m4v", ".ts",
@@ -1046,6 +1046,7 @@ video{width:100%;height:100%;display:block;background:#000}
 .pchoices .choice-name{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--mut);font-size:11px;margin-top:5px}
 .pchoices .choice-meta{display:block;margin-top:5px;color:var(--mut);font-size:11px}
 @media(max-width:480px){.pchoices{padding:12px}.pchoices-list{grid-template-columns:repeat(2,minmax(0,1fr));max-height:190px}.pchoices button{padding:9px}}
+.playlist-picker{margin:auto;padding:1rem;border-radius:.8rem;border:1px solid var(--line);background:var(--card);color:var(--txt);width:min(92vw,24rem)}.playlist-picker::backdrop{background:#0009}.playlist-picker label,.playlist-picker input,.playlist-picker p{margin:.7rem 0}.playlist-picker select,.playlist-picker input{max-width:100%;padding:.4rem}
 .mactions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:13px 16px}
 .mactions a,.mactions button{background:var(--bg3);border:1px solid var(--line);
 color:var(--txt);border-radius:7px;padding:9px 14px;font-size:12px;font-weight:800;
@@ -1222,6 +1223,8 @@ NAV_MENU = (
     ("posts",   "/posts",   "📝 Posts"),
     ("actors",  "/actors",  "🎭 Actors"),
     ("stats",   "/stats",   "📊 Database Stats"),
+    ("playlists", "/playlists", "🎞️ My Playlists"),
+    ("history", "/watch-history", "🕘 Watch History"),
     ("bin",     "/recycle-bin", "♻️ Recycle Bin"),
     ("profile", "/profile", "⚙️ Profile Settings"),
 )
@@ -1342,6 +1345,7 @@ PLAYER_ACTIONS_HTML = """<div class="mactions">
       <button onclick="copyLink()">🔗 Copy link</button>
       {close}
     </div>
+    <button class="tbtn" id="pSave" hidden>＋ Playlist</button>
     <div class="mnote" id="pNote">Signed streaming link — valid for a limited time.</div>"""
 
 PLAYER_MODAL_HTML = """<div class="modal" id="modal" onclick="if(event.target===this)closePlayer()">
@@ -1370,13 +1374,18 @@ PLAYER_JS = r"""<script>
     const result=progressQueue.then(send,send);
     progressQueue=result.catch(()=>{});return result;
   }
+  let historyStarted=false;
   function saveProgress(force){
     const v=q('#player');
     if(!account||!v||!currentFile||progressSuppressed||!Number.isFinite(v.duration)||v.duration<=0||!Number.isFinite(v.currentTime))return;
-    if(!force && Date.now()-lastProgress<15000)return;
+    // Played ranges exclude seeks and restored resume positions.
+    let played=0;for(let i=0;v.played && i<v.played.length;i++)played+=v.played.end(i)-v.played.start(i);
+    const first=played>=5 && !historyStarted;
+    if(!force && !first && Date.now()-lastProgress<15000)return;
+    if(first)historyStarted=true;
     lastProgress=Date.now();
     queueProgress('/api/progress',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({file_id:currentFile,position:v.currentTime,duration:v.duration})}).catch(()=>{});
+      body:JSON.stringify({file_id:currentFile,position:v.currentTime,duration:v.duration,played})}).catch(()=>{});
   }
   window.removePlaybackProgress=function(fid){
     const active=currentFile===fid;if(active)progressSuppressed=true;
@@ -1410,7 +1419,7 @@ PLAYER_JS = r"""<script>
       list.appendChild(b);
     });
   }
-  window.play = async function(fid, name, context, initial){
+  window.play = async function(fid, name, context, initial, playback={}){
     const modal=q('#modal'), v=q('#player');
     if((!modal && !standalone) || !v) return;
     saveProgress(true);currentFile='';
@@ -1426,7 +1435,7 @@ PLAYER_JS = r"""<script>
     q('#pNote').textContent='Preparing the streaming link…';
     if(modal) modal.classList.add('open');
     if(!initial){v.onloadedmetadata=null;v.pause(); v.removeAttribute('src'); v.load();}
-    if(account && fid && !items.length){
+    if(account && fid && !items.length && !playback.playlist){
       fetch('/api/player/group?file_id='+encodeURIComponent(fid),{credentials:'same-origin'})
         .then(r=>r.ok?r.json():null).then(d=>{
           if(request===seq && d && Array.isArray(d.items)){items=d.items;renderChoices(fid)}
@@ -1446,7 +1455,7 @@ PLAYER_JS = r"""<script>
         q('#pNote').textContent='This file could not be streamed right now.';return}
       const saved=await progress;
       if(request!==seq)return;
-      currentFile=fid;progressSuppressed=false;lastProgress=0;
+      currentFile=fid;historyStarted=false;progressSuppressed=false;lastProgress=0;
       currentWatch=location.origin+d.watch;
       if(standalone && !initial) history.replaceState(null,'',d.watch);
       q('#pTitle').textContent='▶ '+name;
@@ -1454,7 +1463,7 @@ PLAYER_JS = r"""<script>
       q('#pDl').href=d.download;
       v.poster=d.poster||'';
       v.onloadedmetadata=()=>{
-        const pos=Number(saved && saved.item && saved.item.position);
+        const pos=playback.position ?? Number(saved && saved.item && saved.item.position);
         if(request===seq && Number.isFinite(pos) && pos>=5 && Number.isFinite(v.duration) && pos<v.duration*.95){
           try{v.currentTime=pos;}catch(e){}
         }
@@ -1481,6 +1490,26 @@ PLAYER_JS = r"""<script>
     v.onloadedmetadata=null;v.pause(); v.removeAttribute('src'); v.load();
     const m=q('#modal'); if(m) m.classList.remove('open');
   };
+  window.libraryActiveFile=()=>currentFile;
+  window.saveToPlaylist=async function(fid){
+    if(!account||!fid)return;
+    const dialog=document.createElement('dialog');dialog.className='playlist-picker';
+    dialog.innerHTML='<form method="dialog"><h3>Save to playlist</h3><label>Playlist <select></select></label><input placeholder="New playlist name" aria-label="New playlist name" maxlength="80" hidden><p role="status">Loading…</p><button type="button" class="tbtn" disabled>Save</button> <button class="tbtn">Close</button></form>';
+    document.body.appendChild(dialog);dialog.addEventListener('close',()=>dialog.remove(),{once:true});dialog.showModal();
+    const select=dialog.querySelector('select'),input=dialog.querySelector('input'),status=dialog.querySelector('p'),save=dialog.querySelector('button');
+    try{const r=await fetch('/api/playlists',{cache:'no-store'});if(!r.ok)throw Error();const d=await r.json();
+      d.lists.forEach(p=>select.add(new Option(p.name,p.id)));select.add(new Option('＋ New playlist',''));save.disabled=false;status.textContent='';
+    }catch(err){status.textContent='Could not load playlists. Please sign in and retry.';}
+    select.onchange=()=>{input.hidden=!!select.value;if(!input.hidden)input.focus();};
+    save.onclick=async()=>{save.disabled=true;try{
+      const r=await fetch('/api/library/playlists',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:select.value?'add':'create',list:select.value,name:input.value,file_id:fid})});
+      if(!r.ok)throw Error((await r.json().catch(()=>({}))).error||'Could not save.');
+      status.textContent='Saved to playlist.';
+    }catch(err){status.textContent=err.message;}finally{save.disabled=false;}};
+  };
+  const save=q('#pSave');if(save && account){save.hidden=false;save.onclick=()=>window.saveToPlaylist(currentFile);}
+  document.addEventListener('click',e=>{const b=e.target.closest('[data-save-file]');if(b){e.stopPropagation();window.saveToPlaylist(b.dataset.saveFile);}},true);
+  document.addEventListener('keydown',e=>{if(e.target.closest?.('[data-save-file]')&&(e.key==='Enter'||e.key===' ')){e.preventDefault();e.stopPropagation();e.target.click();}},true);
   window.copyLink = function(){
     if(!currentWatch) return;
     const note=q('#pNote'), clip=navigator.clipboard;
@@ -1494,7 +1523,7 @@ PLAYER_JS = r"""<script>
     const {fileId,name,stream,poster}=standalone.dataset;
     window.play(fileId,name,null,{stream,download:stream,watch:location.pathname+location.search,poster});
   }
-  document.addEventListener('keydown',e=>{ if(e.key==='Escape') window.closePlayer(); });
+  document.addEventListener('keydown',e=>{ if(e.key==='Escape' && !document.querySelector('dialog[open]')) window.closePlayer(); });
 })();
 </script>"""
 

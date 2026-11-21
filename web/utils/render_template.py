@@ -30,8 +30,8 @@ async def media_watch(message_id: int, query: str = "", poster: str = "", file_i
     if not info:
         return html_response("<h2>❌ File Not Found</h2>", status=404)
 
-    if not file_id:
-        file_id = unpack_new_file_id(info.file_id)
+    # Attribute playback history to the signed media, never a query-string hint.
+    file_id = unpack_new_file_id(info.file_id)
 
     src = f"/download/{message_id}"
     if query:
