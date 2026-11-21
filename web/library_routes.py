@@ -114,18 +114,9 @@ async def personal_page(req):
             raise web.HTTPNotFound(text="Playlist unavailable")
         ids = p["files"]
         last = p["last"]
-        toolbar = (
-            "<nav>"
-            + "".join(
-                f'<a class="tbtn" href="?list={x["id"]}" aria-current="{str(x == p).lower()}">{escape(x["name"])}</a>'
-                for x in lists
-            )
-            + "</nav>"
-        )
-        toolbar += (
-            button("＋ New playlist", "create")
-            + button("Rename", "rename")
-            + (button("Delete playlist", "delete") if pid != "later" else "")
+        tabs = "".join(
+            f'<a href="?list={x["id"]}" aria-current="{str(x == p).lower()}">{escape(x["name"])}</a>'
+            for x in lists
         )
 
     def visible():
@@ -170,14 +161,23 @@ async def personal_page(req):
                 )
             )
             actions = button("＋ Playlist", "save")
-        else:
-            meta = "Video " + str(visible_ids.index(fid) + 1)
-            actions = button("↑ Move up", "up") + button("↓ Move down", "down")
         poster = "/api/thumb?" + escape(urlencode({"file_id": fid}))
-        cards.append(
-            f'<article class="vm-card" data-file="{escape(fid)}"><img alt="" class="vm-img" loading="lazy" data-src="{poster}" onerror="this.hidden=true">'
-            f'<button class="lib-name" data-act="play">▶ {escape(names[fid])}</button><small>{meta}</small><div>{actions}{button("Remove", "remove")}</div></article>'
-        )
+        if hist:
+            cards.append(
+                f'<article class="vm-card" data-file="{escape(fid)}"><img alt="" class="vm-img" loading="lazy" data-src="{poster}" onerror="this.hidden=true">'
+                f'<button class="lib-name" data-act="play">▶ {escape(names[fid])}</button><small>{meta}</small><div>{actions}{button("Remove", "remove")}</div></article>'
+            )
+        else:
+            number = visible_ids.index(fid) + 1
+            cards.append(
+                f'<article class="vm-card" data-file="{escape(fid)}"><div class="pl-cover" aria-hidden="true"><span>▶</span><img alt="" class="vm-img" loading="lazy" data-src="{poster}" onerror="this.hidden=true"></div>'
+                f'<div class="pl-row"><span class="pl-number">{number:02}</span><button class="lib-name" data-act="play">{escape(names[fid])}</button>'
+                '<details class="pl-options"><summary aria-label="Video options" title="Video options">⋯</summary><div>'
+                + button("↑ Move up", "up")
+                + button("↓ Move down", "down")
+                + button("Remove", "remove")
+                + "</div></details></div></article>"
+            )
     paging = (
         (f'<a href="{url(page - 1)}">← Previous</a>' if page else "")
         + f" <span>Page {page + 1}</span> "
@@ -210,12 +210,35 @@ async def personal_page(req):
     items = "".join(cards) or (
         "<p>No videos match this search.</p>" if query else "<p>No videos here yet.</p>"
     )
+    if hist:
+        heading = f"<h1>{title}</h1><div>{toolbar}</div>"
+    else:
+        count = len(visible_ids)
+        heading = (
+            '<header class="pl-top"><div><small class="pl-kicker">YOUR LIBRARY</small><h1>My Playlists</h1></div>'
+            + button("＋ New playlist", "create")
+            + "</header>"
+            f'<nav class="pl-tabs" aria-label="Choose playlist">{tabs}</nav>'
+            '<header class="pl-hero"><div class="pl-art" aria-hidden="true"><i>▶</i></div><div class="pl-info">'
+            '<small class="pl-kicker">PRIVATE PLAYLIST</small>'
+            f"<h2>{escape(p['name'])}</h2><p>{count} {'video' if count == 1 else 'videos'}</p>"
+            f'<div class="pl-tools">{controls}<details class="pl-manage"><summary>Manage</summary><div>'
+            + button("Rename", "rename")
+            + (button("Delete playlist", "delete") if pid != "later" else "")
+            + '</div></details></div></div></header><h2 class="pl-queue-title">Play queue</h2>'
+        )
+        if not cards:
+            items = (
+                '<div class="pl-empty"><strong>No matching videos</strong><p>Try another filename or clear your search.</p></div>'
+                if query
+                else '<div class="pl-empty"><strong>Your queue is empty</strong><p>Use ＋ Playlist on a video to save it here.</p></div>'
+            )
     if req.headers.get("Accept") == "application/json":
         return json({"items": items, "navigation": paging, "queue": queue})
     body = (
         LIBRARY_CSS
-        + f'<main class="library" data-kind="{kind}" data-list="{escape(pid)}" data-last="{escape(last)}"><h1>{title}</h1><div>{toolbar}</div>'
-        f'<form role="search"><input type="hidden" name="list" value="{escape(pid)}"><input type="search" name="q" value="{escape(query)}" placeholder="Search by filename" aria-label="Search by filename" maxlength="120">{mode}</form>{controls}'
+        + f'<main class="library" data-kind="{kind}" data-list="{escape(pid)}" data-last="{escape(last)}">{heading}'
+        f'<form role="search"><input type="hidden" name="list" value="{escape(pid)}"><input type="search" name="q" value="{escape(query)}" placeholder="Search by filename" aria-label="Search by filename" maxlength="120">{mode}</form>'
         f'<select hidden id="libQueue">{queue}</select><section class="vgrid vm-grid mode-text">'
         f'{items}</section><nav id="libPaging">{paging}</nav><p role="status"></p></main>'
         + PLAYER_MODAL_HTML
