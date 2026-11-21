@@ -3,7 +3,7 @@
 `/warmup_thumbs` (and the `/api/thumb` probe) fetches thumb bytes from Telegram.
 The mere presence of `thumbs[0].file_id` is not enough: Telegram sometimes returns
 a generated placeholder ("NO IMAGE" card), a 1×1 pixel, a blank solid-colour frame
-or an error body. That is why v5 (`plugins/warmup.py`) downloaded the bytes and
+or an error body. That is why the reference warmup worker downloaded the bytes and
 re-uploaded them with `send_photo` — Telegram only accepts a genuine image.
 
 fsv1 takes that guarantee one step further: it validates the bytes **before**

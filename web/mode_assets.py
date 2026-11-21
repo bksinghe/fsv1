@@ -5,7 +5,7 @@ All Poster/Text behaviour is defined here once; `/search`, `/posts`,
 **Both modes share exactly the same markup and code**; Text mode only hides
  the thumbnail image (`vm-img`) and image-only decoration (`vm-ph`/`vm-overlay`)
  through CSS. There is no separate HTML branch or render path.
-The Text-mode grid also lives here: like the GitHub reference (v5 `.res-grid`)
+The Text-mode grid also lives here: like the reference layout (`.res-grid`)
 📱 1 / 📟 2 / 🖥️ 3 cards per row, each card compact (name + chips + actions).
 
 ┌── CHANGE IN ONE PLACE → EVERYWHERE ──────────────────────────────────┐
@@ -56,7 +56,7 @@ MODE_CSS = r"""
    Text mode: only the thumbnail and image-only decoration are hidden.
    Everything else (name, chips, size, duration, group meta, admin actions)
    stays exactly as in Poster mode, just in a compact card.
-   📐 Responsive grid like the GitHub reference (v5 `.res-grid`) — 📱 1 card/row,
+   📐 Responsive grid like the reference layout (`.res-grid`) — 📱 1 card/row,
    📟 2, 🖥️ 3 (matching the `.vgrid` breakpoints used by Poster mode). */
 .vm-grid.mode-text{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;
 align-items:start}

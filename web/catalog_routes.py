@@ -1,6 +1,6 @@
 """🌐 Routes for the unified Catalog (Posts + Directory profiles).
 
-In v5 this took a separate `post_routes.py` (publish/update/delete/photo/search/single)
+In the reference implementation this took a separate `post_routes.py` (publish/update/delete/photo/search/single)
 and `actor_routes.py` (create/avatar/gallery/social/delete/search/profile) —
 ~18 endpoints in total, each with its own auth check and response format.
 
@@ -13,7 +13,7 @@ Here there is **one** generic JSON API:
 | GET | `/api/catalog/{kind}` | list (`q`, `category`, `offset`, `limit`) or `?id=` single |
 | POST | `/api/catalog/{kind}/save` | create + edit — **one endpoint** (admin) |
 | POST | `/api/catalog/{kind}/delete` | delete (admin) |
-| GET | `/api/catalog/{kind}/media` | **Actors only**: Library videos from **Search Tags** (`q` override, `offset`/`limit`) — v5 actor Linked Media. Posts return `source: disabled` (attached videos only) |
+| GET | `/api/catalog/{kind}/media` | **Actors only**: Library videos from **Search Tags** (`q` override, `offset`/`limit`) — tag-based linked media. Posts return `source: disabled` (attached videos only) |
 | POST | `/api/catalog/{kind}/gallery_upload` | Multiple photos/screenshots straight from the tab (admin, serial Telegram upload) |
 | POST | `/api/catalog/{kind}/gallery_delete` | Remove one image without a reload (admin) |
 | POST | `/api/catalog/upload` | image → Telegram → `TG_ID:` (admin) |
@@ -100,7 +100,7 @@ async def _enrich_attached_videos(item: dict):
 
 
 async def _tag_media(item: dict, custom_q: str, offset: int, limit: int):
-    """🏷️ v5's `get_actor_search_results(name|tags)` — Library videos from tags.
+    """🏷️ the reference implementation’s `get_actor_search_results(name|tags)` — Library videos from tags.
 
     Actor tags match complete ordered names, with tags as OR alternatives.
     A custom query ignores tags and uses the normal search pipeline; without
@@ -189,7 +189,7 @@ async def api_photo(req):
 
 @catalog_routes.post("/api/catalog/upload")
 async def api_upload(req):
-    """Cover/avatar upload → Telegram → permanent `TG_ID:` (like v5, without a reload).
+    """Cover/avatar upload → Telegram → permanent `TG_ID:` (without a reload).
 
     If the bot is not ready the client shows a clear error and offers a URL paste option.
     """
@@ -323,7 +323,7 @@ async def _read_payload(req):
 
 @catalog_routes.post("/api/catalog/{kind}/save")
 async def api_save(req):
-    """✨ Create + Edit in one endpoint (v5 had 2 wizards + 2 APIs)."""
+    """✨ Create + Edit in one endpoint (the reference implementation had 2 wizards + 2 APIs)."""
     role, _ = await get_auth(req)
     if role != "admin":
         return _json({"ok": False, "error": "Admins only"}, 403)
@@ -360,7 +360,7 @@ async def api_save(req):
 
 @catalog_routes.get("/api/catalog/{kind}/media")
 async def api_media(req):
-    """🎬 Videos tab — Library videos from **Search Tags** (like v5's actor page).
+    """🎬 Videos tab — Library videos from **Search Tags** (actors only).
 
     Passing `q=` runs that query (tags ignored); when empty it uses the item's tags,
     or the title when there are no tags. `offset` / `limit` provide pagination.
@@ -416,9 +416,9 @@ async def api_media(req):
 
 @catalog_routes.post("/api/catalog/{kind}/gallery_upload")
 async def api_gallery_upload(req):
-    """🖼️ Multiple photos straight from the Gallery/Screenshots tab (like v5, no reload).
+    """🖼️ Multiple photos straight from the Gallery/Screenshots tab (no reload).
 
-    v5's `/api/actor/gallery_upload` submitted a form and reloaded the page; here a
+    the reference implementation’s `/api/actor/gallery_upload` submitted a form and reloaded the page; here a
     JSON response is rendered in place. Uploads go to Telegram **one at a time**
     (the same anti-flood behaviour as thumbnails); one failure does not stop the rest.
     """
@@ -479,7 +479,7 @@ async def api_gallery_upload(req):
 async def api_gallery_delete(req):
     """🖼️ Remove one image from the detail Gallery tab without a page reload (admin).
 
-    v5 called `window.location.reload()` after `/api/actor/gallery_delete`;
+    the reference implementation called `window.location.reload()` after `/api/actor/gallery_delete`;
     here only the gallery array is updated and the client removes the card from the DOM.
     """
     role, _ = await get_auth(req)

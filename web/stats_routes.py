@@ -1,6 +1,6 @@
-"""📊 Database Stats — a stats page modelled on JoneySin/v5's `web/stats_routes.py`.
+"""📊 Database Stats — a stats page modelled on JoneySin’s `web/stats_routes.py`.
 
-* Like v5, an admin-only "Database Stats" link in the sidebar and counters in cards.
+* an admin-only "Database Stats" link in the sidebar and counters in cards.
 * The "🆕 Recently Added — N files" count that used to appear in the `/search`
   meta line is now shown here on "Database Stats" (the same `get_recent_files()`
   total — not a new or different count).
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 stats_routes = web.RouteTableDef()
 
 
-# Count-up animation like v5's stats JS
+# Animate dashboard counters unless reduced motion is requested.
 _STATS_JS = """<script>
 (function(){
   function countUp(el, target, duration){
@@ -96,7 +96,7 @@ async def stats_page(req):
     role, tg_id = await get_auth(req)
     if not role:
         return web.HTTPFound("/login")
-    # In v5 the "Database Stats" tab is visible only to admins
+    # Both the dashboard and its JSON endpoint are admin-only.
     if role != "admin":
         return web.HTTPFound("/search")
 
@@ -152,7 +152,7 @@ async def stats_page(req):
 
 @stats_routes.get("/api/db_stats")
 async def api_db_stats(req):
-    """JSON counters — a lightweight endpoint like v5's /api/db_stats."""
+    """Return the dashboard counters as JSON."""
     role, _ = await get_auth(req)
     if not role:
         return web.json_response({"error": "Login required", "login": "/login"}, status=401)

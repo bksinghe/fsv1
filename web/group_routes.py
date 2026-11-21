@@ -1,6 +1,6 @@
 """🗂️ PERMANENT GROUP APIs + group-first search cards.
 
-Rebuilt for fsv1 after **studying** v5 (`JoneySin/v5` → `web/search_api.py` +
+Rebuilt for fsv1 after studying JoneySin’s implementation (`web/search_api.py` +
 `web/dashboard_routes.py`) — not a verbatim copy, no `COLLECTIONS`/primary/cloud/
 archive/section, and fsv1 keeps its single collection, sync PyMongo and shared
 `.vcard`/filter components.
@@ -636,7 +636,7 @@ async def api_group_save(req):
     """Create a new group (new number) OR add files to an existing `group_id`.
 
     A file that belonged to another group is removed from it and **blacklisted**
-    (`excluded`) so auto-key cannot bring it back — the same rule as v5.
+    (`excluded`) so auto-key cannot bring it back during automatic grouping.
     """
     if not await _admin(req):
         return _denied()

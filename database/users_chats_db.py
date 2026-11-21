@@ -178,7 +178,7 @@ class Database:
 
 # ======================================================================
 # 🌐 WEB AUTHENTICATION (login / register / OTP / session)
-#    Same flow as v5, adapted to fsv1's synchronous PyMongo client.
+#    Same flow as the reference implementation, adapted to fsv1's synchronous PyMongo client.
 #    All DB calls go through asyncio.to_thread() so the bot's event loop
 #    is never blocked.
 # ======================================================================
@@ -282,7 +282,7 @@ class WebAuthDB:
             self.col.update_one, {"tg_id": tg_id}, {"$set": {"last_login": time.time()}}
         )
 
-    # ───────────────── PROFILE SETTINGS (as in v5) ─────────────────
+    # ───────────────── PROFILE SETTINGS ─────────────────
     async def get_profile(self, tg_id: int):
         """Lightweight document for the /profile page (email + timestamps)."""
         doc = await asyncio.to_thread(
@@ -302,7 +302,7 @@ class WebAuthDB:
         return bool(doc)
 
     async def update_profile(self, tg_id: int, email: str, password: str = ""):
-        """Update the email and, optionally, the password — mirrors v5's /api/update_profile.
+        """Update the email and, optionally, the password — mirrors the reference implementation’s /api/update_profile.
 
         When a password is supplied it is stored via hash_password(); invalidating
         sessions is the route's responsibility (the same flow as reset_password).

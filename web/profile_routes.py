@@ -1,10 +1,10 @@
-"""⚙️ Profile Settings — a page modelled on JoneySin/v5's `web/profile_routes.py`.
+"""⚙️ Profile Settings — a page modelled on JoneySin’s `web/profile_routes.py`.
 
-* a "Profile Settings" link in the sidebar (like v5's NAV_MENU).
+* a "Profile Settings" link in the sidebar (like the reference implementation’s NAV_MENU).
 * the "#5292444428 · ADMIN" identity appears here in the Account Status card —
-  in v5 the Telegram ID / admin status also live on the profile only.
+  in the reference implementation the Telegram ID / admin status also live on the profile only.
 * Account Info (Telegram ID, email) + Security (new password), tabs,
-  password show/hide and a strength meter — just like v5.
+  password show/hide and a strength meter.
 * Email / password changes use fsv1's WebAuthDB + hash_password backend.
 """
 
@@ -35,7 +35,7 @@ _SVG_EYE_HIDE = ('<svg width="15" height="15" viewBox="0 0 24 24" fill="none" '
                  '<path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>'
                  '<line x1="1" y1="1" x2="23" y2="23"/></svg>')
 
-# v5-style tab / password-toggle / strength JS (separate string to avoid brace escaping)
+# tab / password-toggle / strength JS (separate string to avoid brace escaping)
 _PROFILE_JS = f"""<script>
 (function(){{
   var tabs=document.querySelectorAll('.prof-tab'), panels=document.querySelectorAll('.prof-panel');
@@ -79,7 +79,7 @@ async def profile_page(req):
     prof = await web_db.get_profile(tg_id)
     email = str(prof.get("email") or "")
 
-    # v5-style status: admin / premium / free (the plan comes from the real DB)
+    # status: admin / premium / free (the plan comes from the real DB)
     try:
         mp = await user_db.get_plan(tg_id)
     except Exception:

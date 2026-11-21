@@ -91,7 +91,7 @@ ensure_indexes(raw_files)
 # Extra fields for the web UI (thumbnail, duration, dimensions) — including them in
 # the search projection avoids a separate DB query for every result.
 WEB_EXTRA_FIELDS = {
-    "thumb_url": 1,        # v5 format: "TG_ID:<telegram_thumb_file_id>"
+    "thumb_url": 1,        # stored format: "TG_ID:<telegram_thumb_file_id>"
     "thumb_file_id": 1,    # read-compatibility alias for older indexed documents
     "thumb_source": 1,     # "web" = an admin uploaded a custom poster
     "duration": 1,
@@ -357,9 +357,9 @@ async def update_file_meta(file_id: str, meta: dict, expected_thumb: dict = None
 
 
 # =====================================================
-# ✏️ WEB FILE EDITOR — fsv1's take on v5's /api/edit_name + /api/delete
+# ✏️ WEB FILE EDITOR — fsv1's take on the reference implementation’s /api/edit_name + /api/delete
 # =====================================================
-# v5 had 3 separate collections (primary/cloud/archive) and the edit modal moved a
+# the reference implementation had 3 separate collections (primary/cloud/archive) and the edit modal moved a
 # file between them. fsv1 has no such concept, so collection-move was not ported.
 # A raw user dict is never passed to `$set`:
 # only these keys are allowed.
@@ -568,7 +568,7 @@ async def save_file(media) -> str:
         # Detect quality
         quality = detect_quality(file_name)
 
-            # 🖼️ REAL THUMBNAIL (v5-style logic): only the Telegram thumbnail
+            # 🖼️ REAL THUMBNAIL: only the Telegram thumbnail
             # **file_id string** is stored in the DB ("TG_ID:..."). Image bytes never
             # go into the DB or a server RAM cache — the browser caches them over HTTP,
             # otherwise DB/RAM fills up quickly.

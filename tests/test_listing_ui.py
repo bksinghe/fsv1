@@ -68,7 +68,7 @@ class TestCreateButtonPlacement(unittest.TestCase):
         self.assertLess(toolbar.index("{create_btn}"), toolbar.index('id="catCount"'))
 
     def test_06_no_page_heading_one_search_box(self):
-        """Like v5 `.search-box`: no title, everything inside one card-box."""
+        """Search layout: no title, everything inside one card-box."""
         self.assertNotIn(".cat-head{", CATALOG)
         self.assertNotIn(".cat-title{", CATALOG)
         self.assertNotIn('"page": "Content Posts"', CATALOG)

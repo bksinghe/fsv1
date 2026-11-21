@@ -2,7 +2,7 @@
 
 Storage model (Koyeb free / 512 MB RAM) — **unchanged**:
   * MongoDB   → only the Telegram thumbnail **file_id string**
-                 `thumb_url: "TG_ID:<file_id>"` (as in v5), or `"NO_THUMB"`.
+                 `thumb_url: "TG_ID:<file_id>"`, or `"NO_THUMB"`.
                  No image bytes are stored.
   * Server RAM → a byte-bounded LRU hot cache (16 MiB default) avoids repeat
                  Telegram downloads; entries evict oldest-first and are never persisted.
@@ -10,14 +10,14 @@ Storage model (Koyeb free / 512 MB RAM) — **unchanged**:
   * Browser   → `/api/thumb` uses `ETag` + `Cache-Control` + 304, so the poster
                  lives in the browser's own cache.
 
-Learned from v5 (`JoneySin/v5`), implemented the fsv1 way:
+Adapted from work by JoneySin:
 
   * **First-time extraction runs one file at a time to avoid rate limits** —
     `_probe_lock` guarantees only **one** `send_cached_media()` call process-wide,
     with a random 3.0–5.0s anti-flood gap between probes (`plugins/warmup.py`).
 
   * `/api/thumb` does not open 21 parallel probes: a single-worker **queue** plus
-    browser `retry=true` (v5's `reloadThumb` pattern).
+    browser `retry=true` (the reference implementation’s `reloadThumb` pattern).
   * **FLOOD_WAIT / 420** → parse `wait of N seconds` (or `FloodWait.value`),
     `sleep(N + extra)` and retry up to 5 attempts.
   * 🆕 **/warmup_thumbs = thumbnail + real metadata in one probe**: the same
@@ -27,7 +27,7 @@ Learned from v5 (`JoneySin/v5`), implemented the fsv1 way:
     the real dimensions from the container header.
   * 🆕 **Never save a fake "NO IMAGE" thumbnail to the DB**: download the candidate
     bytes → check magic/dimensions/variance/markers with `web/image_validate.py`
-    → permanently re-upload via Telegram `send_photo` (v5 warmup's approach).
+    → permanently re-upload via Telegram `send_photo` (permanent storage).
     Only conclusively missing/rejected thumbnails become `NO_THUMB`; temporary
     download/upload failures remain retryable. Admin poster edits are protected.
 """
@@ -56,7 +56,7 @@ from web.image_validate import validate_thumb
 
 logger = logging.getLogger(__name__)
 
-# v5's THUMBNAIL_STORAGE_CHANNEL is CATALOG_STORAGE_CHANNEL in fsv1 (defaults to BIN)
+# the reference implementation’s THUMBNAIL_STORAGE_CHANNEL is CATALOG_STORAGE_CHANNEL in fsv1 (defaults to BIN)
 _STORAGE_CHANNEL = getattr(_info, "CATALOG_STORAGE_CHANNEL", BIN_CHANNEL)
 _MIN_THUMB_BYTES = int(getattr(_info, "THUMB_MIN_BYTES", 512))
 _MIN_THUMB_DIM = int(getattr(_info, "THUMB_MIN_DIM", 48))
@@ -68,7 +68,7 @@ _download_sem = asyncio.Semaphore(THUMB_FETCH_CONCURRENCY)
 # Pillow may allocate substantial temporary buffers: never decode more than one
 # thumbnail at once, even when multiple downloads finish concurrently.
 _validation_sem = asyncio.Semaphore(1)
-# ⚠️ FIRST-TIME PROBE: only ONE file at a time (v5 warmup "single-bot safe")
+# ⚠️ FIRST-TIME PROBE: only ONE file at a time
 _probe_lock = asyncio.Lock()
 
 # ⏱️ Anti-flood pacing — the random gap above plus a penalty that grows after
@@ -103,13 +103,13 @@ def image_content_type(data: bytes) -> str:
 
 
 def thumb_version(fid: str, thumb_ref: str = "") -> str:
-    """Like v5, hash the whole thumb_url — a new thumbnail changes the URL/ETag."""
+    """Hash the whole thumb_url — a new thumbnail changes the URL/ETag."""
     raw = f"{fid}:{thumb_ref}"
     return f"{zlib.crc32(raw.encode('utf-8')):08x}"
 
 
 def thumb_id_from_doc(doc) -> str:
-    """Read the Telegram thumbnail file_id from a DB doc (v5 `TG_ID:` + legacy alias).
+    """Read the Telegram thumbnail file_id from a DB doc (`TG_ID:` + legacy alias).
 
     `NO_THUMB` = permanently without a poster ⇒ there is no id.
     """
@@ -193,7 +193,7 @@ async def thumb_state(fid: str) -> str:
 
 
 # ─────────────────────────────────────────────────────────────
-# 🛡️ v5-style FLOOD_WAIT handling
+# 🛡️ FLOOD_WAIT handling
 # ─────────────────────────────────────────────────────────────
 def flood_wait_seconds(err) -> int:
     """Extract the wait seconds from a FloodWait exception (`e.value`) or its message."""
@@ -230,7 +230,7 @@ def _clear_flood_penalty():
 
 
 async def _delete_later(message_id: int, delay: int = 5):
-    """Like v5's delete queue — remove the probe message from BIN_CHANNEL (non-blocking)."""
+    """Like the reference implementation’s delete queue — remove the probe message from BIN_CHANNEL (non-blocking)."""
     await asyncio.sleep(delay)
     try:
         await temp.BOT.delete_messages(BIN_CHANNEL, message_id)
@@ -239,7 +239,7 @@ async def _delete_later(message_id: int, delay: int = 5):
 
 
 def _valid_thumb_ref(tid) -> bool:
-    """v5 warmup's strict id validation: a string, >20 chars, no NO_THUMB marker."""
+    """Strict id validation: a string, >20 chars, no NO_THUMB marker."""
     return (
         isinstance(tid, str)
         and len(tid.strip()) > 20
@@ -299,7 +299,7 @@ async def _download_thumb(thumb_file_id: str):
 
 
 async def _upload_thumb(data: bytes) -> str:
-    """✅ v5 warmup: fresh-upload the validated image to the storage channel.
+    """✅ Warmup: fresh-upload the validated image to the storage channel.
 
     Telegram's `send_photo` only accepts a genuine image ⇒ this id is permanent
     (a transient thumb file_reference cannot expire). If it fails, the probe
@@ -389,7 +389,7 @@ def _meta_version(doc) -> int:
 
 
 async def probe_file(fid: str, force: bool = False):
-    """🖼️ ONE file: **real thumbnail + true metadata** — serial, like v5 warmup.
+    """🖼️ ONE file: **real thumbnail + true metadata** — serial.
 
     `_probe_lock` allows only one `send_cached_media` at a time process-wide,
     with an anti-flood gap between probes. The DB receives only the id
@@ -530,7 +530,7 @@ async def probe_file(fid: str, force: bool = False):
             return None
         finally:
             _STATS["done"] += 1
-            # ⏱️ v5-warmup-style 3.0–5.0s random anti-flood gap (after a probe only)
+            # ⏱️ 3.0–5.0s random anti-flood gap (after a probe only)
             #    + the penalty accumulated by any FloodWait of this run
             if probed:
                 if not flooded:
@@ -578,7 +578,7 @@ async def get_thumb(fid: str, retry: bool = False):
     """Poster bytes or None; a bounded LRU cache is shared within the process.
 
     * `TG_ID:` present → download directly (identical requests share one task)
-    * `NO_THUMB`       → return None immediately, no Telegram call (as in v5)
+    * `NO_THUMB`       → return None immediately, no Telegram call
     * no id            → enqueue it and return 404 for now; the browser's `retry=true`
                          picks up the poster shortly (one file at a time)
     * 🆕 a stored id turns out fake/blank → do not serve it, force a re-probe

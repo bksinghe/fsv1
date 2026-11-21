@@ -1,6 +1,6 @@
 """✨ Staggered result entrance — the single source for how result cards appear.
 
-Studied from the GitHub reference (`JoneySin/v5`'s `staggerCards()` / `cardEnter`)
+Studied from the GitHub reference (JoneySin’s `staggerCards()` / `cardEnter`)
 and rebuilt for fsv1: one CSS keyframe set + one JS engine, shipped on every page
 through `SITE_CSS` / `SITE_JS`. Any result grid opts in by putting `rv-enter` on its
 top-level cards and calling `RevealCards.reveal(container)` after a render; a panel
@@ -12,7 +12,7 @@ Contract (semantic, like the `vm-*` classes in `mode_assets.py`):
   * `in`        — the engine adds this to start the spring; both classes are cleaned
                   up afterwards so hover/press transforms are not blocked
   * nested cards (variants inside an open group) deliberately opt out, so they are
-    visible as soon as the group expands — the same rule v5 applies to nested cards.
+    visible as soon as the group expands — nested cards do not animate.
 """
 
 REVEAL_CSS = r"""

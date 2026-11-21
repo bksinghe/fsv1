@@ -1,15 +1,15 @@
-"""✏️ Web **File Editor** — fsv1's take on `JoneySin/v5`'s "Edit Title Metadata".
+"""✏️ Web **File Editor** — fsv1's take on JoneySin’s "Edit Title Metadata".
 
-v5's `/api/edit_name` + `/api/upload_thumb` + `/api/delete` made these editable:
+the reference implementation’s `/api/edit_name` + `/api/upload_thumb` + `/api/delete` made these editable:
 
 * `file_name` — the title
 * `caption` — Search Tags (feeds the text index)
-* `target_collection` — v5's 3 separate collections (absent in fsv1, so not ported)
+* `target_collection` — the reference implementation’s 3 separate collections (absent in fsv1, so not ported)
 * Poster thumbnail — 16:9 crop via Cropper.js → Telegram storage channel → `TG_ID:`
 * Delete file
 
 fsv1 has a single MongoDB collection and no primary/cloud/archive `section`
-concept, so this is **not a verbatim copy** — v5's collection-move control is not
+concept, so this is **not a verbatim copy** — the reference implementation’s collection-move control is not
 ported. The editor does show the file's permanent group ID and lets an admin move
 it to another existing group (or ungroup it):
 
@@ -193,7 +193,7 @@ async def api_file_meta(req):
 # ── 🗂️ Sync with permanent groups (file delete / rename) ───────────────
 
 async def _group_cleanup(fid):
-    """Remove a deleted file from all groups; drop empty groups (v5 `_group_cleanup`)."""
+    """Remove a deleted file from all groups; drop empty groups (group cleanup)."""
     try:
         await group_store.pull_files([fid])
         await group_store.cleanup_empty()

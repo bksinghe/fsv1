@@ -1,6 +1,6 @@
 """🌐 Guest pages — the single source for the landing page and every sign-in form.
 
-Studied the GitHub reference (`JoneySin/v5`'s Netflix-style `login-bg` hero and
+Studied the GitHub reference (JoneySin’s Netflix-style `login-bg` hero and
 `login-card`) and rebuilt it for fsv1 **in its own way**: no external background
 image, no CDN, just CSS gradients, a decorative app preview and the shared
 `rv-enter` wave already used by result cards. Everything a guest sees lives here:

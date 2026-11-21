@@ -64,7 +64,7 @@ async def _group_page(q: str, offset: int, limit: int, mode: str):
 
 def _thumb_url(doc) -> str:
     fid = str(doc.get("_id") or "")
-    # Like v5, hash the whole thumb_url ("TG_ID:...") — changing the id changes the URL
+    # hash the whole thumb_url ("TG_ID:...") — changing the id changes the URL
     thumb_ref = str(doc.get("thumb_url") or doc.get("thumb_file_id") or "")
     v = thumb_version(fid, thumb_ref)
     return f"/api/thumb?file_id={quote(fid, safe='')}&v={v}"
@@ -174,7 +174,7 @@ async def api_thumb(req):
 
     data = await get_thumb(fid, retry=retry)
     if not data:
-        # 🆕 v5-style serial warmup: a first-time id is being fetched (one at a time).
+        # 🆕 serial warmup: a first-time id is being fetched (one at a time).
         # Do not cache the 404 — the browser should know to retry shortly.
         state = await thumb_state(fid)
         headers = {"Cache-Control": "no-store", "X-Thumb-State": state}
@@ -302,7 +302,7 @@ async def api_stream(req):
 
 @search_routes.get("/setup_stream")
 async def setup_stream(req):
-    """/setup_stream?file_id=... — GET shortcut (v5-style shareable links)."""
+    """/setup_stream?file_id=... — GET shortcut (shareable links)."""
     role, _ = await get_auth(req)
     if not role:
         return web.HTTPFound("/login")

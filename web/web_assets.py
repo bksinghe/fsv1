@@ -1,6 +1,6 @@
 """🎨 Shared web assets: session/auth helper, page shell, CSS and the search UI.
 
-A look like `v5`'s dashboard/mini-app — sidebar (Home / Database Stats /
+A look like the reference implementation’s dashboard/mini-app — sidebar (Home / Database Stats /
 Profile Settings / Sign Out), stats cards and profile settings — but as one
 self-contained page for fsv1 (no extra template engine).
 
@@ -11,7 +11,7 @@ The JS exposes `window.play/closePlayer/copyLink` from an IIFE, so there are no
 name collisions with a page's own `$` / `esc` / `const`.
 
 ✏️ `FILE_EDIT_HTML` + `FILE_EDIT_JS` are the admin-only **file editor** — fsv1's
-version of v5's `Edit Title Metadata` (name / caption / poster / delete):
+version of the reference implementation’s `Edit Title Metadata` (name / caption / poster / delete):
 a JSON API, a CDN-free 16:9 canvas crop, current permanent group ID and admin
 file-to-group transfer, with card updates without a reload.
 
@@ -155,7 +155,7 @@ font-size:30px;background:linear-gradient(transparent,rgba(0,0,0,.5));
 opacity:0;transition:opacity .2s;pointer-events:none}
 .vcard:hover .vplay{opacity:1}
 .vposter{cursor:pointer}
-/* 📸 Like v5: clicking the thumbnail slides an Edit/Delete bar up inside that poster */
+/* 📸 Clicking the thumbnail slides an Edit/Delete bar up inside that poster */
 .vadmin{position:absolute;left:0;right:0;bottom:0;z-index:5;display:flex;gap:6px;
 padding:9px 8px;background:linear-gradient(transparent,rgba(0,0,0,.9) 45%);
 opacity:0;visibility:hidden;transform:translateY(10px);pointer-events:none;
@@ -333,7 +333,7 @@ VCARD_JS = (_VCARD_JS_TPL
                      json.dumps([list(x) for x in VCARD_CHIP_SPEC])))
 
 FILE_EDIT_HTML = r"""<style>
-/* ✏️ Shared FILE EDITOR — fsv1's take on v5 "Edit Title Metadata" (no CDN) */
+/* Shared metadata editor (no CDN). */
 .femodal{position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.88);display:none;
 align-items:center;justify-content:center;padding:14px}
 .femodal.open{display:flex}
@@ -609,7 +609,7 @@ FILE_EDIT_JS = r"""<script>
   }
   function remove(){ if(current) return deleteById(current); }
 
-  /* ── 📸 v5-style: Edit/Delete overlay inside the thumbnail ─────── */
+  /* ── 📸 Edit/Delete overlay inside the thumbnail ─────── */
   function closeAdmin(){
     Array.prototype.forEach.call(document.querySelectorAll('.vcard.admin-active'),
       c=>c.classList.remove('admin-active'));
@@ -742,7 +742,7 @@ overflow:hidden!important}
 .srow .qwrap,.cat-toolbar .cat-search{flex:1 1 100%}
 .filters{flex:1 1 100%}
 .filters .fdd{flex:1 1 0;min-width:0}
-/* ✅ Like v5 `.search-box`: mobile keeps **one box** (card + border + padding)
+/* ✅ Search layout: mobile keeps **one box** (card + border + padding)
    too — only the controls inside split into three lines, the chrome is not removed. */
 /* ✨ New Post / New Profile: a full-width line directly below the filter buttons.
    (0,3,0) ⇒ the later CATALOG_CSS `.cat-toolbar .cat-create` rule cannot override it. */
@@ -1117,13 +1117,13 @@ SITE_CSS += MODE_CSS
 
 
 # ─────────────────────────────────────────────────────────────
-# 🧭 APP SHELL — a sidebar like JoneySin/v5 (web/web_assets.py)
+# 🧭 APP SHELL — a sidebar with shared navigation
 #    Home · Database Stats · Profile Settings + Sign Out in the footer.
 #    The identity badge now lives only in Profile Settings — the desktop topbar/
 #    sidebar does not show "#<tg_id> · ADMIN".
 # ─────────────────────────────────────────────────────────────
 APP_CSS = """
-/* ── v5-style sidebar / app shell ── */
+/* ── sidebar / app shell ── */
 .ham-btn{background:transparent;border:0;cursor:pointer;color:var(--txt);display:flex;
 flex-direction:column;gap:4px;padding:6px}
 .ham-line{width:21px;height:2px;background:currentColor;border-radius:2px}
@@ -1181,7 +1181,7 @@ letter-spacing:.55px;margin:4px 0 9px}
 .st-link{display:inline-block;margin-top:12px;font-size:12px;font-weight:800;color:var(--red)}
 @media(max-width:950px){.stat-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:680px){.stat-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.st-card{padding:12px}}
-/* ── Profile Settings (v5-style) ── */
+/* ── Profile Settings ── */
 .scard{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:28px}
 .scard-label{font-size:11px;font-weight:900;color:var(--mut);text-transform:uppercase;
 letter-spacing:.9px;margin-bottom:9px}
@@ -1218,7 +1218,7 @@ font-weight:800;font-size:13px;cursor:pointer;font-family:inherit}
 .scard{padding:20px}}
 """
 
-# Theme + sidebar — one shared script on every logged-in page (like v5's shared head)
+# Theme + sidebar — one shared script on every logged-in page
 THEME_JS = """
 (function(){
   try{document.documentElement.classList.toggle('light',localStorage.getItem('ff_theme')==='light')}catch(e){}
@@ -1243,7 +1243,7 @@ SITE_JS += WELCOME_JS
 SITE_JS += REVEAL_JS
 SITE_JS += MODE_JS
 
-# Like v5's NAV_MENU — Database Stats is admin-only
+# Database Stats is admin-only.
 NAV_MENU = (
     ("dash",    "/search",  "🏠 Home"),
     ("posts",   "/posts",   "📝 Posts"),
@@ -1257,12 +1257,12 @@ NAV_MENU = (
 
 
 def identity_badge(tg_id: int, role: str) -> str:
-    """'#5292444428 · ADMIN' — in v5 this identity appears in Profile Settings."""
+    """'#5292444428 · ADMIN' — this identity appears in Profile Settings."""
     return f"#{html.escape(str(tg_id))}" + (" · ADMIN" if role == "admin" else "")
 
 
 def nav_shell(tg_id: int, role: str, active_tab: str = "") -> str:
-    """Sidebar + topbar like v5. Sign Out appears only in the sidebar footer —
+    """Sidebar + topbar. Sign Out appears only in the sidebar footer —
     never again in the main area/topbar."""
     links = "".join(
         f'<a href="{href}" class="sb-link {"active" if active_tab == tab else ""}">{label}</a>'
@@ -1664,7 +1664,7 @@ function cardHTML(f,topLevel,groupMember){
 }
 window.cardHTML=cardHTML;
 function card(f){return cardHTML(f,true)}
-// Like v5's reloadThumb(fileId): first-time posters come from a serial warmup queue
+// First-time posters come from a serial warmup queue.
 // one at a time, so on a 404 we retry gradually with `retry=true&t=...` —
 // as ids are locked into the DB, the posters appear automatically.
 function thumbFail(img){
@@ -1863,7 +1863,7 @@ __GROUP_ADMIN_JS__"""
 
 
 def search_page(tg_id: int, role: str, cache_scope: str = ""):
-    """The app shell + search body with a v5-style sidebar.
+    """The app shell + search body with a sidebar.
 
     * Sign Out only in the sidebar footer (not the topbar).
     * Mode/Filter dropdowns share the search line on desktop,

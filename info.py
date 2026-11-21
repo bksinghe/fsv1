@@ -133,7 +133,7 @@ THUMB_CACHE_BYTES = max(0, min(int(environ.get('THUMB_CACHE_BYTES', '16777216'))
 # How many Telegram thumbnail downloads may run at once (only files with a known TG_ID)
 THUMB_FETCH_CONCURRENCY = max(1, min(int(environ.get('THUMB_FETCH_CONCURRENCY', '6')), 20))
 
-# ── 🖼️ FIRST-TIME THUMBNAIL EXTRACTION (like JoneySin/v5's warmup engine) ──
+# ── 🖼️ FIRST-TIME THUMBNAIL EXTRACTION (like JoneySin’s warmup engine) ──
 # Opening 21 new files at once can trigger Telegram FLOOD_WAIT, so probes
 # run one at a time with a random gap between files.
 #

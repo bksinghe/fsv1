@@ -6,7 +6,7 @@ Stdlib-only; runs without MongoDB / Telegram / aiohttp:
 
     python3 -m unittest discover -s tests -v
 
-The v5-style spring pop-in (`staggerCards()` / `cardEnter` in the GitHub reference)
+The spring pop-in (`staggerCards()` / `cardEnter` in the GitHub reference)
 is rebuilt in `web/reveal_assets.py`. This test fails if a page grows its own copy of
 the keyframes, the observer or the stagger timing, or if one of the three result
 surfaces (main /search, /posts, /actors) stops opting in. It also guards nested group

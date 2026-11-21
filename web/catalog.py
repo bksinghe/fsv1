@@ -1,6 +1,6 @@
 """🧩 Unified Catalog UI — Posts + Directory (Actors / Apps / Websites).
 
-In `JoneySin/v5`, `post_routes.py` (≈790 lines) and `actor_routes.py` (≈590 lines)
+In JoneySin’s implementation, `post_routes.py` (≈790 lines) and `actor_routes.py` (≈590 lines)
 were separate, both carrying an exact copy of the directory CSS/JS/search/pagination,
 with separate full-page wizards for create/edit (a page reload on every save) and an
 API that returned raw HTML strings.
@@ -12,17 +12,17 @@ The same **features** are here, but with a completely different and smaller stru
   strings from the server, so markup lives in one place and XSS is closed off.
 * **Inline edit modal** on the listing itself: create + edit + delete without a reload,
   live poster preview, image upload, dirty-state guard, `Ctrl/Cmd+S` save,
-  `Esc` to close and a delete toast with **Undo** (not present in v5).
+  `Esc` to close and a delete toast with **Undo**.
 * **🎬 Multi-video editor** — `videos[]` on both kinds, up to 50; the Library picker
   adds several files from one search (and stays open), ▲▼ reorder, per-row delete,
   duplicate guard. Episodes stored in `links` on older posts are auto-migrated.
   **🖼️ Visual gallery** — multiple image upload (one at a time to Telegram),
   thumbnails/remove, no plain textarea.
 * **🗂️ Detail tabs** — `ℹ️ Overview | 🎬 Videos | 🖼️ Gallery` (Actor) /
-  `📸 Screenshots` (Post). In v5 tabs existed only on the actor detail page. Count badges,
+  `📸 Screenshots` (Post). In the reference implementation tabs existed only on the actor detail page. Count badges,
   `?tab=` deep-link (Post `?tab=screenshots`), arrow-key nav, staggered panels,
   lightbox and **no-reload** image delete/upload.
-* **🏷️ Tag-driven Videos — Actors only** (`tagMedia` config flag) — v5's
+* **🏷️ Tag-driven Videos — Actors only** (`tagMedia` config flag) — the reference implementation’s
   `get_actor_search_results(name|tags)`: the second part of the Actor Videos tab
   comes from a Library search using **Search Tags**; typing a custom `q` in the
   box above ignores tags. Each tag matches a complete name, and a combined
@@ -36,13 +36,13 @@ The same **features** are here, but with a completely different and smaller stru
   is the same markup/CSS on `/search`, Post attached videos and Actor tag-results:
   poster + chips + size + play overlay, **compact**
   `.vbody` padding under the name (the old empty space is gone), one `/api/stream` modal.
-* **✏️ Shared File Editor** — fsv1's version of v5's `Edit Title Metadata` (name / caption /
+* **✏️ Shared File Editor** — fsv1's version of the reference implementation’s `Edit Title Metadata` (name / caption /
   collection / custom poster / delete): an admin-only inline modal using
   `FILE_EDIT_HTML` + `FILE_EDIT_JS` from `web.web_assets` on `/search` and both detail
   pages, an ✏️ button on every `.vcard` → the JSON API in `web/file_edit_routes.py`.
   fsv1's quality/duration/resolution chips are editable too; a 16:9 canvas crop
   uploads the thumbnail to Telegram without any CDN and the card updates **without a reload**.
-  Like v5, **clicking the thumbnail opens the Edit/Delete overlay inside that poster**;
+  **clicking the thumbnail opens the Edit/Delete overlay inside that poster**;
   clicking the file name opens the shared player; there is no "Click to play" line.
 * **▶ Shared Click-to-Play** — every card in the Videos tab (attached `#catVideos` and
   the Actor tag-results `#catMediaResults`) opens **the same small player modal as the
@@ -51,14 +51,14 @@ The same **features** are here, but with a completely different and smaller stru
   click/keyboard handler calling `window.play(fid, name)` → the same
   `POST /api/stream` → signed `<video>` + Download / Copy link.
   no new tab, no separate player UI, no duplicate JS.
-* **🖼️ Direct gallery upload** — v5's `<input multiple>` form now lives on the detail
-  tab itself; a JSON response is rendered in place (v5 reloaded), and uploads go to
+* **🖼️ Direct gallery upload** — the reference implementation’s `<input multiple>` form now lives on the detail
+  tab itself; a JSON response is rendered in place, and uploads go to
   Telegram one at a time to avoid flooding.
 * **Animations**: staggered card entrance (IntersectionObserver), 3D hover +
   poster zoom + press feedback, shimmer skeleton, modal spring-pop, button
   ripple, toast slide-in, save-flash, lightbox zoom, hero fade-up — and
-  `prefers-reduced-motion` is respected (v5 did not).
-* No CDN dependency (v5 loaded Cropper.js from a CDN).
+  `prefers-reduced-motion` is respected.
+* No CDN dependency (the reference implementation loaded Cropper.js from a CDN).
 """
 
 import html
@@ -139,7 +139,7 @@ CATALOGS = {
         "linkValueField": "https://…",
         "videoLabel": "🎬 Videos (Filmography)",
         "videoHint": "Attach Library files for this name — add as many videos as you like",
-        "tagMedia": True,              # Actor: Library videos from Search Tags (as in v5)
+        "tagMedia": True,              # Actor: Library videos from Search Tags
         "videosHeading": "📌 Attached Videos",
         "videoEmptyHint": "Library videos from Search Tags will appear below automatically.",
         "legacyLinksAsVideos": False,  # actor `links` are URLs, not videos
@@ -197,7 +197,7 @@ def video_card_html(fid: str, name: str, poster: str,
 def clean_media_id(value) -> str:
     """Linked media must always be a Telegram `file_id` — reject URLs/`javascript:`/control chars.
 
-    In v5 the post wizard's "Videos / Episodes" field accepted empty raw strings;
+    In the reference implementation the post wizard's "Videos / Episodes" field accepted empty raw strings;
     here the value goes straight into `/setup_stream?file_id=…`, so pattern validation is essential.
     """
     v = str(value or "").strip()
@@ -313,7 +313,7 @@ font-weight:800;font-size:13px;cursor:pointer;font-family:inherit;transition:tra
 @media(max-width:480px){.cat-detail-toolbar .cat-detail-actions{margin-left:auto}}
 .cat-card:focus-visible{outline:2px solid var(--red);outline-offset:3px}
 
-/* 🧩 Like the GitHub reference (v5 `.search-box`): **one card-box** holding the search bar,
+/* 🧩 Like the reference layout (`.search-box`): **one card-box** holding the search bar,
    filter buttons, ✨ New Post/Profile and the count — on desktop and mobile alike.
    📱 The old override that stripped the chrome on mobile is gone (the box stays). */
 .cat-toolbar.cat-box{display:flex;gap:10px;flex-wrap:wrap;align-items:center;
@@ -566,7 +566,7 @@ border-radius:5px;width:20px;height:20px;font-size:10px;cursor:pointer;line-heig
 margin:16px 0 8px;border-top:1px solid var(--line);padding-top:14px}
 
 
-/* ───────── 🏷️ Tag-driven video search (v5's actor Linked Media) ───────── */
+/* ───────── 🏷️ Tag-driven video search (the reference implementation’s actor Linked Media) ───────── */
 .cat-subhead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:4px 0 12px}
 .cat-subhead h3{font-size:14px;font-weight:900;margin:0;letter-spacing:-.2px}
 .cat-subhead .cat-hint{margin:0}
@@ -603,7 +603,7 @@ border:1px dashed var(--line);border-radius:12px;padding:14px;margin-bottom:16px
 .cat-uploadbar .cat-upload{margin:0}
 .cat-upnote{font-size:11px;font-weight:700;color:var(--mut);min-height:14px;margin-bottom:12px}
 
-/* ♿ Not in v5: disable all animations for reduced-motion users */
+/* ♿ Disable all animations for reduced-motion users */
 @media(prefers-reduced-motion:reduce){
 .cat-card,.cat-card.rv-enter,.cat-card.rv-enter.in,.cat-hero,.cat-modal,.cat-mcard,.cat-toast,
 .cat-lightbox,.cat-lightbox img,.cat-gal img,.cat-poster,.cat-skel,.cat-poster-wrap,
@@ -749,7 +749,7 @@ function toast(msg, type, actionLabel, actionFn){
 }
 function hideToast(){ const t=$('#catToast'); t.classList.remove('show'); }
 
-/* ── ripple (v5's btnRipple, without a CDN) ── */
+/* ── ripple (the reference implementation’s btnRipple, without a CDN) ── */
 document.addEventListener('pointerdown', e => {
   const b = e.target.closest('.cat-btn,.cat-edit,.cat-del,.cat-upload');
   if(!b) return;
@@ -1145,7 +1145,7 @@ function switchTab(name, init){
     history.replaceState(null,'',u.pathname+u.search);
   }
 }
-/* ── 🏷️ v5's tag-driven Linked Media, served by fsv1's JSON API ── */
+/* ── 🏷️ Tag-driven linked media, served by fsv1's JSON API ── */
 /* 🎴 the same shared card as /search — markup/chips/size from web_assets.VCARD_* */
 function mediaCard(f,topLevel,groupMember){
   const attrs=ViewMode.imgAttrs(esc(f.thumb||''));
@@ -1411,7 +1411,7 @@ def _listing_body(kind: str, role: str) -> str:
     #    only the categories are dynamic; no other markup is duplicated.
     filters_html = filter_buttons(CATALOG_FILTERS,
                                   {"catCategory": _category_options(kind)})
-    # 🧩 Like the GitHub reference (v5 `.search-box`): search, filter buttons
+    # 🧩 Like the reference layout (`.search-box`): search, filter buttons
     #    and ✨ New Post/Profile (plus the small count) all live in **one card-box**.
     #    There is no separate "Content Posts" / "Directory Profiles" page heading.
     return f"""<div class="main"><div class="cat-wrap">
@@ -1505,7 +1505,7 @@ def _detail_body(kind: str, role: str, item: dict) -> str:
             f'<div class="cat-vgrid vgrid" id="catVideos">{vids_html}</div>'
         )
 
-    # 🏷️ Like v5: the main part of the Videos tab comes from "Search Tags"
+    # 🏷️ The main part of the Videos tab comes from "Search Tags"
     tags = [str(t).strip() for t in (item.get("tags") or []) if str(t).strip()][:12]
     tag_section = ""
     if cfg["tagMedia"]:
@@ -1517,8 +1517,7 @@ def _detail_body(kind: str, role: str, item: dict) -> str:
             dict(SEARCH_FILTERS[1], id="catMediaGroup", onchange="setMediaGroup(this.value)"),
         ))
         tag_section = f"""
-    <div class="cat-subhead"><h3>🏷️ From the Library — based on Search Tags</h3>
-      <span class="cat-hint">like the actor Linked Media tab in v5</span></div>
+    <div class="cat-subhead"><h3>🏷️ From the Library — based on Search Tags</h3></div>
     <div class="cat-tagline" id="catTagPills">{tag_pills}</div>
     <div class="cat-mediabar">
       <div class="cat-search"><input type="search" id="catMediaQ" aria-label="Search files" autocomplete="off"

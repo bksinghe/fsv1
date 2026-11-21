@@ -1,6 +1,6 @@
 """📚 Unified catalog store — Posts + Directory profiles.
 
-In v5, `web/post_routes.py` and `web/actor_routes.py` used separate collections,
+In the reference implementation, `web/post_routes.py` and `web/actor_routes.py` used separate collections,
 separate CRUD helpers and two ~700-line pages. Here both share **one** store:
 
 * `_id` is a short random hex string (not an ObjectId), so invalid ids cannot crash

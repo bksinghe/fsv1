@@ -207,7 +207,7 @@ class TestSingleSource(unittest.TestCase):
 
 
     def test_11_text_mode_is_a_responsive_grid(self):
-        """GitHub reference (v5 `.res-grid`): 📱 1 / 📟 2 / 🖥️ 3 cards per row."""
+        """Responsive grid: 📱 1 / 📟 2 / 🖥️ 3 cards per row."""
         css = css_block()
         self.assertIn(".vm-grid.mode-text{display:grid;", css)
         self.assertNotIn(".vm-grid.mode-text{display:block}", css,
@@ -223,7 +223,7 @@ class TestSingleSource(unittest.TestCase):
                       "details must stack vertically in 3-column cards")
 
     def test_12_expanded_group_has_no_giant_master_thumbnail(self):
-        """v5 `.grp-card.open .grp-master{display:none}` → fsv1 compact head."""
+        """Reference `.grp-card.open .grp-master{display:none}` → fsv1 compact head."""
         gr = FILES["group_assets.py"]
         for token in (
             ".gcard.open .gposter{", "aspect-ratio:auto", "height:auto",

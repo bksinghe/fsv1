@@ -7,12 +7,12 @@
 #   file_edit_routes → /api/file/{meta,edit,thumb,thumb_reset,delete} (admin)
 #   group_routes   → /api/group/* (permanent quality groups, admin CRUD/merge/scan)
 #   catalog_routes → /posts, /actors, /post/<id>, /actor/<id> + generic JSON API
-#   stats_routes   → /stats, /api/db_stats ("Database Stats", as in v5)
-#   profile_routes → /profile, /api/update_profile ("Profile Settings", as in v5)
+#   stats_routes   → /stats, /api/db_stats ("Database Stats")
+#   profile_routes → /profile, /api/update_profile ("Profile Settings")
 #
-# The v5-style web experience — sidebar (Home / Posts / Actors / Database Stats /
+# The web experience — sidebar (Home / Posts / Actors / Database Stats /
 # Profile Settings / Sign Out) — adapted to fsv1's existing bot links.
-# Posts + Actors use one shared catalog engine instead of v5's two 1,400-line pages.
+# Posts + Actors use one shared catalog engine instead of the reference implementation’s two 1,400-line pages.
 
 from aiohttp import web
 

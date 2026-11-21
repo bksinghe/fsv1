@@ -1,6 +1,6 @@
 """🖼️ `/warmup_thumbs` — sequential engine for thumbnails + **real metadata**.
 
-Learned from `plugins/warmup.py` in JoneySin/v5: `send_cached_media` one file at a
+Learned from `plugins/warmup.py` by JoneySin: `send_cached_media` one file at a
 time, a random 3.0–5.0s anti-flood gap between files (wider after a FloodWait),
 `e.value + 10` sleep on FloodWait, strict thumbnail validation and a `NO_THUMB`
 mark for files without one.
@@ -14,7 +14,7 @@ requests go through the same single lock/queue). This command additionally:
 
   * **never saves a fake "NO IMAGE" poster**: candidate bytes are validated,
     only genuine images become `TG_ID:`; fake/blank ones are marked `NO_THUMB`.
-    Like v5, a validated image is permanently re-uploaded to the storage channel.
+    A validated image is permanently re-uploaded to the storage channel.
 
   * The query only selects documents whose thumbnail is not yet **verified** or
     whose metadata probe (`meta_v`) is pending — so unverified `TG_ID:` ids from
@@ -35,7 +35,7 @@ from media_probe import META_V
 
 logger = logging.getLogger(__name__)
 
-# v5's smart filter plus fsv1's verification/metadata gate:
+# the reference implementation’s smart filter plus fsv1's verification/metadata gate:
 #   * NO_THUMB = already confirmed to have no real poster ⇒ do not pick it up again
 #   * everything else: missing id / unverified / metadata probe pending
 _PENDING_QUERY = {
@@ -126,7 +126,7 @@ async def _run_warmup(client, message):
             logger.warning(f"[warmup] {fid[:16]} skipped: {e}")
             skipped += 1
 
-        # Like v5, refresh the UI every 10 files
+        # refresh the UI every 10 files
         if i % 10 == 0 or i == total:
             q = thumb_queue_state()
             try:

@@ -6,7 +6,7 @@ Stdlib-only; runs without MongoDB / Telegram / aiohttp:
 
     python3 -m unittest discover -s tests -v
 
-The GitHub reference (`JoneySin/v5`) uses a cinematic `login-bg` hero and a
+The reference implementation by JoneySin uses a cinematic `login-bg` hero and a
 `login-card`. fsv1 rebuilds that idea in `web/welcome_assets.py`: CSS-only gradients,
 one shared topbar and one shared split auth layout. This test guards the single
 source, the light/reduced-motion variants, the fact that logged-in pages are
@@ -50,7 +50,7 @@ class TestGuestSingleSource(unittest.TestCase):
                      "@media(max-width:980px)", "@media(max-width:560px)",
                      "@keyframes wcRise", "@keyframes wcDrift"):
             self.assertIn(frag, css, f"WELCOME_CSS is missing {frag}")
-        # No external imagery / CDN: the v5 reference used an nflxext.com JPEG.
+        # No external imagery / CDN: the reference implementation used an nflxext.com JPEG.
         for bad in ("nflxext.com", "url(http", "url('http", 'url("http',
                     ".login-bg{", ".hero-bg{", ".card-enter{"):
             self.assertNotIn(bad, css, f"guest CSS must not contain {bad}")

@@ -1,6 +1,6 @@
 """🔐 Web login / registration / password reset routes.
 
-Flow (as in v5):
+Flow:
   * Email + password login → HttpOnly cookie session (RAM + MongoDB).
   * New account: Telegram ID + Email + Password → OTP in the bot PM → verify.
   * Forgotten password: Telegram ID → OTP in the bot PM → new password.

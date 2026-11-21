@@ -1,6 +1,6 @@
 """🗂️ PERMANENT QUALITY GROUPS — fsv1's own group store.
 
-Adapted from the GitHub reference (`JoneySin/v5`): each group in the `QualityGroups`
+Adapted from the reference implementation by JoneySin: each group in the `QualityGroups`
 collection has its own `_id`/`num`, `members` (file ids), `auto_keys`, `excluded` and
 a master thumbnail; `QualityGroupSeq` supplies sequential numbers; each file document
 is marked with `group_id`; a new quality of the same title joins the group automatically

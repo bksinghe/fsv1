@@ -33,7 +33,7 @@ background-size:200% 100%;animation:sh 1.5s infinite linear}
 .gposter.no-thumb{animation:none;background:none}
 .gposter.no-thumb .vph{display:flex}
 .gcard:hover .gposter .vimg.on{transform:scale(1.05)}
-/* 🗂️ Like the GitHub reference (v5 `.grp-card.open .grp-master{display:none}`):
+/* 🗂️ Like the reference layout (`.grp-card.open .grp-master{display:none}`):
    `.gcard.open` used to span the full grid width, so its 16:9 master thumbnail looked
    huge on desktop. On expand the thumbnail is hidden and only a compact header remains —
    name + #N GROUP / QUALITIES|EPISODES / duration / kind / quality-episode chips

@@ -1,13 +1,13 @@
 """🎯 TRUE MEDIA PROBE — **real** metadata for `/warmup_thumbs`.
 
-Learned from the GitHub reference (`JoneySin/v5` → `media_probe.py` + `web/search_api.py`):
+Learned from the GitHub reference (JoneySin’s implementation → `media_probe.py` + `web/search_api.py`):
 Telegram's `width` / `height` / `duration` attributes are supplied by the
 **uploader** (DocumentAttributeVideo) and are often left at the default `1280×720`
 without any probing, so those values in the DB can be wrong. fsv1 now reads the
 **real bytes** (the container header) of MP4 / MKV / AVI files to get resolution
 and duration, then derives `quality` from it and saves that to the DB.
 
-fsv1's own implementation (not a verbatim copy of v5):
+fsv1's own implementation (not a verbatim copy of the reference implementation):
   * only **one** `collection` with string `_id` — no `COLLECTIONS` / `ObjectId` /
     `META_SCHEMA_VERSION` migrations.
   * pure-Python parsers → no binary dependency (light enough for Koyeb's 512 MB).
