@@ -18,7 +18,8 @@ class RecycleTests(unittest.IsolatedAsyncioTestCase):
                         LOG_CHANNEL='-1001', BIN_CHANNEL='-1002', DATA_DATABASE_URL='mongodb://localhost',
                         URL='https://example.invalid'), patch.dict(sys.modules), patch('pymongo.MongoClient', mongomock.MongoClient):
             from database import ia_filterdb as ia
-            from web import create_app
+            from web import create_app, recycle_routes
+            self.bin_routes = recycle_routes
             from utils import temp
             from stream_security import sign_params
             self.http = TestClient(TestServer(create_app()))
@@ -69,3 +70,41 @@ class RecycleTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(ia.collection.bin_page(0,30)), 2)
         self.assertTrue(await ia.restore_file(self.fid))
         self.assertEqual((await ia.get_search_results('Film'))[2], 1)
+
+    async def test_search_filters_before_paging_and_reuses_view_mode(self):
+        admin = {'user_session': 'admin'}
+        self.ia.collection.insert_one({'_id':'active', 'file_name':'Clip [x] ACTIVE'})
+        for i in range(31):
+            fid = f'clip{i:02}'
+            self.ia.collection.insert_one({'_id':fid, 'file_name':f'Clip [x] {i}', 'thumb_url':'TG_ID:poster'})
+            self.ia.collection.recycle(fid)
+        self.ia.collection.recycle(self.fid)
+        for page, count in [(0, 30), (1, 1)]:
+            r = await self.http.get('/recycle-bin', params={'q':'CLIP [x]', 'page':page}, cookies=admin)
+            body = (await r.text()).split('<main class="bin">',1)[1].split('</main>',1)[0]
+            self.assertEqual(body.count('class="bin-card vm-card"'), count)
+            self.assertIn('data-vm-select="1"', body)
+            self.assertIn('data-src="/api/recycle-bin/poster?', body)
+            self.assertNotIn(' src="', body)  # text mode must not fetch thumbnails
+            self.assertNotIn('ACTIVE', body)
+            self.assertNotIn('Film &lt;HD&gt;', body)
+            self.assertIn('q=CLIP+%5Bx%5D&amp;page=', body)
+        empty = await self.http.get('/recycle-bin?q=.*', cookies=admin)
+        self.assertIn('No deleted files match', await empty.text())  # not a regex search
+
+    async def test_bin_poster_checks_role_and_current_bin_membership(self):
+        self.ia.collection.update_one({'_id': self.fid}, {'$set': {'thumb_url':'TG_ID:stored'}})
+        url = '/api/recycle-bin/poster?id=' + self.fid
+        admin = {'user_session': 'admin'}
+        with patch.object(self.bin_routes, 'get_image_bytes', AsyncMock(return_value=b'\xff\xd8\xff'+bytes(20))) as get:
+            self.assertEqual((await self.http.get(url, cookies=admin)).status, 404)
+            self.ia.collection.recycle(self.fid)
+            for cookies in ({}, {'user_session':'user'}):
+                self.assertEqual((await self.http.get(url, cookies=cookies)).status, 403)
+            get.assert_not_awaited()
+            r = await self.http.get(url, cookies=admin)
+            self.assertEqual((r.status, r.content_type), (200, 'image/jpeg'))
+            self.assertIn('no-store', r.headers['Cache-Control'])
+            get.assert_awaited_once_with('stored')
+            self.ia.collection.restore(self.fid)
+            self.assertEqual((await self.http.get(url, cookies=admin)).status, 404)

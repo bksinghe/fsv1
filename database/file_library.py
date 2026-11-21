@@ -1,4 +1,5 @@
 """Default file collection view. Only the recycle-bin operations see hidden rows."""
+import re
 import time
 from datetime import datetime, timezone
 
@@ -51,6 +52,14 @@ class FileLibrary:
     def recycled_ids(self, ids):
         return {row['_id'] for row in self._raw.find({'_id': {'$in': list(ids)}, 'recycled_at': {'$exists': True}}, {'_id': 1})}
 
-    def bin_page(self, page, limit):
-        return list(self._raw.find({'recycled_at': {'$exists': True}}, {'file_name': 1, 'recycled_at': 1})
-                    .sort([('recycled_at', -1), ('_id', 1)]).skip(page * limit).limit(limit + 1))
+    def bin_poster(self, fid):
+        return self._raw.find_one({'_id': fid, 'recycled_at': {'$exists': True}},
+                                  {'thumb_url': 1, 'thumb_file_id': 1})
+
+    def bin_page(self, page, limit, query=''):
+        match = {'recycled_at': {'$exists': True}}
+        if query:
+            match['file_name'] = re.compile(re.escape(query), re.IGNORECASE)
+        fields = {'file_name': 1, 'recycled_at': 1, 'thumb_url': 1, 'thumb_file_id': 1}
+        return list(self._raw.find(match, fields).sort([('recycled_at', -1), ('_id', 1)])
+                    .skip(page * limit).limit(limit + 1))
