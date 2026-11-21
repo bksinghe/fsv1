@@ -64,11 +64,15 @@ async def recycle_bin(req):
         return '?' + escape(urlencode({'q': query, 'page': n}))
     prev = f'<a href="{page_url(page-1)}">← Previous</a>' if page else ''
     nxt = f'<a href="{page_url(page+1)}">Next →</a>' if len(docs) > PAGE_SIZE else ''
+    items = cards or f'<li>{empty}</li>'
+    navigation = prev + nxt
+    headers = {'Cache-Control': 'private, no-store', 'Vary': 'Accept'}
+    if req.headers.get('Accept') == 'application/json':
+        return web.json_response({'items': items, 'navigation': navigation}, headers=headers)
     mode = filter_select('binMode', options='view', cap='View mode', label='View mode', vm=True)
-    clear = '<a href="/recycle-bin">Clear</a>' if query else ''
     body = '''<style>.bin{margin:2rem auto;padding:0 1rem;max-width:68rem}.bin ul{list-style:none;margin:1rem 0}
 .bin form,.bin nav{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin:1rem 0}
-.bin input{flex:1 1 14rem;min-width:0;background:var(--bg2);color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:.7rem}
+.bin form{flex-wrap:nowrap}.bin input{flex:1;min-width:0;background:var(--bg2);color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:.7rem}
 .bin-card{overflow:hidden;border:1px solid var(--line);border-radius:10px;background:var(--card)}
 .bin-poster{position:relative;display:grid;place-items:center;aspect-ratio:16/9;background:var(--bg3);color:var(--mut)}
 .bin-poster img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
@@ -77,17 +81,38 @@ async def recycle_bin(req):
 <main class="bin"><h1>♻️ Recycle Bin</h1><p>Files here are hidden from the library and cannot be streamed.</p>'''
     body += (f'<form action="/recycle-bin" role="search"><input type="search" name="q" maxlength="120" '
              f'aria-label="Search deleted files by name" placeholder="Search deleted files by name…" value="{escape(query)}">'
-             f'<button class="tbtn" type="submit">Search</button>{clear}{mode}</form>'
-             f'<ul class="vgrid vm-grid mode-text">{cards or f"<li>{empty}</li>"}</ul>'
-             f'<nav>{prev}{nxt}</nav><p role="status"></p></main>')
-    body += '''<script>ViewMode.init({storage:ViewMode.storageFor()});
-document.querySelector('.bin').addEventListener('click',async e=>{
+             f'{mode}</form>'
+             f'<ul class="vgrid vm-grid mode-text">{items}</ul>'
+             f'<nav>{navigation}</nav><p role="status"></p></main>')
+    body += '''<script>(()=>{ViewMode.init({storage:ViewMode.storageFor()});
+const bin=document.querySelector('.bin'),form=bin.querySelector('form'),input=form.elements.q;
+const grid=bin.querySelector('.vm-grid'),nav=bin.querySelector('nav'),status=bin.querySelector('[role=status]');
+let timer,request;
+function cancelSearch(){clearTimeout(timer);if(request)request.abort();}
+async function search(){
+  cancelSearch();const current=request=new AbortController();
+  const url=new URL(form.action),q=input.value.trim();if(q)url.searchParams.set('q',q);
+  grid.setAttribute('aria-busy','true');status.textContent='Searching…';
+  try{
+    const r=await fetch(url,{headers:{Accept:'application/json'},signal:current.signal});
+    if(r.status===403&&!current.signal.aborted){location.replace(url);return;}
+    if(!r.ok)throw Error();const result=await r.json();if(current.signal.aborted)return;
+    grid.innerHTML=result.items;nav.innerHTML=result.navigation;ViewMode.apply();
+    history.replaceState(null,'',url);status.textContent='';
+  }catch(err){if(!current.signal.aborted)status.textContent='Search failed. Press Enter to retry.';}
+  finally{if(request===current)grid.removeAttribute('aria-busy');}
+}
+function scheduleSearch(){cancelSearch();timer=setTimeout(search,250);}
+input.addEventListener('input',e=>{if(!e.isComposing)scheduleSearch();});
+input.addEventListener('compositionstart',cancelSearch);input.addEventListener('compositionend',scheduleSearch);
+form.addEventListener('submit',e=>{e.preventDefault();search();});
+bin.addEventListener('click',async e=>{
 const b=e.target.closest('button[data-id]');if(!b)return;b.disabled=true;
 try{const r=await fetch('/api/recycle-bin/restore',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:b.dataset.id})});
 if(!r.ok && r.status!==404)throw Error();location.reload();}
-catch(err){b.disabled=false;document.querySelector('.bin [role=status]').textContent='Restore failed. Please retry.';}});</script>'''
+catch(err){b.disabled=false;document.querySelector('.bin [role=status]').textContent='Restore failed. Please retry.';}});})();</script>'''
     response = app_page('Recycle Bin', body, uid, role, 'bin')
-    response.headers['Cache-Control'] = 'private, no-store'
+    response.headers.update(headers)
     return response
 
 

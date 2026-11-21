@@ -84,6 +84,7 @@ class RecycleTests(unittest.IsolatedAsyncioTestCase):
             body = (await r.text()).split('<main class="bin">',1)[1].split('</main>',1)[0]
             self.assertEqual(body.count('class="bin-card vm-card"'), count)
             self.assertIn('data-vm-select="1"', body)
+            self.assertNotIn('type="submit"', body)
             self.assertIn('data-src="/api/recycle-bin/poster?', body)
             self.assertNotIn(' src="', body)  # text mode must not fetch thumbnails
             self.assertNotIn('ACTIVE', body)
@@ -108,3 +109,17 @@ class RecycleTests(unittest.IsolatedAsyncioTestCase):
             get.assert_awaited_once_with('stored')
             self.ia.collection.restore(self.fid)
             self.assertEqual((await self.http.get(url, cookies=admin)).status, 404)
+
+    async def test_live_search_returns_only_matching_bin_cards_to_admin(self):
+        self.ia.collection.recycle(self.fid)
+        h = {'Accept': 'application/json'}
+        url = '/recycle-bin?q=Film'
+        for cookies in ({}, {'user_session':'user'}):
+            self.assertEqual((await self.http.get(url, headers=h, cookies=cookies)).status, 403)
+        cookies = {'user_session':'admin'}
+        response = await self.http.get(url, headers=h, cookies=cookies)
+        data = await response.json()
+        self.assertIn('Film &lt;HD&gt;.mp4', data['items'])
+        self.assertEqual(data['navigation'], '')
+        empty = await self.http.get('/recycle-bin?q=other', headers=h, cookies=cookies)
+        self.assertIn('No deleted files match', (await empty.json())['items'])
