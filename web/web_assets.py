@@ -1053,7 +1053,24 @@ video{width:100%;height:100%;display:block;background:#000}
 .pchoices .choice-name{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--mut);font-size:11px;margin-top:5px}
 .pchoices .choice-meta{display:block;margin-top:5px;color:var(--mut);font-size:11px}
 @media(max-width:480px){.pchoices{padding:12px}.pchoices-list{grid-template-columns:repeat(2,minmax(0,1fr));max-height:190px}.pchoices button{padding:9px}}
-.playlist-picker{margin:auto;padding:1rem;border-radius:.8rem;border:1px solid var(--line);background:var(--card);color:var(--txt);width:min(92vw,24rem)}.playlist-picker::backdrop{background:#0009}.playlist-picker label,.playlist-picker input,.playlist-picker p{margin:.7rem 0}.playlist-picker select,.playlist-picker input{max-width:100%;padding:.4rem}
+.playlist-picker{margin:auto;padding:0;width:min(26rem,calc(100vw - 28px));max-height:90vh;max-height:90dvh;
+background:var(--card);color:var(--txt);border:1px solid var(--line);border-radius:18px;box-shadow:0 24px 80px #0005;font:inherit}
+.playlist-picker::backdrop{background:rgba(7,7,12,.72);backdrop-filter:blur(4px)}
+.playlist-picker form{display:flex;flex-direction:column;max-height:inherit}
+.pp-head,.pp-foot{display:flex;align-items:center;gap:12px;padding:18px 20px;flex:none}
+.pp-head{border-bottom:1px solid var(--line)}.pp-head small{color:var(--mut);font-size:10px;font-weight:800;letter-spacing:.14em}
+.pp-head h2{font-size:21px;letter-spacing:-.035em;line-height:1.25}.pp-mark{width:42px;height:42px;display:grid;place-items:center;
+background:linear-gradient(145deg,#ff2733,var(--red2));border-radius:12px;color:white}.pp-mark svg{width:22px;height:22px}
+.pp-close{margin-left:auto;width:36px;height:36px;border:1px solid var(--line);background:var(--bg3);color:var(--txt);border-radius:50%;font:inherit;font-size:20px;cursor:pointer}
+.pp-body{padding:18px 20px;overflow-y:auto;overscroll-behavior:contain;min-height:0}.pp-body fieldset{border:0;min-width:0}
+.pp-body legend,.pp-name span{font-size:13px;font-weight:700;margin-bottom:8px}.pp-row{display:flex;align-items:center;gap:10px;min-height:46px;
+padding:10px 12px;margin-top:6px;background:var(--bg2);border:1px solid var(--line);border-radius:9px;cursor:pointer;font-weight:600;font-size:14px}
+.pp-row span{overflow-wrap:anywhere}.pp-row input{flex:none;accent-color:var(--red);width:17px;height:17px}.pp-row:has(:checked){border-color:var(--red);background:color-mix(in srgb,var(--red) 8%,var(--bg2))}
+.pp-row.pp-new{border-style:dashed}.pp-name:not([hidden]){display:grid;margin-top:14px}.pp-name input{width:100%;padding:11px 12px;font:inherit;font-size:16px;
+border:1px solid var(--line);border-radius:8px;background:var(--bg2);color:var(--txt)}.playlist-picker :focus-visible{outline:2px solid var(--red);outline-offset:2px}
+.pp-foot{border-top:1px solid var(--line);background:var(--bg2);justify-content:space-between}.pp-foot p{min-width:0;color:var(--mut);font-size:12px;line-height:1.45;overflow-wrap:anywhere}
+.pp-save{flex:none;background:var(--red);color:white;border:0;border-radius:9px;padding:12px 18px;font:inherit;font-size:14px;font-weight:800;cursor:pointer}
+.pp-save:hover:not(:disabled){background:var(--red2)}.pp-save:disabled{opacity:.5;cursor:not-allowed}
 .mactions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:13px 16px}
 .mactions a,.mactions button{background:var(--bg3);border:1px solid var(--line);
 color:var(--txt);border-radius:7px;padding:9px 14px;font-size:12px;font-weight:800;
@@ -1499,20 +1516,40 @@ PLAYER_JS = r"""<script>
   };
   window.libraryActiveFile=()=>currentFile;
   window.saveToPlaylist=async function(fid){
-    if(!account||!fid)return;
-    const dialog=document.createElement('dialog');dialog.className='playlist-picker';
-    dialog.innerHTML='<form method="dialog"><h3>Save to playlist</h3><label>Playlist <select></select></label><input placeholder="New playlist name" aria-label="New playlist name" maxlength="80" hidden><p role="status">Loading…</p><button type="button" class="tbtn" disabled>Save</button> <button class="tbtn">Close</button></form>';
+    if(!account||!fid||q('.playlist-picker[open]'))return;
+    const dialog=document.createElement('dialog');dialog.className='playlist-picker';dialog.setAttribute('aria-labelledby','ppTitle');
+    dialog.innerHTML=`<form><header class="pp-head"><span class="pp-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M6 4h12v17l-6-4-6 4z"/><path d="M9 9h6m-3-3v6"/></svg></span><div><small>YOUR LIBRARY</small><h2 id="ppTitle">Save to playlist</h2></div><button type="button" class="pp-close" aria-label="Close">×</button></header>
+    <div class="pp-body"><fieldset disabled><legend>Choose a playlist</legend><div class="pp-lists"></div><label class="pp-row pp-new"><input type="radio" name="list" value=""><span>Create new playlist</span></label><label class="pp-name" hidden><span>Playlist name</span><input name="title" placeholder="Name your playlist" maxlength="80" autocomplete="off"></label></fieldset></div>
+    <footer class="pp-foot"><p role="status">Loading playlists…</p><button type="submit" class="pp-save" disabled>Save video</button></footer></form>`;
+    const form=dialog.querySelector('form'),fields=form.querySelector('fieldset'),rows=form.querySelector('.pp-lists');
+    const nameBox=form.querySelector('.pp-name'),input=nameBox.querySelector('input'),status=form.querySelector('[role=status]'),save=form.querySelector('.pp-save');
+    let saved=false;
+    form.querySelector('.pp-close').onclick=()=>dialog.close();
+    function addRow(id,name){
+      const row=document.createElement('label'),radio=document.createElement('input'),label=document.createElement('span');
+      row.className='pp-row';radio.type='radio';radio.name='list';radio.value=id;label.textContent=name;
+      row.append(radio,label);rows.append(row);return radio;
+    }
+    function sync(){
+      const selected=form.querySelector('input[name=list]:checked');
+      nameBox.hidden=!selected||!!selected.value;
+      save.disabled=fields.disabled||!selected||(!nameBox.hidden&&!input.value.trim());
+    }
+    form.onchange=e=>{if(e.target.name!=='list')return;saved=false;save.textContent='Save video';status.textContent='Only visible to you.';sync();if(!nameBox.hidden)input.focus();};
+    input.oninput=sync;
+    form.onsubmit=async e=>{e.preventDefault();if(save.disabled)return;if(saved){dialog.close();return;}
+      const id=form.elements.list.value,name=input.value.trim();fields.disabled=true;save.disabled=true;status.textContent='Saving…';
+      try{const r=await fetch('/api/library/playlists',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:id?'add':'create',list:id,name:id?'':name,file_id:fid})});
+        const data=await r.json().catch(()=>({}));if(!r.ok)throw Error(data.error||'Could not save. Please retry.');
+        if(!id){addRow(data.id,name).checked=true;input.value='';}
+        saved=true;save.textContent='Done';status.textContent='✓ Saved to playlist.';
+      }catch(err){status.textContent=err.message;}finally{fields.disabled=false;sync();}
+    };
     document.body.appendChild(dialog);dialog.addEventListener('close',()=>dialog.remove(),{once:true});dialog.showModal();
-    const select=dialog.querySelector('select'),input=dialog.querySelector('input'),status=dialog.querySelector('p'),save=dialog.querySelector('button');
-    try{const r=await fetch('/api/playlists',{cache:'no-store'});if(!r.ok)throw Error();const d=await r.json();
-      d.lists.forEach(p=>select.add(new Option(p.name,p.id)));select.add(new Option('＋ New playlist',''));save.disabled=false;status.textContent='';
+    try{const r=await fetch('/api/playlists',{cache:'no-store'});if(!r.ok)throw Error();const d=await r.json();if(!dialog.open)return;
+      d.lists.forEach(p=>addRow(p.id,p.name));form.querySelector('input[name=list]').checked=true;
+      fields.disabled=false;status.textContent='Only visible to you.';sync();
     }catch(err){status.textContent='Could not load playlists. Please sign in and retry.';}
-    select.onchange=()=>{input.hidden=!!select.value;if(!input.hidden)input.focus();};
-    save.onclick=async()=>{save.disabled=true;try{
-      const r=await fetch('/api/library/playlists',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:select.value?'add':'create',list:select.value,name:input.value,file_id:fid})});
-      if(!r.ok)throw Error((await r.json().catch(()=>({}))).error||'Could not save.');
-      status.textContent='Saved to playlist.';
-    }catch(err){status.textContent=err.message;}finally{save.disabled=false;}};
   };
   const save=q('#pSave');if(save && account){save.hidden=false;save.onclick=()=>window.saveToPlaylist(currentFile);}
   function closeSaveActions(){document.querySelector('.vcard.save-active')?.classList.remove('save-active');}
