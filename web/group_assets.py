@@ -28,7 +28,7 @@ transition:transform .22s,border-color .22s,box-shadow .28s}
 border-color:rgba(229,9,20,.65);box-shadow:0 14px 34px rgba(0,0,0,.45)}}
 .gcard.open{grid-column:1/-1;box-shadow:0 8px 28px rgba(0,0,0,.45);cursor:default}
 .gposter{position:relative;aspect-ratio:16/9;overflow:hidden;
-background:linear-gradient(90deg,var(--bg3) 0,#2b2b3a 50%,var(--bg3) 100%);
+background:linear-gradient(90deg,var(--bg3) 0,var(--shimmer) 50%,var(--bg3) 100%);
 background-size:200% 100%;animation:sh 1.5s infinite linear}
 .gposter.no-thumb{animation:none;background:none}
 .gposter.no-thumb .vph{display:flex}

@@ -135,32 +135,32 @@ async def stats_page(req):
   <div class="stat-grid">
     <div class="st-card anim-card"><div class="st-bar" style="background:#3399ff"></div>
       <div class="st-label">Total Files in Database</div>
-      <div class="st-val" style="color:#3399ff" data-count="{s['total_files']}" data-delay="100">{s['total_files']:,}</div>
+      <div class="st-val" data-count="{s['total_files']}" data-delay="100">{s['total_files']:,}</div>
       <div class="st-sub">Indexed media documents</div></div>
 
     <div class="st-card anim-card"><div class="st-bar" style="background:#9933ff"></div>
       <div class="st-label">🖼️ Poster IDs saved</div>
-      <div class="st-val" style="color:#9933ff" data-count="{s['thumbnails']}" data-delay="160">{s['thumbnails']:,}</div>
+      <div class="st-val" data-count="{s['thumbnails']}" data-delay="160">{s['thumbnails']:,}</div>
       <div class="st-sub">Files with a Telegram poster reference</div></div>
 
     <div class="st-card anim-card"><div class="st-bar" style="background:#00d2c4"></div>
       <div class="st-label">🌐 Web Accounts</div>
-      <div class="st-val" style="color:#00d2c4" data-count="{s['web_accounts']}" data-delay="220">{s['web_accounts']:,}</div>
+      <div class="st-val" data-count="{s['web_accounts']}" data-delay="220">{s['web_accounts']:,}</div>
       <div class="st-sub">Registered email logins</div></div>
 
     <div class="st-card anim-card"><div class="st-bar" style="background:#ff9933"></div>
       <div class="st-label">🤖 Bot Users</div>
-      <div class="st-val" style="color:#ff9933" data-count="{s['bot_users']}" data-delay="280">{s['bot_users']:,}</div>
+      <div class="st-val" data-count="{s['bot_users']}" data-delay="280">{s['bot_users']:,}</div>
       <div class="st-sub">Active database records</div></div>
 
     <div class="st-card anim-card"><div class="st-bar" style="background:var(--gold)"></div>
       <div class="st-label">💎 Premium Users</div>
-      <div class="st-val" style="color:var(--gold)" data-count="{s['premium_users']}" data-delay="340">{s['premium_users']:,}</div>
+      <div class="st-val" data-count="{s['premium_users']}" data-delay="340">{s['premium_users']:,}</div>
       <div class="st-sub">Active premium plans</div></div>
 
     <div class="st-card anim-card"><div class="st-bar" style="background:#28a745"></div>
       <div class="st-label">🟢 Server Uptime</div>
-      <div class="st-val" style="color:#28a745;font-size:22px">{uptime(short=True)}</div>
+      <div class="st-val" style="font-size:22px">{uptime(short=True)}</div>
       <div class="st-sub">Port {PORT} · worker operational</div></div>
 
     <div class="st-card anim-card"><div class="st-bar" style="background:var(--red)"></div>
@@ -170,17 +170,17 @@ async def stats_page(req):
 
     <div class="st-card anim-card"><div class="st-bar" style="background:#e50914"></div>
       <div class="st-label">📝 Content Posts</div>
-      <div class="st-val" style="color:#e50914" data-count="{s['posts']}" data-delay="440">{s['posts']:,}</div>
+      <div class="st-val" data-count="{s['posts']}" data-delay="440">{s['posts']:,}</div>
       <div class="st-sub">Published catalog entries</div></div>
 
     <div class="st-card anim-card"><div class="st-bar" style="background:#00d2c4"></div>
       <div class="st-label">🎭 Directory Profiles</div>
-      <div class="st-val" style="color:#00d2c4" data-count="{s['actors']}" data-delay="480">{s['actors']:,}</div>
+      <div class="st-val" data-count="{s['actors']}" data-delay="480">{s['actors']:,}</div>
       <div class="st-sub">Actors · Apps · Websites</div></div>
 
     <div class="st-card anim-card"><div class="st-bar" style="background:#7dd3fc"></div>
       <div class="st-label">🗂️ Permanent Groups</div>
-      <div class="st-val" style="color:#7dd3fc" data-count="{s['groups']}" data-delay="520">{s['groups']:,}</div>
+      <div class="st-val" data-count="{s['groups']}" data-delay="520">{s['groups']:,}</div>
       <div class="st-sub">🎞️ {s['quality_groups']:,} quality groups · 📺 {s['episode_groups']:,} series groups ({s['episodes_total']:,} episodes) — every group has its own id / #number</div></div>
   </div>
   <section class="scan-tools" aria-label="Group scan">

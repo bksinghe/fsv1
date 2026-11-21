@@ -88,12 +88,12 @@ class PlayerGroupTests(unittest.IsolatedAsyncioTestCase):
         ns = dict(html=html, quote=quote, get_media_info=AsyncMock(return_value=info),
                   unpack_new_file_id=lambda _: 'group-id', PLAYER_JS='PLAYER SCRIPT',
                   PLAYER_ACTIONS_HTML='<a href="{download}">Download</a>{close}',
-                  PLAYER_CHOICES_HTML='CHOICES', SITE_CSS='', html_response=lambda body: body)
+                  PLAYER_CHOICES_HTML='CHOICES', SITE_CSS='', THEME_JS='/* saved theme */', html_response=lambda body: body)
         watch = load_function(ROOT / 'web/utils/render_template.py', 'media_watch', ns)
         guest = await watch(42, 'e=123&s=abc', bot_username='ExampleBot')
         self.assertNotIn('class="modal"', guest)
         self.assertNotIn('Back to Search', guest)
-        for part in ('CHOICES', 'PLAYER SCRIPT', 'preload="metadata" src="/download/42?e=123&amp;s=abc"',
+        for part in ('CHOICES', 'PLAYER SCRIPT', '<script>/* saved theme */</script>', 'preload="metadata" src="/download/42?e=123&amp;s=abc"',
                      'id="pReturn" href="https://t.me/ExampleBot"', 'data-stream="/download/42?e=123&amp;s=abc"',
                      'data-name="Title &lt;HD&gt;.mp4"', 'data-file-id="group-id"', 'data-account="0"',
                      'data-poster=""'):

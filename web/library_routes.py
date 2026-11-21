@@ -105,8 +105,6 @@ async def personal_page(req):
             "Resume history" if doc["paused"] else "Pause history",
             "unpause" if doc["paused"] else "pause",
         ) + button("Clear history", "clear")
-        if doc["paused"]:
-            toolbar += "<strong>Recording paused</strong>"
     else:
         lists = doc["lists"]
         p = next((x for x in lists if x["id"] == pid), None)
@@ -160,24 +158,29 @@ async def personal_page(req):
                     else clock(x["position"]) + " / " + clock(x["duration"])
                 )
             )
-            actions = button("＋ Playlist", "save")
-        poster = "/api/thumb?" + escape(urlencode({"file_id": fid}))
-        if hist:
-            cards.append(
-                f'<article class="vm-card" data-file="{escape(fid)}"><img alt="" class="vm-img" loading="lazy" data-src="{poster}" onerror="this.hidden=true">'
-                f'<button class="lib-name" data-act="play">▶ {escape(names[fid])}</button><small>{meta}</small><div>{actions}{button("Remove", "remove")}</div></article>'
+            progress = (
+                min(100, round(100 * x["position"] / x["duration"]))
+                if x["duration"] > 0
+                else 0
             )
+            content = (
+                '<span class="pl-number" aria-hidden="true">▶</span><div class="hist-info">'
+                f'<button class="lib-name" data-act="play">{escape(names[fid])}</button><small>{meta}</small>'
+                f'<progress value="{progress}" max="100" aria-label="Playback progress"></progress></div>'
+            )
+            actions = button("＋ Playlist", "save")
         else:
             number = visible_ids.index(fid) + 1
-            cards.append(
-                f'<article class="vm-card" data-file="{escape(fid)}"><div class="pl-cover" aria-hidden="true"><span>▶</span><img alt="" class="vm-img" loading="lazy" data-src="{poster}" onerror="this.hidden=true"></div>'
-                f'<div class="pl-row"><span class="pl-number">{number:02}</span><button class="lib-name" data-act="play">{escape(names[fid])}</button>'
-                '<details class="pl-options"><summary aria-label="Video options" title="Video options">⋯</summary><div>'
-                + button("↑ Move up", "up")
-                + button("↓ Move down", "down")
-                + button("Remove", "remove")
-                + "</div></details></div></article>"
-            )
+            content = f'<span class="pl-number">{number:02}</span><button class="lib-name" data-act="play">{escape(names[fid])}</button>'
+            actions = button("↑ Move up", "up") + button("↓ Move down", "down")
+        poster = "/api/thumb?" + escape(urlencode({"file_id": fid}))
+        cards.append(
+            f'<article class="vm-card" data-file="{escape(fid)}"><div class="pl-cover" aria-hidden="true"><span>▶</span><img alt="" class="vm-img" loading="lazy" data-src="{poster}" onerror="this.hidden=true"></div>'
+            f'<div class="pl-row">{content}<details class="pl-options"><summary aria-label="Video options" title="Video options">⋯</summary><div>'
+            + actions
+            + button("Remove", "remove")
+            + "</div></details></div></article>"
+        )
     paging = (
         (f'<a href="{url(page - 1)}">← Previous</a>' if page else "")
         + f" <span>Page {page + 1}</span> "
@@ -207,13 +210,16 @@ async def personal_page(req):
         f'<option data-resume="{resume.get(f, "")}" value="{escape(f)}">{escape(names[f])}</option>'
         for f in visible_ids
     )
-    items = "".join(cards) or (
-        "<p>No videos match this search.</p>" if query else "<p>No videos here yet.</p>"
-    )
+    count = len(visible_ids)
     if hist:
-        heading = f"<h1>{title}</h1><div>{toolbar}</div>"
+        recording = "Recording paused" if doc["paused"] else "Recording on"
+        heading = (
+            '<header class="pl-hero hist-hero"><div class="hist-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10a9 9 0 1 1 2 8M3 4v6h6M12 7v5l3 2"/></svg></div>'
+            '<div class="pl-info"><small class="pl-kicker">YOUR LIBRARY</small><h1>Watch History</h1>'
+            f"<p>Private · {count} {'video' if count == 1 else 'videos'} · {recording}</p>"
+            f'<div class="pl-tools">{toolbar}</div></div></header><h2 class="pl-queue-title">Recent activity</h2>'
+        )
     else:
-        count = len(visible_ids)
         heading = (
             '<header class="pl-top"><div><small class="pl-kicker">YOUR LIBRARY</small><h1>My Playlists</h1></div>'
             + button("＋ New playlist", "create")
@@ -227,12 +233,21 @@ async def personal_page(req):
             + (button("Delete playlist", "delete") if pid != "later" else "")
             + '</div></details></div></div></header><h2 class="pl-queue-title">Play queue</h2>'
         )
-        if not cards:
-            items = (
-                '<div class="pl-empty"><strong>No matching videos</strong><p>Try another filename or clear your search.</p></div>'
-                if query
-                else '<div class="pl-empty"><strong>Your queue is empty</strong><p>Use ＋ Playlist on a video to save it here.</p></div>'
-            )
+    if cards:
+        items = "".join(cards)
+    elif query:
+        items = '<div class="pl-empty"><strong>No matching videos</strong><p>Try another filename or clear your search.</p></div>'
+    elif hist:
+        hint = (
+            "Resume history to record new watches."
+            if doc["paused"]
+            else "Watch a video in the web player to see it here."
+        )
+        items = (
+            f'<div class="pl-empty"><strong>No watches yet</strong><p>{hint}</p></div>'
+        )
+    else:
+        items = '<div class="pl-empty"><strong>Your queue is empty</strong><p>Use ＋ Playlist on a video to save it here.</p></div>'
     if req.headers.get("Accept") == "application/json":
         return json({"items": items, "navigation": paging, "queue": queue})
     body = (

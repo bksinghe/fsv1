@@ -3,7 +3,7 @@ LIBRARY_CSS = '''<style>.library{max-width:68rem;margin:2rem auto;padding:0 1rem
 .library form{flex-wrap:nowrap}.library input[type=search]{flex:1;min-width:0;font:inherit;background:var(--bg2);color:var(--txt);padding:.6rem;border:1px solid var(--line);border-radius:8px}.library nav a[aria-current=true]{border-color:var(--red)}
 .library section{margin:1rem 0}.library article{padding:.7rem;border:1px solid var(--line);background:var(--card);border-radius:10px;display:grid;gap:.4rem;min-width:0}.library img{width:100%;aspect-ratio:16/9;object-fit:cover}.library small{color:var(--mut)}.lib-name{text-align:left;background:none;color:var(--txt);font:inherit;font-weight:bold;border:0;cursor:pointer;overflow-wrap:anywhere}.lib-day{grid-column:1/-1;font-size:1.1rem}.lib-controls{padding:0 1rem}
 /* Playlist collection and queue. Use the same surfaces and accent as the save picker. */
-.library[data-kind=playlists]{max-width:64rem;--pl-tint:color-mix(in srgb,var(--red) 8%,var(--card))}
+.library[data-kind]{max-width:64rem;--pl-tint:color-mix(in srgb,var(--red) 8%,var(--card))}
 .pl-top,.pl-tools,.pl-row{display:flex;align-items:center}.pl-top{justify-content:space-between;gap:12px}.pl-top h1{font-size:clamp(25px,4vw,35px);letter-spacing:-.045em;line-height:1.15;margin-top:4px}
 .library .pl-kicker{font-weight:800;font-size:10px;letter-spacing:.15em;color:var(--mut)}
 .pl-top .tbtn,.pl-tools .tbtn,.pl-manage summary{font:inherit;font-size:13px;font-weight:750;padding:9px 13px;min-height:38px;border-radius:9px}
@@ -18,12 +18,15 @@ LIBRARY_CSS = '''<style>.library{max-width:68rem;margin:2rem auto;padding:0 1rem
 .pl-tools{flex-wrap:wrap;gap:8px;margin-top:12px}.pl-tools [data-act=continue]{background:var(--red);border-color:var(--red);color:white}
 .pl-manage,.pl-options{position:relative}.pl-manage summary,.pl-options summary{list-style:none;cursor:pointer;color:var(--txt);background:var(--bg2);border:1px solid var(--line)}.pl-manage summary::-webkit-details-marker,.pl-options summary::-webkit-details-marker{display:none}
 .pl-manage>div,.pl-options>div{position:absolute;z-index:8;right:0;top:calc(100% + 4px);display:grid;min-width:135px;padding:5px;border:1px solid var(--line);border-radius:10px;background:var(--card);box-shadow:0 10px 24px #0003}.pl-manage>div{left:0;right:auto}.pl-options .tbtn,.pl-manage .tbtn{background:none;text-align:left;border:0;border-radius:6px;padding:9px;font-size:13px}.pl-options .tbtn:hover,.pl-manage .tbtn:hover{background:var(--bg3)}
-.pl-queue-title{font-size:18px;letter-spacing:-.025em;margin:24px 0 8px}.library[data-kind=playlists] input[type=search]{padding:11px 13px;border-radius:10px;background:var(--card)}
-.library[data-kind=playlists] .mode-text{grid-template-columns:minmax(0,1fr)}.library[data-kind=playlists] article{display:block;padding:0;border-radius:12px}.pl-cover{position:relative;display:grid;place-items:center;aspect-ratio:16/9;background:var(--bg3);border-radius:11px 11px 0 0;overflow:hidden;color:var(--mut)}.pl-cover img{position:absolute;inset:0;height:100%}.mode-text .pl-cover{display:none}
-.library[data-kind=playlists] article:has(details[open]){position:relative;z-index:2}.pl-row{min-width:0;gap:11px;padding:11px 13px}.pl-number{font:700 12px/1 ui-monospace,monospace;color:var(--mut);background:var(--bg3);border-radius:7px;padding:8px}.pl-row .lib-name{flex:1;min-width:0;font-size:14px;line-height:1.4}.pl-row .lib-name:hover{text-decoration:underline}
+.pl-queue-title{font-size:18px;letter-spacing:-.025em;margin:24px 0 8px}.library[data-kind] input[type=search]{padding:11px 13px;border-radius:10px;background:var(--card)}
+.library[data-kind] .mode-text{grid-template-columns:minmax(0,1fr)}.library[data-kind] article{display:block;padding:0;border-radius:12px}.pl-cover{position:relative;display:grid;place-items:center;aspect-ratio:16/9;background:var(--bg3);border-radius:11px 11px 0 0;overflow:hidden;color:var(--mut)}.pl-cover img{position:absolute;inset:0;height:100%}.mode-text .pl-cover{display:none}
+.library[data-kind] article:has(details[open]){position:relative;z-index:2}.pl-row{min-width:0;gap:11px;padding:11px 13px}.pl-number{font:700 12px/1 ui-monospace,monospace;color:var(--mut);background:var(--bg3);border-radius:7px;padding:8px}.pl-row .lib-name{flex:1;min-width:0;font-size:14px;line-height:1.4}.pl-row .lib-name:hover{text-decoration:underline}
 .pl-options summary{display:grid;place-items:center;width:36px;height:36px;border-color:transparent;border-radius:8px;font:bold 19px/1 system-ui}.pl-options summary:hover,.pl-options[open] summary{border-color:var(--line);background:var(--bg3)}
 .pl-empty{grid-column:1/-1;text-align:center;padding:30px 14px;border:1px dashed var(--line);border-radius:12px;background:var(--card)}.pl-empty p{margin-top:6px;color:var(--mut);font-size:13px}
-.library[data-kind=playlists] #libPaging{justify-content:center;color:var(--mut);font-size:13px}.library[data-kind=playlists] #libPaging a{border:1px solid var(--line);padding:7px 12px;border-radius:8px;color:var(--txt)}.library[data-kind=playlists] :focus-visible{outline:2px solid var(--red);outline-offset:2px}
+.library[data-kind] #libPaging{justify-content:center;color:var(--mut);font-size:13px}.library[data-kind] #libPaging a{border:1px solid var(--line);padding:7px 12px;border-radius:8px;color:var(--txt)}.library[data-kind] :focus-visible{outline:2px solid var(--red);outline-offset:2px}
+.hist-mark{display:grid;place-items:center;flex:none;width:clamp(64px,12vw,108px);aspect-ratio:1;border-radius:16%;color:white;background:linear-gradient(140deg,#d9555e,#771b36);box-shadow:inset 0 0 0 1px #ffffff24}.hist-mark svg{width:54%}.hist-hero h1{font-size:clamp(24px,4vw,34px);letter-spacing:-.04em;line-height:1.16;margin:4px 0 6px}
+.hist-info{flex:1;min-width:0;display:grid;gap:5px}.hist-info small{font-size:12px}.hist-info progress{width:min(8rem,100%);height:4px;border:0;border-radius:4px;overflow:hidden;background:var(--bg3);color:var(--red);accent-color:var(--red)}.hist-info progress::-webkit-progress-bar{background:var(--bg3)}.hist-info progress::-webkit-progress-value{background:var(--red)}.hist-info progress::-moz-progress-bar{background:var(--red)}
+.lib-day{display:flex;align-items:center;gap:12px;font-size:14px;margin:10px 0 3px}.lib-day:after{content:'';height:1px;background:var(--line);flex:1}.pl-tools [data-act=unpause]{background:var(--red);color:white;border-color:var(--red)}
 @media(max-width:540px){.pl-manage>div{left:auto;right:0}.pl-top .tbtn,.pl-tools .tbtn,.pl-manage summary{padding:8px 10px}.pl-tools{gap:6px}.pl-hero{align-items:flex-start}.pl-row{padding:9px;gap:8px}}
 </style>'''
 
@@ -65,31 +68,31 @@ root.addEventListener('click',async e=>{const b=e.target.closest('[data-act]');i
  const id=b.closest('[data-file]')?.dataset.file||'',action=b.dataset.act;
  if(action==='save')return window.saveToPlaylist(id);
  if(action==='play'||action==='continue')return run(id||(queue.some(x=>x.id===root.dataset.last)?root.dataset.last:queue[0]?.id));
- if(kind==='playlists'&&['create','rename','delete'].includes(action))return playlistDialog(action);
- if(action==='clear'&&!confirm('Clear your entire watch history?'))return;
+ if(kind==='playlists'&&['create','rename','delete'].includes(action))return libraryDialog(action);
+ if(action==='clear')return libraryDialog(action);
  b.disabled=true;try{await edit(action,{file_id:id});location.reload();}
  catch(err){alert(err.message);b.disabled=false;}
 });
-function playlistDialog(action){
- const removing=action==='delete',dlg=document.createElement('dialog');dlg.className='playlist-picker';dlg.setAttribute('aria-labelledby','plEditTitle');
- const title=action==='create'?'New playlist':removing?'Delete playlist':'Rename playlist';
- dlg.innerHTML=`<form><header class="pp-head"><div><small>YOUR LIBRARY</small><h2 id="plEditTitle">${title}</h2></div><button class="pp-close" type="button" aria-label="Close">×</button></header><div class="pp-body"></div><footer class="pp-foot"><p role="status">Only visible to you.</p><button class="pp-save" type="submit">${removing?'Delete playlist':'Save'}</button></footer></form>`;
+function libraryDialog(action){
+ const clearing=action==='clear',removing=action==='delete'||clearing,dlg=document.createElement('dialog');dlg.className='playlist-picker';dlg.setAttribute('aria-labelledby','plEditTitle');
+ const title=clearing?'Clear watch history':action==='create'?'New playlist':removing?'Delete playlist':'Rename playlist';
+ dlg.innerHTML=`<form><header class="pp-head"><div><small>YOUR LIBRARY</small><h2 id="plEditTitle">${title}</h2></div><button class="pp-close" type="button" aria-label="Close">×</button></header><div class="pp-body"></div><footer class="pp-foot"><p role="status">Only visible to you.</p><button class="pp-save" type="submit">${removing?title:'Save'}</button></footer></form>`;
  const form=dlg.querySelector('form'),body=form.querySelector('.pp-body'),save=form.querySelector('.pp-save');let field;
- if(removing){body.textContent='Delete this playlist? The videos will stay in the library.';}
+ if(removing){body.textContent=clearing?'Clear your entire watch history? This cannot be undone. Your playlists will not change.':'Delete this playlist? The videos will stay in the library.';}
  else{body.innerHTML='<label class="pp-name"><span>Playlist name</span><input name="name" maxlength="80" required placeholder="Name your playlist"></label>';field=body.querySelector('input');
  if(action==='rename')field.value=root.querySelector('.pl-info h2').textContent;
  field.oninput=()=>{save.disabled=!field.value.trim();};field.oninput();}
  form.querySelector('.pp-close').onclick=()=>dlg.close();dlg.addEventListener('close',()=>dlg.remove(),{once:true});
  form.onsubmit=async e=>{e.preventDefault();if(save.disabled)return;save.disabled=true;
- try{const d=await edit(action,{name:field?.value.trim()||''});if(action==='create')location.assign('/playlists?list='+encodeURIComponent(d.id));else if(removing)location.assign('/playlists');else location.reload();}
+ try{const d=await edit(action,{name:field?.value.trim()||''});if(action==='create')location.assign('/playlists?list='+encodeURIComponent(d.id));else if(action==='delete')location.assign('/playlists');else location.reload();}
  catch(err){form.querySelector('[role=status]').textContent=err.message;save.disabled=false;}};
  document.body.appendChild(dlg);dlg.showModal();if(field){field.focus();field.select();}
 }
-if(kind==='playlists'){
- // Keep only one actions menu open; clicking elsewhere or pressing Escape closes it.
+// Keep only one actions menu open; clicking elsewhere or pressing Escape closes it.
  const menus=()=>root.querySelectorAll('.pl-manage[open],.pl-options[open]');
  document.addEventListener('click',e=>{menus().forEach(m=>{if(!m.contains(e.target))m.open=false;});});
  root.addEventListener('keydown',e=>{if(e.key==='Escape')menus().forEach(m=>{m.open=false;m.querySelector('summary').focus();});});
+if(kind==='playlists'){
  const v=document.querySelector('#player'),bar=document.createElement('div');bar.className='lib-controls';
  bar.innerHTML='<button class="tbtn" data-step="-1">← Previous</button><button class="tbtn" data-step="1">Next →</button><label><input type="checkbox"> Auto-next</label>';
  document.querySelector('#modal .mcard').appendChild(bar);const auto=bar.querySelector('input');

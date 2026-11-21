@@ -349,7 +349,7 @@ box-shadow:0 16px 38px rgba(0,0,0,.5),0 0 18px rgba(229,9,20,.22);z-index:2}
 .cat-card.flash{animation:catFlash .8s ease-out}
 @keyframes catFlash{0%{box-shadow:0 0 0 0 rgba(229,9,20,.6)}100%{box-shadow:0 0 0 20px rgba(229,9,20,0)}}
 .cat-poster-wrap{position:relative;aspect-ratio:2/3;overflow:hidden;
-background:linear-gradient(90deg,var(--bg3) 0,#2b2b3a 50%,var(--bg3) 100%);
+background:linear-gradient(90deg,var(--bg3) 0,var(--shimmer) 50%,var(--bg3) 100%);
 background-size:200% 100%;animation:catShimmer 1.5s infinite linear}
 @keyframes catShimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
 .cat-poster{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;
@@ -373,7 +373,7 @@ text-overflow:ellipsis;text-shadow:0 2px 8px rgba(0,0,0,.9)}
 @media(prefers-reduced-motion:reduce){.cat-card:active .cat-name,.cat-card:active .cat-meta-main{animation:none}}
 .cat-meta-sub{font-size:11px;color:var(--mut);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cat-skel{aspect-ratio:2/3;border-radius:12px;border:1px solid var(--line);
-background:linear-gradient(90deg,var(--bg3) 0,#2b2b3a 50%,var(--bg3) 100%);
+background:linear-gradient(90deg,var(--bg3) 0,var(--shimmer) 50%,var(--bg3) 100%);
 background-size:200% 100%;animation:catShimmer 1.5s infinite linear}
 .cat-empty{grid-column:1/-1;text-align:center;padding:64px 20px;color:var(--mut);font-weight:700;line-height:1.7}
 .cat-pg{display:none;justify-content:center;align-items:center;gap:12px;margin:26px 0 10px}

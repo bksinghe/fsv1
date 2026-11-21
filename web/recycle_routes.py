@@ -167,7 +167,7 @@ async def recycle_bin(req):
 .bin-actions:not([hidden]){display:flex;flex-wrap:wrap;gap:.5rem;padding:.7rem;background:var(--bg2);border-top:1px solid var(--line)}
 .bin dialog{margin:auto;border:1px solid var(--line);border-radius:.8rem;padding:1rem;background:var(--card);color:var(--txt);max-width:min(94vw,52rem)}
 .bin dialog::backdrop{background:#000a}.bin dialog h2{font-size:1rem;overflow-wrap:anywhere;margin-bottom:1rem}
-.bin video{width:min(76vw,48rem);max-height:65vh;background:black}.bin .bin-danger{color:#b52030;background:#ffe1e4}</style>
+.bin video{width:min(76vw,48rem);max-height:65vh;background:black}.bin .bin-danger{color:var(--danger-ink);background:color-mix(in srgb,var(--red) 10%,var(--card))}</style>
 <main class="bin"><h1>♻️ Recycle Bin</h1><p>Select a file name for a private preview, or its poster for file options.</p>'''
     body += (f'<form action="/recycle-bin" role="search"><input type="search" name="q" maxlength="120" '
              f'aria-label="Search deleted files by name" placeholder="Search deleted files by name…" value="{escape(query)}">'

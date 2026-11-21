@@ -8,20 +8,20 @@ requests work through that link too. The thumbnail is also shown as the poster.
 import html
 from urllib.parse import quote
 
-from web.web_assets import PLAYER_ACTIONS_HTML, PLAYER_CHOICES_HTML, PLAYER_JS, SITE_CSS, html_response
+from web.web_assets import PLAYER_ACTIONS_HTML, PLAYER_CHOICES_HTML, PLAYER_JS, SITE_CSS, THEME_JS, html_response
 
 from web.utils.media_info import get_media_info
 from database.ia_filterdb import unpack_new_file_id
 
 UNSUPPORTED_HTML = """<!DOCTYPE html><html><head><meta charset="utf-8">
 <title>Download File</title><meta name="viewport" content="width=device-width,initial-scale=1">
-<style>body{{background:#0b0b0f;color:#fff;font-family:system-ui,sans-serif;display:flex;
+<script>{theme}</script><style>{css}body{{padding:16px;display:flex;
 align-items:center;justify-content:center;min-height:100vh;text-align:center}}
-.box{{background:#16161f;border:1px solid #2a2a38;padding:36px;border-radius:14px;max-width:440px}}
-a{{display:inline-block;margin-top:18px;background:#e50914;color:#fff;padding:12px 24px;
+.box{{background:var(--card);border:1px solid var(--line);overflow-wrap:anywhere;padding:36px;border-radius:14px;max-width:440px}}
+a{{display:inline-block;margin-top:18px;background:var(--red);color:#fff;padding:12px 24px;
 border-radius:8px;text-decoration:none;font-weight:800}}</style></head>
 <body><div class="box"><h2>📦 {file_name}</h2>
-<p style="color:#9a9aad;margin-top:10px">This file cannot be played in the browser. Download it instead.</p>
+<p style="color:var(--mut);margin-top:10px">This file cannot be played in the browser. Download it instead.</p>
 <a href="{src}" download>⬇ Direct Download</a></div></body></html>"""
 
 
@@ -46,7 +46,7 @@ async def media_watch(message_id: int, query: str = "", poster: str = "", file_i
     )
     is_video = info.is_video or str(info.mime_type or "").startswith("video/") or looks_video
     if not is_video:
-        return html_response(UNSUPPORTED_HTML.format(file_name=name, src=src))
+        return html_response(UNSUPPORTED_HTML.format(file_name=name, src=src, theme=THEME_JS, css=SITE_CSS))
 
     # The signed message authorizes this video, not other catalog entries.
     # Account-only thumbnails, group choices and progress require a web session.
@@ -58,7 +58,7 @@ async def media_watch(message_id: int, query: str = "", poster: str = "", file_i
     actions = PLAYER_ACTIONS_HTML.format(download=src, close=f'<a id="pReturn" href="{return_url}" rel="noreferrer">Close</a>')
     return html_response(f"""<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer">
-<title>Watch {name}</title><style>{SITE_CSS}
+<title>Watch {name}</title><script>{THEME_JS}</script><style>{SITE_CSS}
 #signedPlayer{{max-width:1000px;margin:22px auto;padding:0 16px 40px}}
 #signedPlayer .video-wrap{{overflow:hidden;border:1px solid var(--line);border-radius:12px}}
 #signedPlayer .pchoices{{margin-top:14px;background:var(--card);border:1px solid var(--line);border-radius:12px}}

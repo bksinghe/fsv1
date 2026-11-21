@@ -129,7 +129,7 @@ box-shadow:0 14px 34px rgba(0,0,0,.45)}}
 /* ✨ Entrance animation lives in web/reveal_assets.py — cards opt in with `rv-enter`. */
 @keyframes sh{0%{background-position:200% 0}100%{background-position:-200% 0}}
 .vposter{position:relative;aspect-ratio:16/9;overflow:hidden;
-background:linear-gradient(90deg,var(--bg3) 0,#2b2b3a 50%,var(--bg3) 100%);
+background:linear-gradient(90deg,var(--bg3) 0,var(--shimmer) 50%,var(--bg3) 100%);
 background-size:200% 100%;animation:sh 1.5s infinite linear}
 .vposter.no-thumb{animation:none;background:none}
 .vimg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;
@@ -971,9 +971,9 @@ def filter_buttons(specs, dynamic=None):
 
 SITE_CSS = """
 *{box-sizing:border-box;margin:0;padding:0}
-:root{--bg:#0b0b0f;--bg2:#14141c;--bg3:#1e1e2a;--card:#16161f;--line:#2a2a38;
+:root{color-scheme:dark;--shimmer:#2b2b3a;--danger-ink:#ff9aa2;--success-ink:#6ee7a0;--info-ink:#7dd3fc;--bg:#0b0b0f;--bg2:#14141c;--bg3:#1e1e2a;--card:#16161f;--line:#2a2a38;
 --txt:#f5f5f7;--mut:#9a9aad;--red:#e50914;--red2:#b30710;--gold:#ffd166}
-html.light{--bg:#f4f5f8;--bg2:#fff;--bg3:#eceef4;--card:#fff;--line:#d8dbe5;
+html.light{color-scheme:light;--shimmer:#f7f8fb;--danger-ink:#ab2134;--success-ink:#156b39;--info-ink:#175989;--bg:#f4f5f8;--bg2:#fff;--bg3:#eceef4;--card:#fff;--line:#d8dbe5;
 --txt:#101018;--mut:#5c5c70}
 body{font-family:'DM Sans',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
 background:var(--bg);color:var(--txt);min-height:100vh;transition:background .2s,color .2s}
@@ -1046,10 +1046,10 @@ video{width:100%;height:100%;display:block;background:#000}
 .pchoices-title{font-size:13px;font-weight:800;color:var(--txt)}.pchoices-sub{font-size:11px;color:var(--mut);margin-top:2px}
 .pchoices-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px;max-height:200px;overflow-y:auto;overscroll-behavior:contain;padding:2px}
 .pchoices button{position:relative;min-width:0;background:var(--bg3);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:10px 11px;cursor:pointer;text-align:left;font:inherit;transition:border-color .16s,background .16s,transform .16s}
-.pchoices button:hover{border-color:#a74c55;background:#25232b}.pchoices button:focus-visible{outline:2px solid #ff6670;outline-offset:2px}
+.pchoices button:hover{border-color:#a74c55;background:var(--card)}.pchoices button:focus-visible{outline:2px solid #ff6670;outline-offset:2px}
 .pchoices button.active{border-color:#e50914;background:linear-gradient(135deg,rgba(229,9,20,.18),rgba(229,9,20,.04));box-shadow:inset 3px 0 #e50914}
 .pchoices .choice-top{display:flex;align-items:center;gap:6px;min-width:0}.pchoices .choice-label{font-size:12px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pchoices .choice-state{margin-left:auto;flex:none;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#ff7b84}
+.pchoices .choice-state{margin-left:auto;flex:none;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--danger-ink)}
 .pchoices .choice-name{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--mut);font-size:11px;margin-top:5px}
 .pchoices .choice-meta{display:block;margin-top:5px;color:var(--mut);font-size:11px}
 @media(max-width:480px){.pchoices{padding:12px}.pchoices-list{grid-template-columns:repeat(2,minmax(0,1fr));max-height:190px}.pchoices button{padding:9px}}
@@ -1092,8 +1092,8 @@ font-family:inherit;outline:none}
 padding:15px;font-weight:800;font-size:14px;cursor:pointer;font-family:inherit;margin-top:8px}
 .submit:hover{background:var(--red2)}
 .err,.ok{border-radius:8px;padding:11px 14px;font-size:13px;font-weight:700;margin-bottom:16px}
-.err{background:rgba(229,9,20,.16);color:#ff8c92;border:1px solid rgba(229,9,20,.4)}
-.ok{background:rgba(40,167,69,.15);color:#6ee7a0;border:1px solid rgba(40,167,69,.4)}
+.err{background:rgba(229,9,20,.16);color:var(--danger-ink);border:1px solid rgba(229,9,20,.4)}
+.ok{background:rgba(40,167,69,.15);color:var(--success-ink);border:1px solid rgba(40,167,69,.4)}
 .links{display:flex;justify-content:space-between;margin-top:20px;font-size:13px;
 font-weight:700;color:var(--mut);gap:10px;flex-wrap:wrap}
 .links a:hover{color:var(--red)}
@@ -1219,7 +1219,7 @@ font-weight:800;font-size:13px;cursor:pointer;font-family:inherit}
 """
 
 # Theme + sidebar — one shared script on every logged-in page (like v5's shared head)
-SITE_JS = """
+THEME_JS = """
 (function(){
   try{document.documentElement.classList.toggle('light',localStorage.getItem('ff_theme')==='light')}catch(e){}
 })();
@@ -1229,6 +1229,8 @@ function toggleTheme(){
   applyTheme(mode);try{localStorage.setItem('ff_theme',mode)}catch(e){}
 }
 window.addEventListener('storage',function(e){if(e.key==='ff_theme')applyTheme(e.newValue||'dark')});
+"""
+SITE_JS = THEME_JS + """
 function openSidebar(){var s=document.getElementById('sidebar'),o=document.getElementById('sbOverlay');if(s)s.classList.add('open');if(o)o.classList.add('open')}
 function closeSidebar(){var s=document.getElementById('sidebar'),o=document.getElementById('sbOverlay');if(s)s.classList.remove('open');if(o)o.classList.remove('open')}
 document.addEventListener('keydown',function(e){if(e.key==='Escape')closeSidebar()});
