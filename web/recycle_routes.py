@@ -10,7 +10,7 @@ from web.thumb_engine import get_image_bytes, image_content_type, thumb_id_from_
 from web.image_validate import is_image_magic
 
 routes = web.RouteTableDef()
-PAGE_SIZE = 30
+PAGE_SIZE = 21
 
 
 def _card(doc):

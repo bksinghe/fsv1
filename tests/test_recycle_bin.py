@@ -74,12 +74,12 @@ class RecycleTests(unittest.IsolatedAsyncioTestCase):
     async def test_search_filters_before_paging_and_reuses_view_mode(self):
         admin = {'user_session': 'admin'}
         self.ia.collection.insert_one({'_id':'active', 'file_name':'Clip [x] ACTIVE'})
-        for i in range(31):
+        for i in range(22):
             fid = f'clip{i:02}'
             self.ia.collection.insert_one({'_id':fid, 'file_name':f'Clip [x] {i}', 'thumb_url':'TG_ID:poster'})
             self.ia.collection.recycle(fid)
         self.ia.collection.recycle(self.fid)
-        for page, count in [(0, 30), (1, 1)]:
+        for page, count in [(0, 21), (1, 1)]:
             r = await self.http.get('/recycle-bin', params={'q':'CLIP [x]', 'page':page}, cookies=admin)
             body = (await r.text()).split('<main class="bin">',1)[1].split('</main>',1)[0]
             self.assertEqual(body.count('class="bin-card vm-card"'), count)
@@ -90,6 +90,11 @@ class RecycleTests(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn('ACTIVE', body)
             self.assertNotIn('Film &lt;HD&gt;', body)
             self.assertIn('q=CLIP+%5Bx%5D&amp;page=', body)
+        # Clearing the live search returns only the first page, not the whole bin.
+        cleared = await self.http.get('/recycle-bin', headers={'Accept':'application/json'}, cookies=admin)
+        first = await cleared.json()
+        self.assertEqual(first['items'].count('class="bin-card vm-card"'), 21)
+        self.assertIn('Next', first['navigation'])
         empty = await self.http.get('/recycle-bin?q=.*', cookies=admin)
         self.assertIn('No deleted files match', await empty.text())  # not a regex search
 
