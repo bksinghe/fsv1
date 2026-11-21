@@ -103,8 +103,16 @@ transition:opacity .18s,transform .18s,visibility .18s;pointer-events:none}
 .gcard.gactive .gadmin{opacity:1;visibility:visible;transform:translateY(0);pointer-events:all}
 .gcard.gactive:not(.open) .gbottom{display:none}
 .gadmin button{flex:1 1 42%;min-width:0;padding:9px 10px;border-radius:8px;
-font-size:11px;font-weight:800;line-height:1.3;border:1px solid;
-cursor:pointer;font-family:inherit;transition:background .15s,border-color .15s,transform .15s}
+font-size:11px;font-weight:800;line-height:1.3;color:#f5f6ff;border:1px solid rgba(255,255,255,.15);
+background:#45495c;cursor:pointer;font-family:inherit;transition:background .15s,border-color .15s,transform .15s}
+.gadmin button:hover{background:#5b6078;border-color:rgba(255,255,255,.35)}
+.gadmin button:focus-visible{outline:2px solid #a5b4fc;outline-offset:2px}
+.gadmin .ga-edit{background:#394e80;border-color:#5774b2}
+.gadmin .ga-edit:hover{background:#48639f}
+.gadmin .ga-merge{background:#51466f;border-color:#76669b}
+.gadmin .ga-merge:hover{background:#695a8d}
+.gadmin .ga-del{background:#693940;border-color:#a65b63;color:#fff1f2}
+.gadmin .ga-del:hover{background:#98434c;border-color:#d2707b}
 .gadmin button:active{transform:scale(.97)}
 /* Expanded groups have no poster: never paint an overlay over the whole card. */
 .gcard.open.gactive .gposter::after{display:none}
@@ -116,6 +124,14 @@ box-shadow:none;border:0;border-radius:0}
 html.light .gcard.open{box-shadow:0 8px 26px rgba(31,41,55,.12)}
 html.light .gadmin{background:rgba(255,255,255,.96);border-color:#d8dce6;
 box-shadow:0 8px 24px rgba(31,41,55,.2)}
+html.light .gadmin button{background:#f1f3f8;color:#273144;border-color:#d5dbe6}
+html.light .gadmin button:hover{background:#e2e7f1;border-color:#aab6cb}
+html.light .gadmin .ga-edit{background:#e7efff;color:#244b87;border-color:#b8ccef}
+html.light .gadmin .ga-edit:hover{background:#d4e3ff}
+html.light .gadmin .ga-merge{background:#f0eafa;color:#62428b;border-color:#d7c8eb}
+html.light .gadmin .ga-merge:hover{background:#e4d9f5}
+html.light .gadmin .ga-del{background:#fff0f1;color:#a82838;border-color:#f0c4c9}
+html.light .gadmin .ga-del:hover{background:#ffdee1}
 html.light .gcard.open .gposter .gadmin{background:none;box-shadow:none}
 html.light .gcard.open .gposter .vtag{background:#f0f2f7;color:#334155;border-color:#d5dbe6;backdrop-filter:none}
 html.light .gcard.open .gposter .vtag.blue{background:#e8f0ff;color:#24589c;border-color:#c1d4f4}
@@ -196,7 +212,8 @@ border-bottom:1px solid var(--line);font-size:12px;color:var(--txt)}
 .gmrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px}
 .gmbtn{border:0;border-radius:8px;padding:10px 14px;font-size:12px;font-weight:800;cursor:pointer;
 color:#fff;background:var(--red);font-family:inherit}
-.gmbtn.alt,.gmbtn.danger{border:1px solid}
+.gmbtn.alt{background:var(--bg3);color:var(--txt);border:1px solid var(--line)}
+.gmbtn.danger{background:#a00808}
 .gmbtn:disabled{opacity:.5}
 .gmnote{font-size:11px;color:var(--mut);line-height:1.5;margin-top:10px}
 /* Group editor: structured, responsive sections without changing other modals. */
@@ -233,7 +250,10 @@ border:1px solid var(--gm-section-border);border-radius:12px;padding:14px;margin
 .gmedit-actions{position:sticky;bottom:0;z-index:3;display:flex;gap:8px;flex-wrap:wrap;
 margin:4px -20px 0;padding:14px 20px;background:var(--gm-surface);border-top:1px solid var(--line)}
 .gmedit-actions .gmbtn{min-height:40px}.gmedit-actions .gmbtn:first-child{flex:1}
+.gmedit-actions .danger{background:#693940;border:1px solid #a65b63}
 html.light .gmodal{background:rgba(28,34,47,.46)}
+html.light .gmedit-actions .danger{background:#fff0f1;color:#a82838;border-color:#f0c4c9}
+html.light .gmedit-actions .danger:hover{background:#ffdee1}
 html.light .gmedit .gmchosen{color:#15803d}
 html.light .gmedit .gmcount{color:#6941a1}
 @media(max-width:520px){.gmodal{padding:8px}.gmcard.is-edit{max-height:94vh}

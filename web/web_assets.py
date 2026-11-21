@@ -164,7 +164,12 @@ transition:opacity .2s ease,transform .22s ease,visibility .2s}
 background:rgba(0,0,0,.42);pointer-events:none}
 .vcard.admin-active .vadmin{opacity:1;visibility:visible;transform:translateY(0);pointer-events:all}
 .vadmin button{flex:1;padding:8px 4px;border-radius:6px;font-size:11px;font-weight:800;
-font-family:inherit;cursor:pointer;border:1px solid;transition:background .12s,transform .1s}
+font-family:inherit;cursor:pointer;color:#fff;border:1px solid rgba(255,255,255,.2);
+backdrop-filter:blur(8px);transition:background .12s,transform .1s}
+.vadmin .va-edit{background:rgba(42,42,48,.9)}
+.vadmin .va-edit:hover{background:rgba(80,80,88,.96)}
+.vadmin .va-del{background:rgba(160,8,8,.82);border-color:rgba(229,9,20,.5)}
+.vadmin .va-del:hover{background:rgba(229,9,20,.95)}
 .vadmin button:active{transform:scale(.94)}
 /* ✅ Removed the extra space under the name — only the necessary padding remains */
 .vbody{padding:8px 11px 9px}
@@ -345,7 +350,7 @@ cursor:pointer;font-family:inherit;background:var(--bg3);color:var(--txt);transi
 .febtn:hover{border-color:var(--red)}.febtn:active{transform:scale(.96)}
 .febtn:disabled{opacity:.5;cursor:not-allowed}
 .febtn.save{background:var(--red);border-color:var(--red);color:#fff}
-
+.febtn.danger{background:rgba(160,8,8,.35);border-color:rgba(229,9,20,.5)}
 .festate,.festatus{font-size:11px;color:var(--mut);font-weight:700;margin:6px 0 12px;min-height:15px}
 .fegrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 @media(max-width:560px){.fegrid{grid-template-columns:1fr}}
@@ -1047,8 +1052,6 @@ color:var(--txt);border-radius:7px;padding:9px 14px;font-size:12px;font-weight:8
 cursor:pointer;font-family:inherit;text-align:center;white-space:nowrap;min-width:0}
 @media(max-width:400px){.mactions{gap:5px;padding:12px 10px}.mactions a,.mactions button{padding:9px 3px;font-size:11px}}
 .mnote{padding:0 16px 15px;font-size:11px;color:var(--mut)}
-html.light .pchoices button:not(.active):hover{background:#fbecef;border-color:#c26d78}
-html.light .pchoices .choice-state{color:#a62e41}
 /* ── auth form base (guest composition lives in web/welcome_assets.py) ── */
 .auth-wrap{min-height:calc(100vh - 62px);display:flex;align-items:center;
 justify-content:center;padding:24px}
@@ -1075,25 +1078,9 @@ font-weight:700;color:var(--mut);gap:10px;flex-wrap:wrap}
 
 """
 
-ADMIN_ACTION_CSS = """
-/* Opaque action surfaces: identical contrast on thumbnails, dark cards and white cards.
-   Keep geometry, visibility and disabled states in the individual components. */
-.gadmin button,.gmbtn.alt{--action-bg:#e2e8f0;--action-ink:#243449;--action-edge:#94a3b8;--action-hover:#cbd5e1}
-.gadmin .ga-edit,.vadmin .va-edit{--action-bg:#bfdbfe;--action-ink:#143c70;--action-edge:#6093ce;--action-hover:#a5cafa}
-.gadmin .ga-merge{--action-bg:#ddd6fe;--action-ink:#4c287f;--action-edge:#a291cc;--action-hover:#cbbcf7}
-.gadmin .ga-del,.vadmin .va-del,.gmbtn.danger,.febtn.danger{--action-bg:#fecdd3;--action-ink:#821c32;--action-edge:#d38594;--action-hover:#fbb6c1}
-.gadmin button,.vadmin button,.gmbtn.alt,.gmbtn.danger,.febtn.danger{
-background:var(--action-bg);color:var(--action-ink);border-color:var(--action-edge)}
-.gadmin button:hover,.vadmin button:hover,.gmbtn.alt:hover,.gmbtn.danger:hover,.febtn.danger:hover{
-background:var(--action-hover);border-color:var(--action-ink)}
-.gadmin button:focus-visible,.vadmin button:focus-visible,.febtn.danger:focus-visible{
-outline:2px solid #438ae3;outline-offset:2px}
-"""
-
 SITE_CSS += VIDEO_CARD_CSS
 SITE_CSS += FILTER_CSS
 SITE_CSS += GROUP_CSS
-SITE_CSS += ADMIN_ACTION_CSS
 # 🌐 Guest landing/auth design system (scoped to body.guest)
 SITE_CSS += WELCOME_CSS
 # ✨ One shared staggered result entrance, before the Poster/Text rules
