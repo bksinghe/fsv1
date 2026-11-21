@@ -18,7 +18,7 @@ class BatchTests(unittest.IsolatedAsyncioTestCase):
         self.store = NS(by_members=AsyncMock(return_value=[self.group]), get=AsyncMock(return_value=self.group),
                         files_by_ids=AsyncMock(return_value=[{'_id':'two','file_name':'S02E01'},
                                                               {'_id':'one','file_name':'Z'}]))
-        self.ns = dict(store=self.store, BatchOffer=Offer, KIND_EPISODES='episodes', re=re,
+        self.ns = dict(recycled_ids=AsyncMock(return_value=set()), get_file_details=AsyncMock(return_value=True), store=self.store, BatchOffer=Offer, KIND_EPISODES='episodes', re=re,
                        episode_label=lambda name, idx:(name, int(name[-2:])), logging=logging,
                        asyncio=asyncio, batch_offers={}, batch_jobs={}, has_premium_or_grace=AsyncMock(return_value=True),
                        db=NS(send_all_enabled=AsyncMock(return_value=True), set_send_all_enabled=AsyncMock(), get_settings=AsyncMock(return_value={"group_mode": True})), enums=NS(ChatType=NS(GROUP='g', SUPERGROUP='sg')))
@@ -37,7 +37,7 @@ class BatchTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_stream_links_replace_batch_button_only_after_successful_edit(self):
         msg = NS(id=4, chat=NS(id=7), reply_markup=NS(inline_keyboard=[[NS(callback_data='send_all')]]))
-        ns = dict(Client=object, IS_STREAM=True, temp=NS(FILES={(7,4):(7,'seed')}), is_premium=AsyncMock(return_value=True),
+        ns = dict(get_file_details=AsyncMock(return_value=True), Client=object, IS_STREAM=True, temp=NS(FILES={(7,4):(7,'seed')}), is_premium=AsyncMock(return_value=True),
                   BIN_CHANNEL=-100, URL='https://example.org/', sign_params=lambda *a:'signed', USER_LINK_TTL=3600,
                   styled_keyboard=lambda rows:rows, styled_button=lambda text, **kw:kw,
                   safe_edit_markup=AsyncMock(), safe_answer_query=AsyncMock(), batch_offers={(7,4):'offer'})
@@ -58,7 +58,7 @@ class BatchTests(unittest.IsolatedAsyncioTestCase):
         key = (chat_id, 4)
         msg = NS(id=4, chat=NS(id=chat_id), delete=AsyncMock(),
                  reply_markup=NS(inline_keyboard=[[NS(callback_data='close_file')]]))
-        ns = dict(Client=object, IS_STREAM=True, temp=NS(FILES={key:(owner,'seed')}),
+        ns = dict(get_file_details=AsyncMock(return_value=True), Client=object, IS_STREAM=True, temp=NS(FILES={key:(owner,'seed')}),
                   is_premium=AsyncMock(return_value=True), BIN_CHANNEL=-1, URL='https://example.org/',
                   sign_params=lambda *a:'sig', USER_LINK_TTL=3600, styled_keyboard=lambda rows:rows,
                   styled_button=lambda text, **kw:kw, safe_edit_markup=AsyncMock(return_value=True),

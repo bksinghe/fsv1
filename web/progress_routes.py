@@ -6,7 +6,7 @@ import time
 
 from aiohttp import web
 from database.users_chats_db import dbase
-from database.ia_filterdb import get_file_details
+from database.ia_filterdb import get_file_details, recycled_ids
 from web.web_assets import get_auth
 
 logger = logging.getLogger(__name__)
@@ -45,6 +45,8 @@ async def get_progress(req):
     try:
         doc = await asyncio.to_thread(_collection().find_one, {'_id': user_id}, {'items': 1})
         items = (doc or {}).get('items') or []
+        hidden = await recycled_ids([x["file_id"] for x in items])
+        items = [x for x in items if x["file_id"] not in hidden]
         if fid:
             return web.json_response({'item': next((x for x in items if x.get('file_id') == fid), None)}, headers={'Cache-Control': 'no-store'})
         return web.json_response({'items': items[:MAX_ITEMS]}, headers={'Cache-Control': 'no-store'})

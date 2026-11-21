@@ -6,6 +6,7 @@ After login, `/search` provides:
   * `/api/stream`  → cached media in BIN_CHANNEL → signed /watch + /download links
 """
 
+import asyncio
 import html
 import hashlib
 import logging
@@ -22,6 +23,7 @@ from info import (
 )
 from utils import temp
 from database.ia_filterdb import (
+    collection, recycled_ids,
     get_search_results,
     get_recent_files,
     get_file_details,
@@ -92,7 +94,8 @@ async def search_page_handler(req):
     # The cache scope is a non-reversible fingerprint, never the session cookie.
     # A newly authenticated session cannot reuse a previous session's preview.
     scope = hashlib.sha256(req.cookies["user_session"].encode()).hexdigest()
-    response = search_page(tg_id, role, cache_scope=scope)
+    revision = await asyncio.to_thread(collection.revision)
+    response = search_page(tg_id, role, cache_scope=f"{scope}:{revision}")
     response.headers["Cache-Control"] = "private, no-store"
     return response
 
@@ -164,6 +167,8 @@ async def api_thumb(req):
         "Cache-Control": f"private, max-age={THUMB_BROWSER_CACHE}",
         "ETag": etag,
     }
+    if await recycled_ids([fid]):
+        return web.Response(status=404)
     if req.headers.get("If-None-Match") == etag and not retry:
         return web.Response(status=304, headers=cache_headers)
 

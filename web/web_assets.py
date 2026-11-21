@@ -587,7 +587,7 @@ FILE_EDIT_JS = r"""<script>
   }
   async function deleteById(fid){
     if(!fid||busy) return;
-    if(!confirm('Archive this file to the configured channel, then delete it from the database?')) return;
+    if(!confirm('Archive this file and move it to the Recycle Bin?')) return;
     setBusy(true);
     try{
       const r=await fetch('/api/file/delete',{method:'POST',credentials:'same-origin',
@@ -595,7 +595,7 @@ FILE_EDIT_JS = r"""<script>
       const d=await r.json();
       if(!d.ok){ toast(d.error||'Delete failed',true); return; }
       cards(fid).forEach(c=>c.remove());
-      toast('🗑️ File archived and deleted');
+      toast('🗑️ File moved to the Recycle Bin');
       if(current===fid) close();
     }catch(e){ toast('Network error: '+String(e.message||e),true); }
     finally{ setBusy(false); }
@@ -1222,6 +1222,7 @@ NAV_MENU = (
     ("posts",   "/posts",   "📝 Posts"),
     ("actors",  "/actors",  "🎭 Actors"),
     ("stats",   "/stats",   "📊 Database Stats"),
+    ("bin",     "/recycle-bin", "♻️ Recycle Bin"),
     ("profile", "/profile", "⚙️ Profile Settings"),
 )
 
@@ -1237,7 +1238,7 @@ def nav_shell(tg_id: int, role: str, active_tab: str = "") -> str:
     links = "".join(
         f'<a href="{href}" class="sb-link {"active" if active_tab == tab else ""}">{label}</a>'
         for tab, href, label in NAV_MENU
-        if role == "admin" or tab != "stats"      # Database Stats admin-only (v5)
+        if role == "admin" or tab not in {"stats", "bin"}
     )
     # ℹ️ The "#<tg_id> · ADMIN" badge was removed from the desktop topbar — identity
     #    now appears only on Profile Settings (no ID in the sidebar either).

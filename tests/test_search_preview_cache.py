@@ -1,5 +1,6 @@
 """Bounded, session-scoped search previews with background revalidation."""
 import ast
+import asyncio
 import hashlib
 import shutil
 import subprocess
@@ -25,11 +26,11 @@ class SearchPreviewRouteTests(unittest.IsolatedAsyncioTestCase):
         fn.decorator_list = []
         response = SimpleNamespace(headers={})
         page = Mock(return_value=response)
-        ns = {'get_auth': AsyncMock(return_value=('user', 42)), 'search_page': page,
+        ns = {'asyncio': asyncio, 'collection': SimpleNamespace(revision=lambda: 42), 'get_auth': AsyncMock(return_value=('user', 42)), 'search_page': page,
               'hashlib': hashlib, 'web': SimpleNamespace(HTTPFound=lambda url: url)}
         exec(compile(ast.fix_missing_locations(ast.Module(body=[fn], type_ignores=[])), '<route>', 'exec'), ns)
         await ns['search_page_handler'](SimpleNamespace(cookies={'user_session': 'secret'}))
-        page.assert_called_once_with(42, 'user', cache_scope=hashlib.sha256(b'secret').hexdigest())
+        page.assert_called_once_with(42, 'user', cache_scope=hashlib.sha256(b'secret').hexdigest()+':42')
         self.assertEqual(response.headers['Cache-Control'], 'private, no-store')
         ns['get_auth'].return_value = (None, None)
         self.assertEqual(await ns['search_page_handler'](SimpleNamespace(cookies={})), '/login')

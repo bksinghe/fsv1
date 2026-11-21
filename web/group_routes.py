@@ -30,6 +30,7 @@ from aiohttp import web
 import info as _info
 from info import BIN_CHANNEL, THUMB_BROWSER_CACHE
 from utils import temp
+from database.ia_filterdb import recycled_ids
 from database.group_db import (
     store, title_key, series_key, group_title, series_title, quality_label, episode_chips,
     episode_label, episode_identity, duration_seconds,
@@ -84,8 +85,16 @@ def _items(data):
     return out
 
 
-def _group_public(g):
-    g = g or {}
+async def _group_public(g):
+    g = dict(g or {})
+    hidden = await recycled_ids(set(g.get('members') or []) | set(g.get('excluded') or []))
+    if hidden:
+        for key in ('members', 'excluded'):
+            g[key] = [fid for fid in g.get(key, []) if fid not in hidden]
+        g['files'] = [f for f in g.get('files', []) if f.get('id') not in hidden]
+        g['episode_map'] = {k:v for k,v in (g.get('episode_map') or {}).items() if k not in hidden}
+        if g.get('thumb_fid') in hidden:
+            g['thumb_fid'] = ''
     return {
         "group_id": str(g.get("_id") or ""),
         "num": g.get("num", ""),
@@ -113,7 +122,7 @@ def _group_thumb_url(g, variants):
     if custom.startswith("TG_ID:"):
         return f"/api/group/thumb?gid={gid}&v={thumb_version(gid, custom)}"
     chosen = str(g.get("thumb_fid") or "")
-    if chosen:
+    if chosen and any(v.get("file_id") == chosen for v in variants):
         return f"/api/thumb?file_id={chosen}&v={thumb_version(chosen, str(ts))}"
     for v in reversed(variants or []):
         if v.get("thumb"):
@@ -555,7 +564,7 @@ async def group_cards(cards, normalize=None, auto_join=True, include_extra=None)
             "kind": gkind,
             "qualities": qualities,
             "episodes": episodes,
-            "episode_map": emap,
+            "episode_map": {v["file_id"]: emap[v["file_id"]] for v in variants if v["file_id"] in emap},
             "thumb": _group_thumb_url(g or {}, variants),
             "custom_thumb": bool(g and str(g.get("thumb_url") or "").startswith("TG_ID:")),
             "chips": chips,
@@ -612,11 +621,11 @@ async def api_group_preview(req):
             width, height = doc.get("width"), doc.get("height")
             resolution = f"{width}×{height}" if width and height else ""
             _, height = quality_label(resolution, doc.get("file_name"), doc.get("quality"))
-            variants.append({"qh": height, "thumb": "/api/thumb?file_id=" + quote(fid, safe="") + "&v=" + thumb_version(fid, ref)})
+            variants.append({"qh": height, "file_id": fid, "thumb": "/api/thumb?file_id=" + quote(fid, safe="") + "&v=" + thumb_version(fid, ref)})
         variants.sort(key=lambda v: v["qh"])
         return _json({"ok": True, "group": {"id": str(group["_id"]),
             "num": group.get("num", ""), "name": str(group.get("name") or "Untitled group"),
-            "count": len(group.get("members") or []), "thumb": _group_thumb_url(group, variants)}})
+            "count": len(variants), "thumb": _group_thumb_url(group, variants)}})
     except Exception:
         logger.exception("Group preview failed")
         return _json({"ok": False, "error": "Group preview unavailable"}, 503)
@@ -686,7 +695,7 @@ async def api_group_save(req):
                                or detect_episodes(items))
     await store.mark_files(fids, str(g["_id"]))
     await store.cleanup_empty()
-    return _json({"ok": True, "group": _group_public(g),
+    return _json({"ok": True, "group": await _group_public(g),
                   "group_id": str(g["_id"]), "num": g.get("num", ""),
                   "group_name": str(g.get("name") or "")})
 
@@ -738,8 +747,11 @@ async def api_group_update(req):
                 fields["auto_keys"] = sorted(derived_keys)
     if "episode_map" in data:
         fields["episode_map"] = clean_episode_map(data.get("episode_map"))
+        old_labels = clean_episode_map(g.get("episode_map"))
+        for hidden in await recycled_ids(old_labels):
+            fields["episode_map"][hidden] = old_labels[hidden]
     updated = await store.update(gid, fields)
-    return _json({"ok": True, "group": _group_public(updated)})
+    return _json({"ok": True, "group": await _group_public(updated)})
 
 
 @group_routes.post("/api/group/remove_file")
@@ -757,7 +769,7 @@ async def api_group_remove_file(req):
         return _json({"ok": False, "error": "Group not found"}, 404)
     await store.mark_files([fid], "")
     await store.cleanup_empty()
-    return _json({"ok": True, "group": _group_public(g)})
+    return _json({"ok": True, "group": await _group_public(g)})
 
 
 @group_routes.post("/api/group/delete")
@@ -795,7 +807,7 @@ async def api_group_merge(req):
     merged = await store.merge(src, tgt)
     await store.mark_files([str(m) for m in (merged.get("members") or [])], tgt)
     await store.cleanup_empty()
-    return _json({"ok": True, "group": _group_public(merged),
+    return _json({"ok": True, "group": await _group_public(merged),
                   "group_id": tgt, "num": merged.get("num", ""),
                   "group_name": str(merged.get("name") or "")})
 
@@ -1088,7 +1100,7 @@ async def api_group_upload_thumb(req):
     if not tid:
         return _json({"ok": False, "error": "No thumbnail file_id returned"}, 502)
     g = await store.update(gid, {"thumb_url": "TG_ID:" + str(tid), "thumb_fid": ""})
-    return _json({"ok": True, "group": _group_public(g),
+    return _json({"ok": True, "group": await _group_public(g),
                   "thumb": f"/api/group/thumb?gid={gid}&v={thumb_version(gid, 'TG_ID:' + str(tid))}"})
 
 

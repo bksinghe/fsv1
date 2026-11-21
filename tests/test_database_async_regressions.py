@@ -43,6 +43,7 @@ class DatabaseAsyncTests(unittest.IsolatedAsyncioTestCase):
                 threads.append(threading.get_ident()); started.set(); release.wait(3)
                 return iter([{'_id': 'x'}])
         class Collection:
+            def revision(self): return 0
             def find(self, *a): threads.append(threading.get_ident()); return Cursor()
             def count_documents(self, *a, **kw): threads.append(threading.get_ident()); return 1
         ns = load_functions('get_search_results', 'cache_get', 'cache_set', 'cache_clear', collection=Collection())

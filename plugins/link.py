@@ -6,6 +6,7 @@ from pyrogram import Client, filters
 from info import BIN_CHANNEL, IS_STREAM, URL
 from stream_security import REPLY_LINK_TTL, sign_params
 from telegram_buttons import styled_button, styled_keyboard
+from database.ia_filterdb import media_is_recycled
 from utils import is_premium
 
 
@@ -24,6 +25,8 @@ async def file_link(client, message):
         return await message.reply_text("🔒 Premium access is required to generate file links.")
 
     try:
+        if await media_is_recycled(fid):
+            return await message.reply_text("File unavailable.")
         # Telegram reuses its existing copy; never download the file to the bot.
         stored = await client.send_cached_media(chat_id=BIN_CHANNEL, file_id=fid)
         signed = sign_params(stored.id, REPLY_LINK_TTL)

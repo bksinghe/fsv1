@@ -149,7 +149,7 @@ async def _run_delete(bot, message):
                     if await archive_and_delete(bot, fid):
                         count += 1
                 after = str(page[-1]["_id"])
-        await msg.edit(f"✅ Archived and deleted <code>{count}</code> file(s).")
+        await msg.edit(f"✅ Archived and moved <code>{count}</code> file(s) to the Recycle Bin.")
     except Exception as exc:
         # Stop on the first error. Files already archived/deleted stay deleted;
         # the failed file and all later files are left in the database.
@@ -176,7 +176,7 @@ async def delete_all_cmd(bot, message):
         msg = await message.reply(
             f"⚠️ <b>WARNING: Delete ALL Files</b>\n\n"
             f"📦 Total Files: <code>{file_count}</code>\n\n"
-            f"❗ This will permanently delete ALL {file_count} files!\n\n"
+            f"❗ Move all {file_count} files to the Recycle Bin?\n\n"
             "Reply with 'CONFIRM DELETE ALL' to proceed.",
             reply_markup=styled_keyboard([
                 [styled_button("❌ Cancel", callback_data="deleteall_cancel")]
@@ -211,7 +211,7 @@ async def _wait_delete_all(bot, message, msg, key, owner_key, cancel):
             count = await delete_all_files()
             
             await msg.edit(
-                f"✅ <b>Successfully Deleted ALL Files</b>\n\n"
+                f"✅ <b>Moved all indexed files to the Recycle Bin</b>\n\n"
                 f"🗑 Deleted: <code>{count}</code> files\n"
                 f"🕒 Time: <code>{fmt(datetime.utcnow())}</code>"
             )

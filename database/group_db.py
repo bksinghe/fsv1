@@ -425,7 +425,14 @@ class GroupStore:
                         if needle == str(d.get("_id") or "") or needle == str(d.get("num") or "")
                         or ql in str(d.get("name") or "").lower()]
             docs.sort(key=lambda d: int(d.get("updated_at") or 0), reverse=True)
+            page = docs[:max(1, min(int(limit or 25), 200))]
+            col = file_collection() if not self.mem else None
+            hidden = col.recycled_ids({fid for d in page for fid in d.get('members', [])}) if col is not None else set()
             def _meta(d):
+                if hidden:
+                    d = dict(d, members=[fid for fid in d.get('members', []) if fid not in hidden],
+                             episode_map={k:v for k,v in (d.get('episode_map') or {}).items() if k not in hidden},
+                             thumb_fid='' if d.get('thumb_fid') in hidden else d.get('thumb_fid', ''))
                 m = group_kind_meta(d)
                 m.update({"id": str(d["_id"]), "num": d.get("num", ""),
                           "name": d.get("name", ""),
@@ -433,7 +440,7 @@ class GroupStore:
                           "thumb_fid": d.get("thumb_fid", ""),
                           "thumb_url": d.get("thumb_url", "")})
                 return m
-            return [_meta(d) for d in docs[:max(1, min(int(limit or 25), 200))]]
+            return [_meta(d) for d in page]
         return await asyncio.to_thread(_run)
 
     async def by_members(self, ids):
@@ -634,12 +641,7 @@ class GroupStore:
             if col is None:
                 return 0
             try:
-                upd = {"$set": {"group_id": str(gid)}} if gid else {"$unset": {"group_id": ""}}
-                query = {"_id": {"$in": ids}}
-                if only_if is not None:
-                    query["group_id"] = str(only_if)
-                res = col.update_many(query, upd)
-                return int(getattr(res, "modified_count", 0) or 0)
+                return col.mark_group(ids, gid, only_if)
             except Exception as e:
                 logger.warning(f"group mark_files skipped: {e}")
                 return 0

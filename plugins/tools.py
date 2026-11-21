@@ -6,6 +6,7 @@ import time
 from pyrogram import Client, filters
 from telegram_buttons import styled_button, styled_keyboard
 from pyrogram.types import LinkPreviewOptions, CallbackQuery
+from database.ia_filterdb import media_is_recycled
 from info import ADMINS
 from utils import is_premium, get_size
 
@@ -299,6 +300,9 @@ async def start_upload(bot, msg, uid):
         site = state["site"]
         site_info = SITES_INFO[site]
         
+        attached = getattr(media, media.media.value, None)
+        if not attached or await media_is_recycled(attached.file_id):
+            return await msg.edit("❌ File unavailable")
         # Download
         file_path = await media.download()
         if not file_path or not os.path.exists(file_path):
@@ -311,6 +315,8 @@ async def start_upload(bot, msg, uid):
         tried = []
         link = None
         for key in [site] + [k for k in sites_for(real_size) if k != site]:
+            if await media_is_recycled(attached.file_id):
+                return await msg.edit("❌ File unavailable")
             tried.append(key)
             info = SITES_INFO[key]
             await msg.edit(f"⚡ Uploading to {info['icon']} {info['name']}...")

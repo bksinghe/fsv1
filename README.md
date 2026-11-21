@@ -72,7 +72,7 @@ The bot registers the Telegram slash menu automatically on startup; no BotFather
 | 🛡️ Bot admin | `/sendall` · `/sendall on` · `/sendall off` | Check or toggle Send All globally (default off; saved across restarts). Off hides new offers, blocks existing buttons and stops batches before the next file. Single-file delivery is unchanged. |
 | 🛡️ PM | `/stats` | Text-only report (**no buttons**): 🤖 bot — users, groups, indexed files, premium users, DB size, uptime · 🌐 web — server state, URL, port, web uptime, web accounts, live sessions, posts, profiles, catalog groups, posters, thumb queue |
 | 🛡️ PM | `/addpremium <user_id> <days>` · `/extendpremium <user_id> <days>` · `/removepremium <user_id>` | Grant (`/addpremium` restarts the clock) · **extend** (`/extendpremium` adds on top of the running plan) · revoke (invoices are kept) |
-| 🛡️ PM | `/delete <keyword>` · `/deleteall` | Delete matching files · delete everything (asks `CONFIRM DELETE ALL`) |
+| 🛡️ PM | `/delete <keyword>` · `/deleteall` | Move matching files · move all active files to the Recycle Bin (asks `CONFIRM DELETE ALL`) |
 | 🛡️ PM | `/warmup_thumbs` | Sequential scan → real posters + duration / quality / size metadata |
 | 🛡️ PM | _(forward a channel post or send a `t.me` link)_ | Indexing — there is **no** `/index` command, the bot replies with ✅ START INDEXING |
 | 👥 Groups only | `/search on\|off` | Toggle group search (group admins) |
@@ -409,4 +409,10 @@ Fixed by matching the real API (quality is derived inside `save_file()`, and `up
 
 ### Archive before deleting files
 
-Set `DELETE_ARCHIVE_CHANNEL` to a private Telegram channel ID (for example `-100...`), add the bot as an administrator with permission to post, and keep the archive channel out of `INDEX_CHANNELS`. A web single-file delete first sends a copy using the stored Telegram file ID, then deletes its database record. In bot PM, reply to a video/document with `/delete` to do the same, or use `/delete keyword` to archive and delete matches one at a time; it stops on the first failure. Because the database does not store source message IDs, this is a media copy rather than a Telegram forward. If archiving fails, that file remains indexed. `/deleteall` is not covered and does not archive files. A database failure after a successful archive can leave an extra copy in the archive.
+Set `DELETE_ARCHIVE_CHANNEL` to a private Telegram channel ID (for example `-100...`), add the bot as an administrator with permission to post, and keep the archive channel out of `INDEX_CHANNELS`. A web single-file delete first sends a copy using the stored Telegram file ID, then moves its database record to the Recycle Bin. In bot PM, reply to a video/document with `/delete` to do the same, or use `/delete keyword` to archive and delete matches one at a time; it stops on the first failure. Because the database does not store source message IDs, this is a media copy rather than a Telegram forward. If archiving fails, that file remains indexed. `/deleteall` is not covered and does not archive files. A database failure after a successful archive can leave an extra copy in the archive.
+
+### ♻️ Recycle Bin
+
+Bot admins (IDs in `ADMINS`, not Telegram group administrators) can open **Recycle Bin** in the web sidebar (`/recycle-bin`) to list and restore individual files. No purge or automatic expiry. Single-file deletes still require a successful copy to `DELETE_ARCHIVE_CHANNEL`; confirmed `/deleteall` moves all active records to the bin without making Telegram archive copies. Files permanently deleted before this feature are not recovered.
+
+Binned records retain their Telegram ID and metadata but are excluded from the active library. Re-indexing does not restore them. Existing watch/download links check the **actual Telegram media** on every request (including Range and HEAD); long transfers recheck periodically. Previously downloaded data and copies already delivered in Telegram cannot be recalled. Restoring re-enables access, including old links **only if their signature is still valid**.

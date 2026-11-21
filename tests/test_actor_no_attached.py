@@ -45,7 +45,7 @@ class ActorDetailRouteTests(unittest.IsolatedAsyncioTestCase):
         enrich=AsyncMock()
         env={'get_auth':AsyncMock(return_value=('admin',1)), 'web':SimpleNamespace(HTTPFound=lambda x:x,Response=lambda **kw:kw),
              'store':SimpleNamespace(get_item=AsyncMock(return_value={'videos':[{'file_id':'1'}]})),
-             '_safe_item':lambda kind,item:item,'_clean_id':lambda x:x,'_enrich_attached_videos':enrich,
+             '_visible_attachments':AsyncMock(side_effect=lambda items:items), '_safe_item':lambda kind,item:item,'_clean_id':lambda x:x,'_enrich_attached_videos':enrich,
              'build_detail_page':lambda kind,role,uid,item:kind}
         exec(compile(ast.fix_missing_locations(ast.Module(body=[fn],type_ignores=[])),'<routes>','exec'),env)
         self.assertEqual(await env['_detail'](None,'actors','x'),'actors');enrich.assert_not_awaited()

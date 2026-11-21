@@ -18,7 +18,7 @@ class ReplyLinkTests(unittest.IsolatedAsyncioTestCase):
         self.signer = importlib.util.module_from_spec(spec)
         with patch.dict(sys.modules, info=SimpleNamespace(BOT_TOKEN='test-only')):
             spec.loader.exec_module(self.signer)
-        self.ns = dict(logging=logging, IS_STREAM=True, BIN_CHANNEL=-123, URL='https://example.test/',
+        self.ns = dict(media_is_recycled=AsyncMock(return_value=False), logging=logging, IS_STREAM=True, BIN_CHANNEL=-123, URL='https://example.test/',
                        is_premium=AsyncMock(return_value=True), sign_params=self.signer.sign_params,
                        REPLY_LINK_TTL=self.signer.REPLY_LINK_TTL, styled_keyboard=lambda rows: rows,
                        styled_button=lambda text, url: url)
@@ -47,13 +47,14 @@ class ReplyLinkTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(self.signer.verify(72, params['e'], params['s']))
 
     async def test_invalid_requests_never_copy_files(self):
-        for case in ('no reply', 'text', 'protected', 'not premium', 'disabled'):
+        for case in ('no reply', 'text', 'protected', 'not premium', 'disabled', 'recycled'):
             with self.subTest(case=case):
                 self.message.reply_to_message = None if case == 'no reply' else self.source
                 self.source.media = None if case == 'text' else SimpleNamespace(value='document')
                 self.source.has_protected_content = case == 'protected'
                 self.ns['is_premium'].return_value = case != 'not premium'
                 self.ns['IS_STREAM'] = case != 'disabled'
+                self.ns['media_is_recycled'].return_value = case == 'recycled'
                 self.message.reply_text.reset_mock()
                 await self.ns['file_link'](self.client, self.message)
                 self.message.reply_text.assert_awaited_once()

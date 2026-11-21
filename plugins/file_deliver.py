@@ -10,7 +10,7 @@ from pyrogram.types import CallbackQuery
 from pyrogram.errors import FloodWait
 
 from info import ADMINS, IS_STREAM, PM_FILE_DELETE_TIME, PROTECT_CONTENT
-from database.ia_filterdb import get_file_details
+from database.ia_filterdb import get_file_details, recycled_ids
 from database.group_db import store, episode_label, KIND_EPISODES
 from database import search_expiry
 from database.users_chats_db import db
@@ -263,7 +263,8 @@ async def lookup_offer(owner, fid):
         groups = await store.by_members([fid])
         if groups:
             g = groups[0]
-            count = len(set(g['members']) - {fid})
+            remaining = set(g['members']) - {fid}
+            count = len(remaining - await recycled_ids(remaining))
             if count:
                 label = (f'⚡Send All {count} Episode' if g.get('kind') == KIND_EPISODES
                          else f'♻️Send All {count} Quality')
@@ -327,14 +328,16 @@ async def send_batch(client, msg, offer, group):
                     await msg.reply_text("Batch stopped: delivery is no longer enabled.")
                     return
                 try:
+                    if not await get_file_details(doc['_id']):
+                        break
                     await send_delivery(client, msg.chat.id, offer.owner, doc['_id'], doc,
                                         group=group, topic=msg.message_thread_id, offer_batch=False)
+                    sent_count += 1
                     break
                 except FloodWait as wait:
                     if attempt:
                         raise
                     await asyncio.sleep(wait.value + 1)
-            sent_count += 1
     except Exception:
         logging.exception("Batch delivery stopped after %s files", sent_count)
         try:
@@ -359,6 +362,8 @@ async def send_all(client, query):
         return await query.answer("Premium access required.", show_alert=True)
     if group and not (await db.get_settings(msg.chat.id)).get('group_mode', False):
         return await query.answer("Group delivery is off.", show_alert=True)
+    if not await get_file_details(offer.seed):
+        return await query.answer("File unavailable.", show_alert=True)
     job_key = (msg.chat.id, offer.owner)
     # Claim after all awaits: competing taps cannot both schedule this offer.
     if job_key in batch_jobs:

@@ -19,6 +19,7 @@ class Cursor:
 
 
 class Collection:
+    def revision(self): return 0
     def __init__(self, docs, text_broken=False):
         self.docs, self.text_broken, self.calls = docs, text_broken, []
     def matches(self, doc, filt):

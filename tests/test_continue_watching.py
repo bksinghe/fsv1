@@ -42,7 +42,7 @@ def handlers():
     docs = AsyncMock(side_effect=lambda fid: {'file_name': 'Name ' + fid} if fid != 'missing' else None)
     web = SimpleNamespace(json_response=lambda data, status=200, headers=None: (data, status, headers))
     env = dict(asyncio=asyncio, math=math, time=time, MAX_ITEMS=30, MAX_SECONDS=604800,
-               get_auth=auth, get_file_details=docs, _collection=lambda: db, web=web,
+               get_auth=auth, recycled_ids=AsyncMock(return_value=set()), get_file_details=docs, _collection=lambda: db, web=web,
                logger=SimpleNamespace(exception=lambda *a: None))
     exec(compile(ast.fix_missing_locations(ast.Module(body=nodes, type_ignores=[])), '<progress>', 'exec'), env)
     return env, db, auth

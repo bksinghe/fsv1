@@ -5,10 +5,12 @@ import logging
 import math
 import mimetypes
 import secrets
+import time
 from urllib.parse import quote, urlencode
 
 from aiohttp import web
 
+from database.ia_filterdb import media_is_recycled
 from info import ALLOW_UNSIGNED_LINKS
 from utils import temp
 from web.utils.custom_dl import TGCustomYield, chunk_size, offset_fix
@@ -69,7 +71,7 @@ async def watch_handler(request):
 
     try:
         role, _ = await get_auth(request)
-        return await media_watch(
+        response = await media_watch(
             message_id,
             query=_signed_query(request),
             poster=request.query.get("poster", ""),
@@ -77,6 +79,8 @@ async def watch_handler(request):
             signed_in=bool(role),
             bot_username=temp.U_NAME,
         )
+        response.headers["Cache-Control"] = "private, no-store"
+        return response
     except Exception as e:
         logger.error(f"Watch page error: {e}")
         return web.Response(status=500, text="Watch page unavailable")
@@ -154,6 +158,7 @@ async def media_download(request, message_id: int):
         headers = {
             "Content-Type": mime,
             "Content-Disposition": f"attachment; filename=\"{enc_name}\"; filename*=UTF-8''{enc_name}",
+            "Cache-Control": "private, no-store",
             "Accept-Ranges": "bytes",
             "Content-Length": str(req_len),
         }
@@ -175,7 +180,15 @@ async def media_download(request, message_id: int):
         info.file_id_obj, offset, first_cut, last_cut, parts, ncs
     )
     try:
+        check_at = time.monotonic() + 3
         async for chunk in agen:
+            if time.monotonic() >= check_at:
+                if await media_is_recycled(info.file_id):
+                    # Headers have already been sent: abort the partial transfer.
+                    if request.transport:
+                        request.transport.close()
+                    break
+                check_at = time.monotonic() + 3
             await resp.write(chunk)
         await resp.write_eof()
     except (ConnectionError, asyncio.CancelledError):

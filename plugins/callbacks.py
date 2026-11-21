@@ -20,6 +20,7 @@ from Script import script
 from plugins.file_deliver import discard_batch_offer
 
 from utils import is_premium, temp  # ✅ REMOVED: get_wish
+from database.ia_filterdb import get_file_details
 from stream_security import sign_params, USER_LINK_TTL
 
 
@@ -258,6 +259,8 @@ async def cb_handler(client: Client, query: CallbackQuery):
 
             # Generate stream links
             try:
+                if not await get_file_details(file_id):
+                    return await safe_answer_query(query, "File unavailable.", show_alert=True)
                 msg = await client.send_cached_media(
                     chat_id=BIN_CHANNEL,
                     file_id=file_id

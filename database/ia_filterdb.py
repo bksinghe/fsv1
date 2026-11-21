@@ -11,6 +11,7 @@ from pyrogram.file_id import FileId
 from pymongo import MongoClient, TEXT, ASCENDING
 from pymongo.errors import DuplicateKeyError, OperationFailure
 
+from database.file_library import FileLibrary
 from info import (
     DATA_DATABASE_URL,
     DATABASE_NAME,
@@ -32,7 +33,8 @@ try:
         socketTimeoutMS=5000
     )
     db = client[DATABASE_NAME]
-    collection = db[COLLECTION_NAME]
+    raw_files = db[COLLECTION_NAME]
+    collection = FileLibrary(raw_files)
     # Test connection
     client.server_info()
     logger.info("✅ Database connected successfully")
@@ -47,6 +49,8 @@ def ensure_indexes(col) -> None:
     """Create necessary indexes if they don't exist"""
     try:
         indexes = col.index_information()
+        col.create_index("bin_revision", sparse=True)
+        col.create_index([("recycled_at", -1), ("_id", 1)], partialFilterExpression={"recycled_at": {"$exists": True}})
 
         # Text search index
         if "file_text_index" not in indexes:
@@ -82,7 +86,7 @@ def ensure_indexes(col) -> None:
     except Exception as e:
         logger.error(f"❌ Index creation error: {e}")
 
-ensure_indexes(collection)
+ensure_indexes(raw_files)
 
 # Extra fields for the web UI (thumbnail, duration, dimensions) — including them in
 # the search projection avoids a separate DB query for every result.
@@ -102,9 +106,9 @@ WEB_EXTRA_FIELDS = {
 # 📊 DOCUMENT COUNT
 # =====================================================
 def db_count_documents() -> int:
-    """Get approximate document count (fast)"""
+    """Count active library files only."""
     try:
-        return collection.estimated_document_count()
+        return collection.count_documents({})
     except Exception as e:
         logger.error(f"Count error: {e}")
         return 0
@@ -192,6 +196,8 @@ async def get_search_results(
     
     # Check the cache (the limit is part of the key — web pagination may ask for a different one)
     cache_key = f"{'phrase' if exact_phrase else 'terms'}:{q_lower}:{offset}:{max_results}"
+    if max_results > 0:
+        cache_key += f":{await asyncio.to_thread(collection.revision)}"
     cached = cache_get(cache_key) if max_results > 0 else None
     if cached:
         return cached
@@ -399,16 +405,28 @@ async def update_file_fields(file_id: str, fields: dict) -> Optional[Dict]:
 
 
 async def delete_file_by_id(file_id: str) -> bool:
-    """Like v5's /api/delete — but by exact `_id` (no regex `delete_many`)."""
     if not file_id:
         return False
-    try:
-        res = await asyncio.to_thread(collection.delete_one, {"_id": file_id})
-        cache_clear()
-        return bool(getattr(res, "deleted_count", 0))
-    except Exception as e:
-        logger.error(f"delete_file_by_id error: {e}")
-        return False
+    count = await asyncio.to_thread(collection.recycle, file_id)
+    cache_clear()
+    return bool(count)
+
+
+async def restore_file(file_id):
+    restored = await asyncio.to_thread(collection.restore, file_id)
+    cache_clear()
+    return bool(restored)
+
+
+async def recycled_ids(ids):
+    return await asyncio.to_thread(collection.recycled_ids, ids) if ids else set()
+
+
+async def media_is_recycled(tg_file_id):
+    fid = unpack_new_file_id(tg_file_id)
+    if not fid:
+        raise ValueError("Cannot verify Telegram media identity")
+    return bool(await recycled_ids([fid]))
 
 
 async def find_delete_batch(query: str, after_id: str = "", limit: int = 100):
@@ -426,26 +444,10 @@ async def find_delete_batch(query: str, after_id: str = "", limit: int = 100):
 # 🗑 DELETE ALL FILES (DANGEROUS!)
 # =====================================================
 async def delete_all_files() -> int:
-    """
-    Delete ALL files from database
-    ⚠️ WARNING: This will delete EVERYTHING!
-    Returns: Number of files deleted
-    """
-    try:
-        # Delete all documents from collection
-        res = await asyncio.to_thread(collection.delete_many, {})
-        
-        # Clear cache after deletion
-        cache_clear()
-        
-        deleted_count = res.deleted_count
-        logger.warning(f"⚠️ DELETED ALL FILES: {deleted_count} files removed!")
-        
-        return deleted_count
-    
-    except Exception as e:
-        logger.error(f"❌ Delete all files error: {e}")
-        return 0
+    """Bulk soft-delete; retain all metadata and group references for restore."""
+    count = await asyncio.to_thread(collection.recycle)
+    cache_clear()
+    return count
 
 # =====================================================
 # 📄 GET FILE DETAILS
@@ -621,7 +623,7 @@ async def save_file(media) -> str:
                           "file_size": file_size, **fresh_meta, "updated_at": datetime.utcnow()}},
             )
             if not result.matched_count:
-                return "err"
+                return "skip" if await recycled_ids([file_id]) else "err"
             cache_clear()
             if thumb_file_id:
                 await asyncio.to_thread(

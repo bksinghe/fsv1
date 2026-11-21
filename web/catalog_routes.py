@@ -33,7 +33,7 @@ from aiohttp import web
 import info as _info
 from info import BIN_CHANNEL
 from utils import temp
-from database.ia_filterdb import get_search_results, get_search_results_for_phrases, get_file_details
+from database.ia_filterdb import get_search_results, get_search_results_for_phrases, get_file_details, recycled_ids
 
 # Optional dedicated channel (defaults to BIN_CHANNEL in info.py).
 _STORAGE_CHANNEL = getattr(_info, "CATALOG_STORAGE_CHANNEL", BIN_CHANNEL)
@@ -74,6 +74,13 @@ def _media_row(doc: dict) -> dict:
     out["watch"] = "/setup_stream?file_id=" + quote(fid, safe="") + "&mode=watch"
     out["duration_seconds"] = duration_seconds(doc)
     return out
+
+
+async def _visible_attachments(items):
+    hidden = await recycled_ids({v['file_id'] for item in items for v in item.get('videos', []) if v.get('file_id')})
+    for item in items:
+        item['videos'] = [v for v in item.get('videos', []) if v.get('file_id') not in hidden]
+    return items
 
 
 async def _enrich_attached_videos(item: dict):
@@ -237,7 +244,7 @@ async def _detail(req, kind, item_id):
     item = await store.get_item(kind, _clean_id(item_id))
     if not item:
         return web.Response(text="❌ Entry not found", status=404)
-    item = _safe_item(kind, item)
+    item, = await _visible_attachments([_safe_item(kind, item)])
     if kind == "posts":
         await _enrich_attached_videos(item)   # Post attached cards share video chips
     return build_detail_page(kind, role, tg_id, item)
@@ -280,7 +287,7 @@ async def api_list(req):
     if single:
         item = await store.get_item(kind, single)
         return _json({
-            "items": [_safe_item(kind, item)] if item else [],
+            "items": await _visible_attachments([_safe_item(kind, item)]) if item else [],
             "total": 1 if item else 0,
             "has_next": False,
         })
@@ -296,7 +303,7 @@ async def api_list(req):
     items, has_next = await store.list_items(kind, q, category, offset, limit)
     total = await store.count(kind, q, category)
     return _json({
-        "items": [_safe_item(kind, it) for it in items],
+        "items": await _visible_attachments([_safe_item(kind, it) for it in items]),
         "total": total,
         "has_next": has_next,
         "offset": offset,
@@ -328,13 +335,27 @@ async def api_save(req):
     clean = normalize(kind, payload)
     if not clean["title"]:
         return _json({"ok": False, "error": "A title is required"}, 400)
+    item_id = _clean_id(payload.get("id"))
+    # Hidden attachments are absent from the editor. Saving another field must
+    # not detach them permanently; they reappear when the file is restored.
+    previous = await store.get_item(kind, item_id) if item_id else None
+    if previous:
+        old = normalize(kind, previous)['videos']
+        hidden = await recycled_ids([v['file_id'] for v in old])
+        if hidden:
+            clean['videos'] = [v for v in clean['videos'] if v['file_id'] not in hidden]
+            for index, video in enumerate(old):
+                if video['file_id'] in hidden:
+                    clean['videos'].insert(index, video)
+            if len(clean['videos']) > 50:
+                return _json({'ok': False, 'error': 'Video limit includes recycle-bin attachments.'}, 400)
     item = await store.save_item(
-        kind, clean, _clean_id(payload.get("id")),
+        kind, clean, item_id,
         allow_create=bool(payload.get("restore")),
     )
     if not item:
         return _json({"ok": False, "error": "Entry not found"}, 404)
-    return _json({"ok": True, "item": _safe_item(kind, item)})
+    return _json({"ok": True, "item": (await _visible_attachments([_safe_item(kind, item)]))[0]})
 
 
 @catalog_routes.get("/api/catalog/{kind}/media")

@@ -6,7 +6,6 @@ import logging
 from pyrogram import enums
 from info import DELETE_ARCHIVE_CHANNEL, INDEX_CHANNELS
 from database import ia_filterdb as ia
-from database.group_db import store as group_store
 
 logger = logging.getLogger(__name__)
 # Serialise delete operations within this process so simultaneous web/PM requests
@@ -45,9 +44,5 @@ async def archive_and_delete(bot, fid):
             raise ArchiveDeleteError('Archive failed; file was not deleted. Check the archive channel and bot permissions.') from exc
         if not await ia.delete_file_by_id(fid):
             raise ArchiveDeleteError('File was archived, but database deletion failed. Check the database before retrying.')
-        try:
-            await group_store.pull_files([fid])
-            await group_store.cleanup_empty()
-        except Exception:
-            logger.exception('Group cleanup failed after archived deletion')
+        # Preserve membership; public reads resolve only active files.
         return True

@@ -15,6 +15,7 @@ from collections import OrderedDict
 
 from pyrogram.file_id import FileId
 
+from database.ia_filterdb import media_is_recycled
 from info import BIN_CHANNEL
 from utils import temp
 
@@ -60,6 +61,15 @@ async def _fetch(message_id):
 
 async def get_media_info(message_id):
     """MediaInfo or None (file not found / no media)."""
+    info = await _cached_media(message_id)
+    # Never cache visibility. Use Telegram's actual media, not URL parameters:
+    # this covers old links, /link, HEAD and every Range request.
+    if info and not await media_is_recycled(info.file_id):
+        return info
+    return None
+
+
+async def _cached_media(message_id):
     hit = _CACHE.get(message_id)
     if hit and time.monotonic() - hit[0] < _TTL:
         _CACHE.move_to_end(message_id)

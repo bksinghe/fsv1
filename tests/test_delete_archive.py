@@ -43,7 +43,7 @@ class ArchiveTests(unittest.IsolatedAsyncioTestCase):
         self.env['ia'].delete_file_by_id.side_effect = delete
         self.assertTrue(await self.env['archive_and_delete'](self.bot, 'abc'))
         self.assertEqual(events, ['archived', 'deleted'])
-        self.env['group_store'].pull_files.assert_awaited_once_with(['abc'])
+        self.env['group_store'].pull_files.assert_not_awaited()
 
     async def test_fail_closed_on_missing_config_or_archive_failure(self):
         for variant in ('unset', 'indexed', 'offline', 'bad_message'):
