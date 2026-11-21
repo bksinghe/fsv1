@@ -79,6 +79,7 @@ class ProgressTests(unittest.IsolatedAsyncioTestCase):
                      {'file_id': 'a', 'position': -1, 'duration': 10},
                      {'file_id': 'a', 'position': 20, 'duration': 10},
                      {'file_id': 'a', 'position': True, 'duration': 10},
+                     {'file_id': 'a', 'position': 10**400, 'duration': 10},
                      {'file_id': 'x' * 513, 'position': 5, 'duration': 10}):
             self.assertEqual((await env['save_progress'](request(data)))[1], 400)
         self.assertEqual((await env['save_progress'](request({'file_id': 'missing', 'position': 5, 'duration': 100})))[1], 404)

@@ -1774,7 +1774,7 @@ $('#grid').addEventListener('click',e=>{
 document.addEventListener('keydown',e=>{
   if(e.key!=='Enter'&&e.key!==' ')return;
   const a=document.activeElement;
-  const el=a&&a.closest?a.closest('.vcard[data-fid]'):null;
+  const el=a&&a.matches?.('.vcard[data-fid]')?a:null;
   if(!el)return;
   e.preventDefault();play(decodeURIComponent(el.dataset.fid),el.dataset.name,playerGroupContext(el));
 });

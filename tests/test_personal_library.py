@@ -94,6 +94,20 @@ class PersonalLibraryTests(unittest.IsolatedAsyncioTestCase):
         await self.post(path, {"action": "remove", "list": pid, "file_id": "1"})
         self.assertTrue(self.files.find_one({"_id": "1"}))
 
+    async def test_playlist_moves_across_hidden_files(self):
+        path = "/api/library/playlists"
+        for fid in ("1", "2", "3"):
+            await self.post(path, {"action": "add", "list": "later", "file_id": fid})
+        self.files.recycle("2")
+        await self.post(path, {"action": "down", "list": "later", "file_id": "1"})
+        s = await self.body("/playlists")
+        self.assertLess(s.index('data-file="3"'), s.index('data-file="1"'))
+        self.assertNotIn('data-file="2"', s)
+        self.files.restore("2")
+        s = await self.body("/playlists")
+        self.assertLess(s.index('data-file="3"'), s.index('data-file="2"'))
+        self.assertLess(s.index('data-file="2"'), s.index('data-file="1"'))
+
     async def test_live_search_in_both_libraries(self):
         for fid in ("1", "21"):
             await self.post(

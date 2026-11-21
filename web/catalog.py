@@ -1331,7 +1331,6 @@ document.addEventListener('keydown',e=>{
     else if(e.key==='Tab'){e.preventDefault();light.querySelector('.cat-lightbox-close').focus();}
     return;
   }
-  if(e.key==='Escape'){ if(window.closePlayer) window.closePlayer(); }
   const focused=document.activeElement||{};
   if((e.key==='Enter'||e.key===' ') && focused.classList && focused.classList.contains('cat-galitem')){
     e.preventDefault();openLight(focused.dataset.src);return;

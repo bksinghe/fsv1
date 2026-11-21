@@ -4,6 +4,7 @@ import asyncio
 import secrets
 import time
 from pymongo.errors import DuplicateKeyError
+from database.ia_filterdb import collection as media_files
 from database.users_chats_db import dbase
 
 
@@ -88,9 +89,20 @@ async def edit_playlist(uid, action, pid, fid, name):
                 p["last"] = fid
             else:
                 i = files.index(fid)
-                j = i + (-1 if action == "up" else 1)
-                if 0 <= j < len(files):
-                    files[i], files[j] = files[j], files[i]
+                # Match the active-only list on screen. Keep hidden references in
+                # their slots so a later restore does not undo the visible move.
+                active = {
+                    row["_id"]
+                    for row in media_files.find({"_id": {"$in": files}}, {"_id": 1})
+                }
+                if fid not in active:
+                    raise ValueError("File unavailable.")
+                step = -1 if action == "up" else 1
+                stop = -1 if step < 0 else len(files)
+                for j in range(i + step, stop, step):
+                    if files[j] in active:
+                        files[i], files[j] = files[j], files[i]
+                        break
         else:
             raise ValueError("Action unavailable.")
         return pid

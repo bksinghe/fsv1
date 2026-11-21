@@ -1,7 +1,6 @@
 """Private, bounded per-account playback progress for the shared web player."""
 import asyncio
 import logging
-import math
 import time
 
 from aiohttp import web
@@ -23,10 +22,9 @@ def _file_id(value):
 def _position(value):
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError('invalid time')
-    result = float(value)
-    if not math.isfinite(result) or result < 0 or result > MAX_SECONDS:
+    if not 0 <= value <= MAX_SECONDS:
         raise ValueError('invalid time')
-    return result
+    return float(value)
 
 
 def _collection():
@@ -74,7 +72,8 @@ async def save_progress(req):
         return web.json_response({'error': 'Invalid progress'}, status=400)
     try:
         files = _collection()
-        if played >= 5 and await get_file_details(fid):
+        doc = await get_file_details(fid) if played >= 5 or 5 <= position < duration * .95 else None
+        if played >= 5 and doc:
             await edit_history(user_id, 'record', fid, position, duration)
         # Completion removes the entry instead of keeping a near-finished video.
         if position >= duration * .95:
@@ -82,7 +81,6 @@ async def save_progress(req):
             return web.json_response({'ok': True, 'completed': True})
         if position < 5:
             return web.json_response({'ok': True, 'ignored': True})
-        doc = await get_file_details(fid)
         if not doc:
             return web.json_response({'error': 'File not found'}, status=404)
         item = {'file_id': fid, 'name': str(doc.get('file_name') or 'Video')[:500],
