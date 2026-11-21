@@ -31,11 +31,14 @@ def _card(doc):
                  'onerror="this.hidden=true">')
     name = escape(str(doc.get('file_name') or 'Untitled'))
     return (f'<li class="bin-card vm-card" data-id="{escape(fid)}">'
-            f'<button type="button" class="bin-poster vm-overlay" data-options aria-label="File options for {name}">'
+            f'<button type="button" class="bin-poster vm-overlay" data-options aria-expanded="false" aria-label="File options for {name}">'
             f'<span>No poster available</span>{image}</button><div class="bin-info vm-body">'
             f'<button type="button" class="bin-name" data-preview>{name}</button>'
             f'<small>Deleted {doc["recycled_at"]:%Y-%m-%d %H:%M} UTC</small>'
-            '<button type="button" class="tbtn bin-options" data-options>Options</button></div></li>')
+            '<button type="button" class="tbtn bin-options" data-options aria-expanded="false">Options</button></div>'
+            '<div class="bin-actions" role="group" aria-label="File actions" hidden>'
+            '<button class="tbtn" data-do="restore">Restore</button>'
+            '<button class="tbtn bin-danger" data-do="delete">Delete permanently</button></div></li>')
 
 
 @routes.get('/api/recycle-bin/poster')
@@ -154,6 +157,7 @@ async def recycle_bin(req):
 .bin-info button{align-self:start;width:fit-content}.bin-poster{width:100%;border:0;cursor:pointer}
 .bin-name{font:inherit;font-weight:700;text-align:left;color:var(--txt);background:none;border:0;cursor:pointer;overflow-wrap:anywhere}
 .bin-name:hover{text-decoration:underline}.bin-options{display:none}.mode-text .bin-options{display:inline-block}
+.bin-actions:not([hidden]){display:flex;flex-wrap:wrap;gap:.5rem;padding:.7rem;background:var(--bg2);border-top:1px solid var(--line)}
 .bin dialog{margin:auto;border:1px solid var(--line);border-radius:.8rem;padding:1rem;background:var(--card);color:var(--txt);max-width:min(94vw,52rem)}
 .bin dialog::backdrop{background:#000a}.bin dialog h2{font-size:1rem;overflow-wrap:anywhere;margin-bottom:1rem}
 .bin video{width:min(76vw,48rem);max-height:65vh;background:black}.bin .bin-danger{color:#b52030;background:#ffe1e4}</style>
@@ -163,9 +167,6 @@ async def recycle_bin(req):
              f'{mode}</form>'
              f'<ul class="vgrid vm-grid mode-text">{items}</ul>'
              f'<nav>{navigation}</nav><p role="status"></p>'
-             '<dialog id="binActions" aria-labelledby="binActionName"><h2 id="binActionName"></h2>'
-             '<button class="tbtn" data-do="restore">Restore</button> <button class="tbtn bin-danger" data-do="delete">Delete permanently</button> '
-             '<button class="tbtn" data-close autofocus>Cancel</button></dialog>'
              '<dialog id="binPlayer" aria-labelledby="binPlayerName"><h2 id="binPlayerName"></h2><video controls playsinline></video>'
              '<p role="alert"></p><button class="tbtn" data-close>Close</button></dialog></main>')
     body += '''<script>(()=>{ViewMode.init({storage:ViewMode.storageFor()});
@@ -190,29 +191,35 @@ function scheduleSearch(){cancelSearch();timer=setTimeout(search,250);}
 input.addEventListener('input',e=>{if(!e.isComposing)scheduleSearch();});
 input.addEventListener('compositionstart',cancelSearch);input.addEventListener('compositionend',scheduleSearch);
 form.addEventListener('submit',e=>{e.preventDefault();search();});
-const actions=bin.querySelector('#binActions'),player=bin.querySelector('#binPlayer'),video=player.querySelector('video');
+const player=bin.querySelector('#binPlayer'),video=player.querySelector('video');
+function setOptions(card,open){
+  card.querySelector('.bin-actions').hidden=!open;
+  card.querySelectorAll('[data-options]').forEach(b=>b.setAttribute('aria-expanded',String(open)));
+}
+function closeOptions(){
+  const open=grid.querySelector('.bin-actions:not([hidden])');if(open)setOptions(open.closest('.bin-card'),false);
+}
 player.addEventListener('close',()=>{video.pause();video.removeAttribute('src');video.load();});
 video.addEventListener('error',()=>{if(player.open)player.querySelector('[role=alert]').textContent='Preview unavailable or unsupported in this browser.';});
 bin.addEventListener('click',async e=>{
   const b=e.target.closest('button');if(!b)return;
   if(b.hasAttribute('data-close')){b.closest('dialog').close();return;}
   const card=b.closest('.bin-card');
-  if(card){
-    const name=card.querySelector('[data-preview]').textContent;
-    if(b.hasAttribute('data-preview')){
-      player.querySelector('h2').textContent=name;player.querySelector('[role=alert]').textContent='';player.showModal();
-      video.src='/api/recycle-bin/preview?'+new URLSearchParams({id:card.dataset.id});video.play().catch(()=>{});
-    }else if(b.hasAttribute('data-options')){
-      actions.dataset.id=card.dataset.id;actions.querySelector('h2').textContent=name;actions.showModal();
-    }
-    return;
+  if(!card)return;
+  const name=card.querySelector('[data-preview]').textContent,actions=card.querySelector('.bin-actions');
+  if(b.hasAttribute('data-options')){
+    const open=actions.hidden;closeOptions();if(open)setOptions(card,true);return;
   }
-  const action=b.dataset.do;if(!action||actions.dataset.busy)return;
-  if(action==='delete'&&!confirm('Permanently delete '+actions.querySelector('h2').textContent+'? This cannot be undone.'))return;
-  const id=actions.dataset.id;actions.dataset.busy='1';b.disabled=true;
+  if(b.hasAttribute('data-preview')){
+    closeOptions();player.querySelector('h2').textContent=name;player.querySelector('[role=alert]').textContent='';player.showModal();
+    video.src='/api/recycle-bin/preview?'+new URLSearchParams({id:card.dataset.id});video.play().catch(()=>{});return;
+  }
+  const action=b.dataset.do;if(!action||actions.hidden||actions.dataset.busy)return;
+  if(action==='delete'&&!confirm('Permanently delete '+name+'? This cannot be undone.'))return;
+  const id=card.dataset.id;actions.dataset.busy='1';b.disabled=true;
   try{const r=await fetch('/api/recycle-bin/'+action,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,confirmed:action==='delete'})});
     if(!r.ok && r.status!==404)throw Error();location.reload();}
-  catch(err){actions.close();status.textContent='Action failed. Please retry.';}
+  catch(err){status.textContent='Action failed. Please retry.';}
   finally{delete actions.dataset.busy;b.disabled=false;}
 });})();</script>'''
     response = app_page('Recycle Bin', body, uid, role, 'bin')
