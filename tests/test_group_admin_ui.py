@@ -1,4 +1,5 @@
 """Regression guards for the expanded group toolbar and poster overlay."""
+import re
 import unittest
 from pathlib import Path
 
@@ -14,7 +15,7 @@ class GroupAdminUITests(unittest.TestCase):
     def test_toolbar_remains_responsive_and_accessible(self):
         for part in ('.gcard.open .gposter .gadmin{flex:1 1 100%',
                      '.gcard.open .gadmin button{flex:1 1 calc(50% - 6px)}',
-                     '.gadmin button:focus-visible', 'class="ga-edit"',
+                     'class="ga-edit"',
                      'class="ga-merge"', 'class="ga-del"',
                      'gSelectGroup(', 'gUngroup('):
             self.assertIn(part, GROUP)
@@ -47,17 +48,37 @@ class GroupLightThemeTests(unittest.TestCase):
                      'background:var(--gm-surface);border-bottom',
                      'background:var(--gm-surface);border-top',
                      '.gmedit .gminput{background:var(--gm-input)',
-                     'html.light .gmedit-actions .danger',
                      'html.light .gmodal{background:rgba(28,34,47,.46)}'):
             self.assertIn(part, GROUP)
         self.assertNotIn('background:rgba(30,31,42,.97)', GROUP)
 
     def test_group_toolbar_and_chips_have_light_styles(self):
         for part in ('html.light .gadmin{background:rgba(255,255,255,.96)',
-                     'html.light .gadmin .ga-edit', 'html.light .gadmin .ga-merge',
-                     'html.light .gadmin .ga-del',
                      'html.light .gcard.open .gposter .vtag',
                      'html.light .gcard.open .gposter .gqchip.ep'):
             self.assertIn(part, GROUP)
         mode = (Path(__file__).resolve().parents[1] / 'web' / 'mode_assets.py').read_text()
         self.assertIn('html.light .vm-grid.mode-text .gcard .gposter .gqchip', mode)
+
+
+class AdminActionContrastTests(unittest.TestCase):
+    def test_shared_action_colors_remain_readable_on_base_and_hover(self):
+        css = (Path(__file__).resolve().parents[1] / 'web/web_assets.py').read_text()
+        palette = css.split('ADMIN_ACTION_CSS = """', 1)[1].split('"""', 1)[0]
+
+        def luminance(hexcolor):
+            rgb = [int(hexcolor[i:i+2], 16) / 255 for i in (1, 3, 5)]
+            return sum(w * (v / 12.92 if v <= .04045 else ((v + .055) / 1.055) ** 2.4)
+                       for v, w in zip(rgb, (.2126, .7152, .0722)))
+
+        for selector in ('.gadmin button', '.ga-edit', '.ga-merge', '.ga-del',
+                         '.va-edit', '.va-del', '.gmbtn.alt', '.gmbtn.danger', '.febtn.danger'):
+            with self.subTest(selector=selector):
+                props = re.search(re.escape(selector) + r'[^{}]*\{(--action-bg:[^}]+)\}', palette)[1]
+                colors = dict(re.findall(r'--action-(\w+):(#[a-f0-9]{6})', props))
+                for state in ('bg', 'hover'):
+                    # Bright, opaque surface with dark text, even in dark mode.
+                    self.assertGreater(luminance(colors[state]), .45)
+                    self.assertGreaterEqual((luminance(colors[state]) + .05) /
+                                            (luminance(colors['ink']) + .05), 4.5)
+        self.assertIn('.gadmin button:focus-visible', palette)
