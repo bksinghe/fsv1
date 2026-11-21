@@ -1147,7 +1147,7 @@ function switchTab(name, init){
 }
 /* ── 🏷️ v5's tag-driven Linked Media, served by fsv1's JSON API ── */
 /* 🎴 the same shared card as /search — markup/chips/size from web_assets.VCARD_* */
-function mediaCard(f,topLevel){
+function mediaCard(f,topLevel,groupMember){
   const attrs=ViewMode.imgAttrs(esc(f.thumb||''));
   const err="this.classList.add('hidden');this.closest('.vposter,.gposter').classList.add('no-thumb')";
   if(f.group)return groupHTML(f,attrs,err,topLevel);
@@ -1155,7 +1155,7 @@ function mediaCard(f,topLevel){
     CARD_CLASS:topLevel?' rv-enter':'', EXTRA_ATTRS:' data-label="1"',
     FID:esc(f.file_id), RAW_FID:esc(f.file_id), NAME:esc(f.name),
     IMG_ATTRS:attrs, IMG_ERROR:err, CHIPS:vcardChips(f), SIZE:vcardSize(f)
-  });
+  },groupMember);
 }
 window.cardHTML=mediaCard;
 /* ▶ shared player like the main page — clicking a name/card opens the small modal */

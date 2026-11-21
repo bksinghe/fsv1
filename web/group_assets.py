@@ -6,7 +6,7 @@ Like `web/web_assets.py`, this is the **single source** for CSS, `GROUP_CARD_TEM
 
 Standing constraints stay in force:
   * `.vcard`/`.vgrid`/`vcardHTML()` is the shared single-source video card — every
-    variant inside a group is exactly that card (via `window.cardHTML(v)`).
+    variant inside a group is exactly that card (via `window.cardHTML`).
   * The shared `FILTER_CSS`/`FILTER_JS` dropdown owns the Group Scan action;
     Group Mode keeps its separate FAB for selecting cards.
   * The Edit/Delete overlay inside the thumbnail (`.vadmin`) stays the same on file cards;
@@ -337,7 +337,7 @@ _GROUP_JS_TPL = r"""/* 🗂️ SHARED GROUP CARD — template from web/group_ass
       '</div>';
     }
     var variants=(g.variants||[]).map(function(v){
-      return window.cardHTML?window.cardHTML(v):'';
+      return window.cardHTML?window.cardHTML(v,false,true):'';
     }).join('');
     return fill({
       CARD_CLASS:topLevel?' rv-enter':'', GKEY:esc(g.key), GID:esc(g.gid||''),

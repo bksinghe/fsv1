@@ -97,8 +97,8 @@ class TestSingleSource(unittest.TestCase):
         src = FILES["group_assets.py"]
         self.assertIn("CARD_CLASS:topLevel?' rv-enter':''", src)
         self.assertIn("function html(g,imgAttrs,imgError,topLevel)", src)
-        # Variants call the shared builder without the flag ⇒ they stay visible.
-        self.assertRegex(src, r"window\.cardHTML\?window\.cardHTML\(v\):''")
+        # Variants call the shared builder with topLevel=false ⇒ they stay visible.
+        self.assertRegex(src, r"window\.cardHTML\?window\.cardHTML\(v,false,true\):''")
 
     def test_07_english_ui_contract_untouched(self):
         src = FILES["catalog.py"]

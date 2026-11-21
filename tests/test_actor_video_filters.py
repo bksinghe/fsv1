@@ -30,7 +30,7 @@ class ActorFilterPageTests(unittest.TestCase):
         tree=ast.parse(CAT)
         node=next(n for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='DETAIL_JS' for t in n.targets))
         text=ast.literal_eval(node.value)
-        code=text[text.index('function mediaCard(f,topLevel){'):text.index('/* ▶ shared player')]
+        code=text[text.index('function mediaCard('):text.index('/* ▶ shared player')]
         js=r'''
 const assert=require('assert');const window={};let text=true;
 const ViewMode={imgAttrs:url=>(text?'data-src="':'src="')+url+'"'};

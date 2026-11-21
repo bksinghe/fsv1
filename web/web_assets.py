@@ -162,10 +162,12 @@ opacity:0;visibility:hidden;transform:translateY(10px);pointer-events:none;
 transition:opacity .2s ease,transform .22s ease,visibility .2s}
 .vcard.admin-active .vposter::after{content:'';position:absolute;inset:0;z-index:4;
 background:rgba(0,0,0,.42);pointer-events:none}
-.vcard.admin-active .vadmin{opacity:1;visibility:visible;transform:translateY(0);pointer-events:all}
+.vcard.save-active .vadmin,.vcard.admin-active .vadmin{opacity:1;visibility:visible;transform:translateY(0);pointer-events:all}
 .vadmin button{flex:1;padding:8px 4px;border-radius:6px;font-size:11px;font-weight:800;
 font-family:inherit;cursor:pointer;color:#fff;border:1px solid rgba(255,255,255,.2);
 backdrop-filter:blur(8px);transition:background .12s,transform .1s}
+.vcard.save-active .vadmin button:not([data-save-file]){display:none}
+.vadmin [data-save-file]{background:#394e80}
 .vadmin .va-edit{background:rgba(42,42,48,.9)}
 .vadmin .va-edit:hover{background:rgba(80,80,88,.96)}
 .vadmin .va-del{background:rgba(160,8,8,.82);border-color:rgba(229,9,20,.5)}
@@ -205,6 +207,8 @@ VCARD_CHIP_SPEC = (
     ("duration", "vtag gold", ()),
 )
 
+VCARD_SAVE = '<button type="button" class="tbtn" data-save-file="{RAW_FID}">＋ Playlist</button>'
+
 VCARD_TEMPLATE = (
     '<div class="vcard vm-card{CARD_CLASS}" role="button" tabindex="0"{EXTRA_ATTRS} '
     'data-fid="{FID}" data-name="{NAME}" aria-label="Play {NAME}">'
@@ -215,8 +219,8 @@ VCARD_TEMPLATE = (
     '<div class="vchips vm-details">{CHIPS}</div>{SIZE}'
     '<span class="vplay vm-overlay">▶</span>'
     '<div class="vadmin vm-actions"><button class="va-edit" data-fid="{RAW_FID}">✏️ Edit</button>'
-    '<button class="va-del" data-fid="{RAW_FID}">🗑️ Delete</button></div>'
-    '</div><div class="vbody vm-body"><div class="vtitle vm-title">{NAME}</div><button type="button" class="tbtn" data-save-file="{RAW_FID}">＋ Playlist</button></div></div>'
+    '<button class="va-del" data-fid="{RAW_FID}">🗑️ Delete</button>{POSTER_SAVE}</div>'
+    '</div><div class="vbody vm-body"><div class="vtitle vm-title">{NAME}</div>{BODY_SAVE}</div></div>'
 )
 
 _VIDEO_EXT = (".mp4", ".mkv", ".avi", ".mov", ".webm", ".m4v", ".ts",
@@ -292,7 +296,7 @@ def render_vcard(**kw) -> str:
         "CARD_CLASS", "EXTRA_ATTRS", "POSTER_ID", "IMG_ATTRS", "IMG_ERROR",
         "CHIPS", "SIZE", "FID", "NAME", "RAW_FID")}
     tokens.update({k: str(v) for k, v in kw.items()})
-    return VCARD_TEMPLATE.format(**tokens)
+    return VCARD_TEMPLATE.format(**tokens, POSTER_SAVE="", BODY_SAVE=VCARD_SAVE.format(**tokens))
 
 
 _VCARD_JS_TPL = r"""/* 🎴 SHARED VIDEO CARD — template + chip spec from web_assets.py (Python → JS) */
@@ -311,8 +315,10 @@ _VCARD_JS_TPL = r"""/* 🎴 SHARED VIDEO CARD — template + chip spec from web_
     var s=String((f||{}).size==null?'':f.size).trim();
     return s?'<span class="vsize vm-size">'+esc(s)+'</span>':'';
   }
-  function html(t){
-    t=t||{};
+  function html(t={},groupMember=false){
+    const save=__VCARD_SAVE__.replace('{RAW_FID}',()=>t.RAW_FID);
+    t={...t,POSTER_SAVE:groupMember?save:'',BODY_SAVE:groupMember?'':save};
+    if(groupMember)t.POSTER_ID=(t.POSTER_ID||'')+' tabindex="0" aria-label="File actions"';
     return TPL.replace(/\{([A-Z_]+)\}/g,function(m,k){
       return Object.prototype.hasOwnProperty.call(t,k)?String(t[k]):'';
     });
@@ -322,6 +328,7 @@ _VCARD_JS_TPL = r"""/* 🎴 SHARED VIDEO CARD — template + chip spec from web_
 """
 VCARD_JS = (_VCARD_JS_TPL
             .replace("__VCARD_TEMPLATE__", json.dumps(VCARD_TEMPLATE))
+            .replace("__VCARD_SAVE__", json.dumps(VCARD_SAVE))
             .replace("__VCARD_CHIP_SPEC__",
                      json.dumps([list(x) for x in VCARD_CHIP_SPEC])))
 
@@ -1508,8 +1515,18 @@ PLAYER_JS = r"""<script>
     }catch(err){status.textContent=err.message;}finally{save.disabled=false;}};
   };
   const save=q('#pSave');if(save && account){save.hidden=false;save.onclick=()=>window.saveToPlaylist(currentFile);}
-  document.addEventListener('click',e=>{const b=e.target.closest('[data-save-file]');if(b){e.stopPropagation();window.saveToPlaylist(b.dataset.saveFile);}},true);
-  document.addEventListener('keydown',e=>{if(e.target.closest?.('[data-save-file]')&&(e.key==='Enter'||e.key===' ')){e.preventDefault();e.stopPropagation();e.target.click();}},true);
+  function closeSaveActions(){document.querySelector('.vcard.save-active')?.classList.remove('save-active');}
+  document.addEventListener('click',e=>{
+    const b=e.target.closest('[data-save-file]');
+    if(b){e.preventDefault();e.stopImmediatePropagation();closeSaveActions();window.closeFileActions?.();window.saveToPlaylist(b.dataset.saveFile);return;}
+    // Admins already have the Edit/Delete poster toggle. Members get only Save.
+    if(window.openFileEdit)return;
+    const card=e.target.closest('.gvariants .vposter')?.closest('.vcard');
+    const opening=card&&!card.classList.contains('save-active');closeSaveActions();
+    if(card){e.preventDefault();e.stopPropagation();if(opening)card.classList.add('save-active');}
+  },true);
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')closeSaveActions();});
+  document.addEventListener('keydown',e=>{if(e.target.matches?.('[data-save-file],.gvariants .vposter')&&(e.key==='Enter'||e.key===' ')){e.preventDefault();e.stopPropagation();e.target.click();}},true);
   window.copyLink = function(){
     if(!currentWatch) return;
     const note=q('#pNote'), clip=navigator.clipboard;
@@ -1602,9 +1619,9 @@ function cardTokens(f,topLevel){
    Every variant inside a group is also built by this cardHTML() → vcardHTML(),
    so cards look identical on /search, Post and Actor. Only top-level results opt
    into the entrance animation; nested variants must be visible on expand. */
-function cardHTML(f,topLevel){
+function cardHTML(f,topLevel,groupMember){
   if(f.group)return groupHTML(f,imgAttrs(f),'thumbFail(this)',topLevel);
-  return vcardHTML(cardTokens(f,topLevel));
+  return vcardHTML(cardTokens(f,topLevel),groupMember);
 }
 window.cardHTML=cardHTML;
 function card(f){return cardHTML(f,true)}

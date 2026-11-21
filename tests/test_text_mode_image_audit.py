@@ -22,6 +22,7 @@ class TextModeImageAudit(unittest.TestCase):
         mode = constant('mode_assets.py', 'MODE_JS')
         video = constant('web_assets.py', '_VCARD_JS_TPL').replace(
             '__VCARD_TEMPLATE__', json.dumps(constant('web_assets.py', 'VCARD_TEMPLATE'))).replace(
+            '__VCARD_SAVE__', json.dumps(constant('web_assets.py', 'VCARD_SAVE'))).replace(
             '__VCARD_CHIP_SPEC__', json.dumps(constant('web_assets.py', 'VCARD_CHIP_SPEC')))
         group = constant('group_assets.py', '_GROUP_JS_TPL').replace(
             '__GROUP_CARD_TEMPLATE__', json.dumps(constant('group_assets.py', 'GROUP_CARD_TEMPLATE')))
@@ -47,6 +48,11 @@ const ViewMode=window.ViewMode, esc=window.escapeHTML,
 ViewMode.init({});
 let one={file_id:'1',name:'one',thumb:'/thumb1'}, two={file_id:'2',name:'two',thumb:'/thumb2'};
 let html=cardHTML({group:true,key:'g',name:'group',thumb:'/group',variants:[one,two]},true);
+for(const id of ['1','2']){
+ const btn='data-save-file="'+id+'"';assert.equal(html.split(btn).length,2);
+ assert(html.lastIndexOf('vadmin vm-actions',html.indexOf(btn))>html.lastIndexOf('vbody vm-body',html.indexOf(btn)));
+}
+const single=cardHTML(one,true);assert(single.indexOf('data-save-file="1"')>single.indexOf('vbody vm-body'));
 for(let url of ['/group','/thumb1','/thumb2']){
  assert(html.includes('data-src="'+url+'"'));assert(!html.includes(' src="'+url+'"'));
 }
