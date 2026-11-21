@@ -133,6 +133,19 @@ async def media_download(request, message_id: int):
         if not info:
             return web.Response(status=404, text="Media Not Found")
 
+    except Exception:
+        logger.exception("Could not resolve media")
+        return web.Response(status=503, text="Media unavailable")
+
+    async def still_allowed():
+        return not await media_is_recycled(info.file_id)
+
+    return await stream_response(request, info, still_allowed)
+
+
+async def stream_response(request, info, still_allowed, *, preview_mime=None):
+    """Shared Range transport; the caller owns authorization and its recheck."""
+    try:
         file_size = int(info.file_size or 0)
         parsed = parse_range(request.headers.get("Range"), file_size)
         if parsed is None:
@@ -156,12 +169,15 @@ async def media_download(request, message_id: int):
         enc_name = quote(str(file_name))
 
         headers = {
-            "Content-Type": mime,
+            "Content-Type": preview_mime or mime,
             "Content-Disposition": f"attachment; filename=\"{enc_name}\"; filename*=UTF-8''{enc_name}",
             "Cache-Control": "private, no-store",
             "Accept-Ranges": "bytes",
             "Content-Length": str(req_len),
         }
+        if preview_mime:
+            headers.update({"Content-Disposition": "inline", "X-Content-Type-Options": "nosniff",
+                            "Content-Security-Policy": "sandbox"})
         if partial:
             headers["Content-Range"] = f"bytes {fb}-{ub}/{file_size}"
         status = 206 if partial else 200
@@ -183,7 +199,7 @@ async def media_download(request, message_id: int):
         check_at = time.monotonic() + 3
         async for chunk in agen:
             if time.monotonic() >= check_at:
-                if await media_is_recycled(info.file_id):
+                if not await still_allowed():
                     # Headers have already been sent: abort the partial transfer.
                     if request.transport:
                         request.transport.close()

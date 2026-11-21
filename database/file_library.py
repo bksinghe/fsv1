@@ -41,8 +41,21 @@ class FileLibrary:
         update = {'$set': {'recycled_at': datetime.now(timezone.utc), 'bin_revision': time.time_ns()}}
         return self._raw.update_many(self._active(query), update).modified_count
 
+    @staticmethod
+    def _in_bin():
+        return {'recycled_at': {'$exists': True}, 'purged': {'$ne': True}}
+
+    def bin_entry(self, fid):
+        return self._raw.find_one({'_id': fid, **self._in_bin()}, {'file_name': 1, 'mime_type': 1, 'file_type': 1})
+
+    def purge(self, fid):
+        # Keep only a denial marker: removing the ID would unblock old signed links.
+        return self._raw.replace_one({'_id': fid, **self._in_bin()},
+                                     {'_id': fid, 'purged': True, 'recycled_at': datetime.now(timezone.utc),
+                                      'bin_revision': time.time_ns()}).modified_count
+
     def restore(self, fid):
-        return self._raw.update_one({'_id': fid, 'recycled_at': {'$exists': True}},
+        return self._raw.update_one({'_id': fid, **self._in_bin()},
                                     {'$unset': {'recycled_at': ''}, '$set': {'bin_revision': time.time_ns()}}).modified_count
 
     def revision(self):
@@ -53,11 +66,11 @@ class FileLibrary:
         return {row['_id'] for row in self._raw.find({'_id': {'$in': list(ids)}, 'recycled_at': {'$exists': True}}, {'_id': 1})}
 
     def bin_poster(self, fid):
-        return self._raw.find_one({'_id': fid, 'recycled_at': {'$exists': True}},
+        return self._raw.find_one({'_id': fid, **self._in_bin()},
                                   {'thumb_url': 1, 'thumb_file_id': 1})
 
     def bin_page(self, page, limit, query=''):
-        match = {'recycled_at': {'$exists': True}}
+        match = self._in_bin()
         if query:
             match['file_name'] = re.compile(re.escape(query), re.IGNORECASE)
         fields = {'file_name': 1, 'recycled_at': 1, 'thumb_url': 1, 'thumb_file_id': 1}

@@ -1,10 +1,19 @@
-"""Admin-only, metadata-only recycle bin. No play, download or purge actions."""
+"""Admin-only recycle bin with private video previews."""
 import asyncio
+import logging
+import mimetypes
+import time
+from collections import OrderedDict
 from html import escape
 from urllib.parse import urlencode
 
 from aiohttp import web
-from database.ia_filterdb import collection, restore_file
+from pyrogram.file_id import FileId
+from info import BIN_CHANNEL, IS_STREAM
+from utils import temp
+from web.stream_routes import stream_response
+from web.utils.media_info import MediaInfo
+from database.ia_filterdb import collection, restore_file, unpack_new_file_id
 from web.web_assets import app_page, filter_select, get_auth
 from web.thumb_engine import get_image_bytes, image_content_type, thumb_id_from_doc
 from web.image_validate import is_image_magic
@@ -20,11 +29,13 @@ def _card(doc):
         url = '/api/recycle-bin/poster?' + urlencode({'id': fid})
         image = (f'<img class="vm-img" data-src="{escape(url)}" loading="lazy" alt="" '
                  'onerror="this.hidden=true">')
-    return (f'<li class="bin-card vm-card"><div class="bin-poster vm-overlay">'
-            f'<span>No poster available</span>{image}</div><div class="bin-info vm-body">'
-            f'<strong>{escape(str(doc.get("file_name") or "Untitled"))}</strong>'
+    name = escape(str(doc.get('file_name') or 'Untitled'))
+    return (f'<li class="bin-card vm-card" data-id="{escape(fid)}">'
+            f'<button type="button" class="bin-poster vm-overlay" data-options aria-label="File options for {name}">'
+            f'<span>No poster available</span>{image}</button><div class="bin-info vm-body">'
+            f'<button type="button" class="bin-name" data-preview>{name}</button>'
             f'<small>Deleted {doc["recycled_at"]:%Y-%m-%d %H:%M} UTC</small>'
-            f'<button class="tbtn" data-id="{escape(fid)}">Restore</button></div></li>')
+            '<button type="button" class="tbtn bin-options" data-options>Options</button></div></li>')
 
 
 @routes.get('/api/recycle-bin/poster')
@@ -43,6 +54,69 @@ async def bin_poster(req):
         raise web.HTTPNotFound()
     return web.Response(body=data, content_type=image_content_type(data),
                         headers={'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff'})
+
+
+# Cache only Telegram references; never cache bin membership or admin access.
+_preview_refs = OrderedDict()
+_preview_lock = asyncio.Lock()
+
+
+async def _preview_info(fid):
+    async with _preview_lock:
+        cached = _preview_refs.get(fid)
+        if cached and cached[0] > time.monotonic():
+            return cached[1]
+        msg = await temp.BOT.send_cached_media(chat_id=BIN_CHANNEL, file_id=fid, protect_content=True)
+        try:
+            media = getattr(msg, msg.media.value, None) if msg and msg.media else None
+            if not media or unpack_new_file_id(media.file_id) != fid:
+                raise ValueError('Telegram returned unexpected media')
+            info = MediaInfo(media.file_id, FileId.decode(media.file_id), media.file_size,
+                             media.file_name, media.mime_type, bool(msg.video))
+        finally:
+            if msg:
+                try:
+                    await msg.delete()
+                except Exception:
+                    logging.getLogger(__name__).warning('Could not clean up temporary preview message', exc_info=True)
+        _preview_refs[fid] = (time.monotonic() + 240, info)
+        _preview_refs.move_to_end(fid)
+        if len(_preview_refs) > 128:
+            _preview_refs.popitem(last=False)
+        return info
+
+
+@routes.get('/api/recycle-bin/preview')
+async def bin_preview(req):
+    role, _ = await get_auth(req)
+    if role != 'admin':
+        raise web.HTTPForbidden()
+    if not IS_STREAM:
+        raise web.HTTPForbidden(text='Streaming is disabled')
+    fid = req.query.get('id', '')
+    if not 0 < len(fid) <= 512:
+        raise web.HTTPBadRequest()
+    doc = await asyncio.to_thread(collection.bin_entry, fid)
+    if not doc:
+        raise web.HTTPNotFound()
+    mime = doc.get('mime_type') or ''
+    if not mime.startswith('video/'):
+        mime = mimetypes.guess_type(doc.get('file_name') or '')[0] or ''
+    if not mime.startswith('video/') and doc.get('file_type') == 'video':
+        mime = 'video/mp4'
+    if not mime.startswith('video/'):
+        raise web.HTTPUnsupportedMediaType(text='Not a previewable video')
+
+    async def still_allowed():
+        return (await get_auth(req))[0] == 'admin' and bool(await asyncio.to_thread(collection.bin_entry, fid))
+
+    try:
+        info = await _preview_info(fid)
+    except Exception:
+        raise web.HTTPServiceUnavailable(text='Preview temporarily unavailable')
+    if not await still_allowed():
+        raise web.HTTPNotFound()
+    return await stream_response(req, info, still_allowed, preview_mime=mime)
 
 
 @routes.get('/recycle-bin')
@@ -77,13 +151,23 @@ async def recycle_bin(req):
 .bin-poster{position:relative;display:grid;place-items:center;aspect-ratio:16/9;background:var(--bg3);color:var(--mut)}
 .bin-poster img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .bin-info{display:grid;gap:.4rem;padding:.8rem}.bin-info strong{overflow-wrap:anywhere}.bin-info small{color:var(--mut)}
-.bin-info button{align-self:start;width:fit-content}</style>
-<main class="bin"><h1>♻️ Recycle Bin</h1><p>Files here are hidden from the library and cannot be streamed.</p>'''
+.bin-info button{align-self:start;width:fit-content}.bin-poster{width:100%;border:0;cursor:pointer}
+.bin-name{font:inherit;font-weight:700;text-align:left;color:var(--txt);background:none;border:0;cursor:pointer;overflow-wrap:anywhere}
+.bin-name:hover{text-decoration:underline}.bin-options{display:none}.mode-text .bin-options{display:inline-block}
+.bin dialog{margin:auto;border:1px solid var(--line);border-radius:.8rem;padding:1rem;background:var(--card);color:var(--txt);max-width:min(94vw,52rem)}
+.bin dialog::backdrop{background:#000a}.bin dialog h2{font-size:1rem;overflow-wrap:anywhere;margin-bottom:1rem}
+.bin video{width:min(76vw,48rem);max-height:65vh;background:black}.bin .bin-danger{color:#b52030;background:#ffe1e4}</style>
+<main class="bin"><h1>♻️ Recycle Bin</h1><p>Select a file name for a private preview, or its poster for file options.</p>'''
     body += (f'<form action="/recycle-bin" role="search"><input type="search" name="q" maxlength="120" '
              f'aria-label="Search deleted files by name" placeholder="Search deleted files by name…" value="{escape(query)}">'
              f'{mode}</form>'
              f'<ul class="vgrid vm-grid mode-text">{items}</ul>'
-             f'<nav>{navigation}</nav><p role="status"></p></main>')
+             f'<nav>{navigation}</nav><p role="status"></p>'
+             '<dialog id="binActions" aria-labelledby="binActionName"><h2 id="binActionName"></h2>'
+             '<button class="tbtn" data-do="restore">Restore</button> <button class="tbtn bin-danger" data-do="delete">Delete permanently</button> '
+             '<button class="tbtn" data-close autofocus>Cancel</button></dialog>'
+             '<dialog id="binPlayer" aria-labelledby="binPlayerName"><h2 id="binPlayerName"></h2><video controls playsinline></video>'
+             '<p role="alert"></p><button class="tbtn" data-close>Close</button></dialog></main>')
     body += '''<script>(()=>{ViewMode.init({storage:ViewMode.storageFor()});
 const bin=document.querySelector('.bin'),form=bin.querySelector('form'),input=form.elements.q;
 const grid=bin.querySelector('.vm-grid'),nav=bin.querySelector('nav'),status=bin.querySelector('[role=status]');
@@ -106,18 +190,39 @@ function scheduleSearch(){cancelSearch();timer=setTimeout(search,250);}
 input.addEventListener('input',e=>{if(!e.isComposing)scheduleSearch();});
 input.addEventListener('compositionstart',cancelSearch);input.addEventListener('compositionend',scheduleSearch);
 form.addEventListener('submit',e=>{e.preventDefault();search();});
+const actions=bin.querySelector('#binActions'),player=bin.querySelector('#binPlayer'),video=player.querySelector('video');
+player.addEventListener('close',()=>{video.pause();video.removeAttribute('src');video.load();});
+video.addEventListener('error',()=>{if(player.open)player.querySelector('[role=alert]').textContent='Preview unavailable or unsupported in this browser.';});
 bin.addEventListener('click',async e=>{
-const b=e.target.closest('button[data-id]');if(!b)return;b.disabled=true;
-try{const r=await fetch('/api/recycle-bin/restore',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:b.dataset.id})});
-if(!r.ok && r.status!==404)throw Error();location.reload();}
-catch(err){b.disabled=false;document.querySelector('.bin [role=status]').textContent='Restore failed. Please retry.';}});})();</script>'''
+  const b=e.target.closest('button');if(!b)return;
+  if(b.hasAttribute('data-close')){b.closest('dialog').close();return;}
+  const card=b.closest('.bin-card');
+  if(card){
+    const name=card.querySelector('[data-preview]').textContent;
+    if(b.hasAttribute('data-preview')){
+      player.querySelector('h2').textContent=name;player.querySelector('[role=alert]').textContent='';player.showModal();
+      video.src='/api/recycle-bin/preview?'+new URLSearchParams({id:card.dataset.id});video.play().catch(()=>{});
+    }else if(b.hasAttribute('data-options')){
+      actions.dataset.id=card.dataset.id;actions.querySelector('h2').textContent=name;actions.showModal();
+    }
+    return;
+  }
+  const action=b.dataset.do;if(!action||actions.dataset.busy)return;
+  if(action==='delete'&&!confirm('Permanently delete '+actions.querySelector('h2').textContent+'? This cannot be undone.'))return;
+  const id=actions.dataset.id;actions.dataset.busy='1';b.disabled=true;
+  try{const r=await fetch('/api/recycle-bin/'+action,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,confirmed:action==='delete'})});
+    if(!r.ok && r.status!==404)throw Error();location.reload();}
+  catch(err){actions.close();status.textContent='Action failed. Please retry.';}
+  finally{delete actions.dataset.busy;b.disabled=false;}
+});})();</script>'''
     response = app_page('Recycle Bin', body, uid, role, 'bin')
     response.headers.update(headers)
     return response
 
 
 @routes.post('/api/recycle-bin/restore')
-async def restore(req):
+@routes.post('/api/recycle-bin/delete')
+async def change_bin_file(req):
     role, _ = await get_auth(req)
     if role != 'admin':
         raise web.HTTPForbidden()
@@ -130,6 +235,13 @@ async def restore(req):
     fid = data.get('id') if isinstance(data, dict) else None
     if not isinstance(fid, str) or not 0 < len(fid) <= 512:
         raise web.HTTPBadRequest(text='Invalid file ID')
-    if not await restore_file(fid):
+    if req.path.endswith('/delete'):
+        if data.get('confirmed') is not True:
+            raise web.HTTPBadRequest(text='Confirm permanent deletion')
+        changed = await asyncio.to_thread(collection.purge, fid)
+        _preview_refs.pop(fid, None)
+    else:
+        changed = await restore_file(fid)
+    if not changed:
         raise web.HTTPNotFound(text='Not in the recycle bin')
     return web.json_response({'ok': True})

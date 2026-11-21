@@ -18,7 +18,8 @@ class RecycleTests(unittest.IsolatedAsyncioTestCase):
                         LOG_CHANNEL='-1001', BIN_CHANNEL='-1002', DATA_DATABASE_URL='mongodb://localhost',
                         URL='https://example.invalid'), patch.dict(sys.modules), patch('pymongo.MongoClient', mongomock.MongoClient):
             from database import ia_filterdb as ia
-            from web import create_app, recycle_routes
+            from web import create_app, recycle_routes, stream_routes
+            self.streamer = stream_routes.TGCustomYield
             self.bin_routes = recycle_routes
             from utils import temp
             from stream_security import sign_params
@@ -33,6 +34,9 @@ class RecycleTests(unittest.IsolatedAsyncioTestCase):
             media = NS(file_id=raw, file_size=120, mime_type='video/mp4', file_name=self.doc['file_name'])
             temp.BOT = NS(get_messages=AsyncMock(return_value=NS(media=NS(value='video'), video=media)))
             temp.USER_SESSIONS.update({key: {'tg_id': uid, 'expiry':time.time()+300} for key, uid in [('admin',7), ('user',8)]})
+            self.preview_msg = NS(media=NS(value="video"), video=media, delete=AsyncMock())
+            temp.BOT.send_cached_media = AsyncMock(return_value=self.preview_msg)
+            self.copy = temp.BOT.send_cached_media
             self.query = sign_params(24)
 
     async def test_old_signed_requests_and_bin_authorization(self):
@@ -128,3 +132,35 @@ class RecycleTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(data['navigation'], '')
         empty = await self.http.get('/recycle-bin?q=other', headers=h, cookies=cookies)
         self.assertIn('No deleted files match', (await empty.json())['items'])
+
+    async def test_admin_preview_and_permanent_delete_do_not_unblock_public_links(self):
+        h, fid = self.http, self.fid
+        url = '/api/recycle-bin/preview?id=' + fid
+        delete = '/api/recycle-bin/delete'
+        payload = {'id':fid, 'confirmed':True}
+        admin = {'user_session':'admin'}
+        self.assertEqual((await h.head(url, cookies=admin)).status, 404)
+        self.assertEqual((await h.post(delete, json=payload, cookies=admin)).status, 404)
+        self.ia.collection.recycle(fid)
+        for cookies in ({}, {'user_session':'user'}):
+            self.assertEqual((await h.get(url, cookies=cookies)).status, 403)
+            self.assertEqual((await h.post(delete, json=payload, cookies=cookies)).status, 403)
+        self.copy.assert_not_awaited()
+        r = await h.head(url, cookies=admin, headers={'Range':'bytes=1-8'})
+        self.assertEqual(r.status, 206)
+        self.assertEqual(r.headers['Content-Disposition'], 'inline')
+        self.assertEqual(r.headers['Content-Range'], 'bytes 1-8/120')
+        async def chunks(_self, file, offset, first, last, parts, size):
+            yield bytes(range(120))[first:last]
+        with patch.object(self.streamer, 'yield_file', chunks):
+            r = await h.get(url, cookies=admin, headers={'Range':'bytes=1-8'})
+            self.assertEqual((r.status, await r.read()), (206, bytes(range(1,9))))
+        self.assertEqual((await h.head('/download/24?'+self.query, cookies=admin)).status, 404)
+        self.assertEqual((await h.post(delete, json={'id':fid}, cookies=admin)).status, 400)
+        self.assertEqual((await h.post(delete, json=payload, cookies=admin)).status, 200)
+        self.assertEqual(self.ia.collection.bin_page(0,21), [])
+        self.assertFalse(await self.ia.restore_file(fid))
+        self.assertEqual((await h.head(url, cookies=admin)).status, 404)
+        self.assertEqual((await h.head('/download/24?'+self.query)).status, 404)
+        self.copy.assert_awaited_once()
+        self.preview_msg.delete.assert_awaited_once()
