@@ -20,6 +20,14 @@ from database.catalog_db import store as catalog_store
 from database.group_db import store as group_store
 
 
+# Match thumb_id_from_doc: a non-empty TG_ID reference wins; NO_THUMB
+# and an empty TG_ID prefix suppress even a stale legacy alias.
+SAVED_POSTER_QUERY = {"$or": [
+    {"thumb_url": {"$regex": "^TG_ID:."}},
+    {"thumb_url": {"$nin": ["NO_THUMB", "TG_ID:"]},
+     "thumb_file_id": {"$type": "string", "$ne": ""}},
+]}
+
 EMPTY_QUEUE = {
     "queued": 0, "done": 0, "ok": 0, "no_thumb": 0,
     "failed": 0, "rejected": 0, "meta": 0,
@@ -86,7 +94,7 @@ async def snapshot():
         _safe(asyncio.to_thread(_count, user_db.groups), 0),
         _safe(asyncio.to_thread(_count, web_db.col), 0),
         _safe(asyncio.to_thread(_count, web_db.sessions), 0),
-        _safe(asyncio.to_thread(_count, collection, {"thumb_url": {"$exists": True}}), 0),
+        _safe(asyncio.to_thread(_count, collection, SAVED_POSTER_QUERY), 0),
         _safe(catalog_store.counts(), {"posts": 0, "actors": 0}),
         _safe(group_store.count(), 0),
         _safe(group_store.kind_counts(),

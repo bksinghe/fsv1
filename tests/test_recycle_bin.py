@@ -21,6 +21,8 @@ class RecycleTests(unittest.IsolatedAsyncioTestCase):
             from database import ia_filterdb as ia
             from web import create_app, recycle_routes, stream_routes
             self.streamer = stream_routes.TGCustomYield
+            from database import stats_db
+            self.stats_db = stats_db
             self.bin_routes = recycle_routes
             from utils import temp
             from stream_security import sign_params
@@ -75,6 +77,28 @@ class RecycleTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(ia.collection.bin_page(0,30)), 2)
         self.assertTrue(await ia.restore_file(self.fid))
         self.assertEqual((await ia.get_search_results('Film'))[2], 1)
+
+    async def test_stats_counts_only_active_files_with_poster_references(self):
+        records = {
+            'stored': {'thumb_url': 'TG_ID:photo'},
+            'legacy': {'thumb_file_id': 'legacy-photo'},
+            'empty': {'thumb_url': ''},
+            'none': {'thumb_url': 'NO_THUMB', 'thumb_file_id': 'stale'},
+            'empty-prefix': {'thumb_url': 'TG_ID:', 'thumb_file_id': 'stale'},
+            'both': {'thumb_url': 'TG_ID:primary', 'thumb_file_id': 'alias'},
+        }
+        for fid, fields in records.items():
+            self.ia.collection.insert_one({'_id': fid, **fields})
+        async def count():
+            with patch.object(self.stats_db, 'thumb_queue', return_value={}):
+                response = await self.http.get('/api/db_stats', cookies={'user_session': 'admin'})
+            self.assertEqual(response.status, 200)
+            return (await response.json())['thumbnails']
+        self.assertEqual(await count(), 3)
+        self.ia.collection.recycle('legacy')
+        self.assertEqual(await count(), 2)
+        self.ia.collection.restore('legacy')
+        self.assertEqual(await count(), 3)
 
     async def test_search_filters_before_paging_and_reuses_view_mode(self):
         admin = {'user_session': 'admin'}
