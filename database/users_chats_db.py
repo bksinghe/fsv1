@@ -1,5 +1,5 @@
 from pymongo import MongoClient, ReturnDocument
-from pymongo.errors import DuplicateKeyError
+from pymongo.errors import DuplicateKeyError, PyMongoError
 from datetime import datetime, timezone
 import hashlib
 import hmac
@@ -78,6 +78,18 @@ class Database:
     # =========================
     # USERS
     # =========================
+
+    async def record_bot_user(self, uid: int):
+        """Count private bot starts once, without storing names or message contents."""
+        try:
+            await asyncio.to_thread(
+                self.users.update_one, {"id": uid}, {"$setOnInsert": {"id": uid}}, upsert=True
+            )
+        except DuplicateKeyError:
+            pass  # Another simultaneous start registered the same ID.
+        except PyMongoError:
+            # A statistics write must not block the welcome message or file delivery.
+            logging.getLogger(__name__).exception("Could not persist bot user; next start will retry")
 
     async def total_users_count(self):
         return await asyncio.to_thread(self.users.count_documents, {})

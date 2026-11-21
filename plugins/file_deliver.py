@@ -95,6 +95,7 @@ async def start_file_delivery(client: Client, message):
         return
 
     uid = message.from_user.id
+    await db.record_bot_user(uid)
     
     # ========================================
     # PREMIUM CHECK (Bot Admin or Premium)

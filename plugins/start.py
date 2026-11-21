@@ -2,6 +2,7 @@ import random
 from pyrogram import Client, filters, enums
 from telegram_buttons import styled_button, styled_keyboard
 from pyrogram.types import LinkPreviewOptions
+from database.users_chats_db import db
 from info import PICS
 from Script import script
 
@@ -29,6 +30,7 @@ def start_buttons():
 )
 async def start_cmd(client, message):
     """Handle /start command for normal users"""
+    await db.record_bot_user(message.from_user.id)
     caption = script.START_TXT.format(
         message.from_user.mention,
         client.me.mention

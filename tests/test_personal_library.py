@@ -39,6 +39,10 @@ class PersonalLibraryTests(unittest.IsolatedAsyncioTestCase):
             from database.ia_filterdb import collection
             from utils import temp
 
+            from database.users_chats_db import db, dbase, web_db
+
+            self.bot_db, self.mongo, self.accounts = db, dbase, web_db
+            self.sessions = temp.USER_SESSIONS
             self.files = collection
             for i in range(25):
                 collection.insert_one({"_id": str(i), "file_name": f"Movie {i} <HD>"})
@@ -60,6 +64,58 @@ class PersonalLibraryTests(unittest.IsolatedAsyncioTestCase):
         r = await self.http.get(path, cookies={"user_session": str(uid)})
         self.assertEqual(r.status, 200)
         return await r.text()
+
+    async def test_per_user_records_after_login_cache_is_cleared(self):
+        sessions = {}
+        for uid in (8, 9):
+            email = f"{uid}@example.invalid"
+            ok, reason = await self.accounts.create_user(uid, email, "test-password")
+            self.assertTrue(ok, reason)
+            login = await self.http.post(
+                "/api/login",
+                data={"email": email, "password": "test-password"},
+                allow_redirects=False,
+            )
+            self.assertEqual(login.status, 302)
+            sid = sessions[uid] = login.cookies["user_session"].value
+            self.assertEqual(
+                self.mongo.web_sessions.find_one({"_id": sid})["tg_id"], uid
+            )
+            fid = str(uid)
+            await self.post(
+                "/api/library/playlists",
+                {"action": "add", "list": "later", "file_id": fid},
+                sid,
+            )
+            await self.post(
+                "/api/progress",
+                {"file_id": fid, "duration": 100, "position": uid, "played": 6},
+                sid,
+            )
+
+        self.sessions.clear()
+        for uid, sid in sessions.items():
+            for coll in (self.mongo.web_playback_progress, self.mongo.personal_history):
+                items = coll.find_one({"_id": uid})["items"]
+                self.assertEqual(
+                    [(i["file_id"], i["position"]) for i in items], [(str(uid), uid)]
+                )
+            self.assertEqual(
+                self.mongo.personal_playlists.find_one({"_id": uid})["lists"][0][
+                    "files"
+                ],
+                [str(uid)],
+            )
+            for path in ("/playlists", "/watch-history"):
+                page = await self.body(path, sid)
+                self.assertIn(f'data-file="{uid}"', page)
+                self.assertNotIn(f'data-file="{17 - uid}"', page)
+
+    async def test_bot_start_records_count_people_not_visits(self):
+        for uid in (8, 9, 8):
+            await self.bot_db.record_bot_user(uid)
+        self.assertEqual(await self.bot_db.total_users_count(), 2)
+        self.assertEqual(sorted(self.mongo.users.distinct("id")), [8, 9])
 
     async def test_playlists_owner_order_limits_paging_and_restore(self):
         path = "/api/library/playlists"
