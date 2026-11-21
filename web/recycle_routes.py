@@ -4,9 +4,11 @@ import logging
 import mimetypes
 import time
 from collections import OrderedDict
+from datetime import timezone
 from html import escape
 from urllib.parse import urlencode
 
+import pytz
 from aiohttp import web
 from pyrogram.file_id import FileId
 from info import BIN_CHANNEL, IS_STREAM
@@ -20,6 +22,7 @@ from web.image_validate import is_image_magic
 
 routes = web.RouteTableDef()
 PAGE_SIZE = 21
+IST = pytz.timezone("Asia/Kolkata")
 
 
 def _card(doc):
@@ -30,11 +33,15 @@ def _card(doc):
         image = (f'<img class="vm-img" data-src="{escape(url)}" loading="lazy" alt="" '
                  'onerror="this.hidden=true">')
     name = escape(str(doc.get('file_name') or 'Untitled'))
+    deleted = doc['recycled_at']
+    if deleted.tzinfo is None:  # PyMongo returns naive UTC by default.
+        deleted = deleted.replace(tzinfo=timezone.utc)
+    deleted = deleted.astimezone(IST)
     return (f'<li class="bin-card vm-card" data-id="{escape(fid)}">'
             f'<button type="button" class="bin-poster vm-overlay" data-options aria-expanded="false" aria-label="File options for {name}">'
             f'<span>No poster available</span>{image}</button><div class="bin-info vm-body">'
             f'<button type="button" class="bin-name" data-preview>{name}</button>'
-            f'<small>Deleted {doc["recycled_at"]:%Y-%m-%d %H:%M} UTC</small>'
+            f'<small>Deleted {deleted:%d %b %Y, %I:%M %p %Z}</small>'
             '<button type="button" class="tbtn bin-options" data-options aria-expanded="false">Options</button></div>'
             '<div class="bin-actions" role="group" aria-label="File actions" hidden>'
             '<button class="tbtn" data-do="restore">Restore</button>'

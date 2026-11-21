@@ -4,6 +4,7 @@ import os
 import sys
 import time
 import unittest
+from datetime import datetime, timezone
 from types import SimpleNamespace as NS
 from unittest.mock import patch, AsyncMock
 
@@ -164,3 +165,8 @@ class RecycleTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await h.head('/download/24?'+self.query)).status, 404)
         self.copy.assert_awaited_once()
         self.preview_msg.delete.assert_awaited_once()
+
+    async def test_card_displays_indian_date_and_time_for_utc_records(self):
+        for tz in (None, timezone.utc):
+            doc = dict(self.doc, recycled_at=datetime(2026, 11, 20, 19, 15, tzinfo=tz))
+            self.assertIn('Deleted 21 Nov 2026, 12:45 AM IST', self.bin_routes._card(doc))
