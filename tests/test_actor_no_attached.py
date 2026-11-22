@@ -21,7 +21,7 @@ class ActorAttachedUITests(unittest.TestCase):
               'base':'/catalog'}
         actor=dict(base,tagMedia=True);post=dict(base,tagMedia=False)
         env={'html':html,'quote':quote,'CATALOGS':{'posts':post,'actors':actor},
-             'image_src':lambda v:v or '', 'video_card_html':lambda fid,label,poster,data: '<article>'+label+'</article>',
+             'image_src':lambda v:v or '', 'video_card_html':lambda fid,label,poster,data,**kwargs: '<article>'+label+'</article>',
              'SEARCH_FILTERS':({'id':'mode'},{'id':'group'}),'filter_buttons':lambda specs:'<div>filters</div>'}
         exec(compile(ast.fix_missing_locations(ast.Module(body=[fn],type_ignores=[])),'<catalog>','exec'),env)
         item={'id':'abc','title':'Test','tags':['Actor'], 'videos':[{'file_id':'id','label':'SECRET ATTACHMENT'}]}

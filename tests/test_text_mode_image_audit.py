@@ -18,6 +18,38 @@ def constant(file, name):
 
 @unittest.skipUnless(shutil.which('node'), 'Node required')
 class TextModeImageAudit(unittest.TestCase):
+    def test_single_cards_place_playlist_action_on_poster(self):
+        assets = (ROOT / 'web_assets.py').read_text()
+        tree = ast.parse(assets)
+        render = next(n for n in tree.body if isinstance(n, ast.FunctionDef)
+                      and n.name == 'render_vcard')
+        namespace = {'VCARD_TEMPLATE': constant('web_assets.py', 'VCARD_TEMPLATE'),
+                     'VCARD_SAVE': constant('web_assets.py', 'VCARD_SAVE')}
+        exec(compile(ast.fix_missing_locations(ast.Module(body=[render], type_ignores=[])),
+                     '<render_vcard>', 'exec'), namespace)
+        card = namespace['render_vcard'](FID='file', RAW_FID='file', NAME='title')
+        self.assertLess(card.index('data-save-file="file"'), card.index('vbody vm-body'))
+        self.assertIn('tabindex="0" aria-label="File actions"', card)
+        merge = '<button class="va-merge" data-merge-file="file">🔀 Merge</button>'
+        admin_card = namespace['render_vcard'](FID='file', RAW_FID='file', NAME='title', MERGE_BUTTON=merge)
+        self.assertLess(admin_card.index('data-merge-file="file"'), admin_card.index('vbody vm-body'))
+        self.assertNotIn('data-merge-file', card)
+        self.assertIn("e.target.closest('.vcard .vposter')", assets)
+        self.assertIn("'[data-save-file],.vcard .vposter'", assets)
+        self.assertIn('window.IS_GROUP_ADMIN?', constant('web_assets.py', '_VCARD_JS_TPL'))
+        catalog = constant('catalog.py', 'DETAIL_JS')
+        media_card = catalog[catalog.index('function mediaCard('):catalog.index('window.cardHTML=mediaCard')]
+        self.assertIn('},true);', media_card)
+        self.assertIn('window.gMergeFile=function(fid,name,card)', Path(ROOT / 'group_assets.py').read_text())
+        self.assertIn("if(near('.va-merge'))return", assets)
+        self.assertIn('window.refreshGroupResults=()=>load(true)', assets)
+        detail = Path(ROOT / 'catalog.py').read_text()
+        self.assertIn('window.refreshMediaResults=()=>D.tagMedia?loadMedia(0):Promise.resolve()', detail)
+        self.assertIn('GROUP_ADMIN_HTML + GROUP_ADMIN_JS', detail)
+        group_js = Path(ROOT / 'group_assets.py').read_text()
+        self.assertIn("window.refreshGroupResults==='function'", group_js)
+        self.assertIn("window.refreshMediaResults==='function'", group_js)
+
     def test_search_group_retries_and_editor(self):
         mode = constant('mode_assets.py', 'MODE_JS')
         video = constant('web_assets.py', '_VCARD_JS_TPL').replace(
@@ -52,7 +84,11 @@ for(const id of ['1','2']){
  const btn='data-save-file="'+id+'"';assert.equal(html.split(btn).length,2);
  assert(html.lastIndexOf('vadmin vm-actions',html.indexOf(btn))>html.lastIndexOf('vbody vm-body',html.indexOf(btn)));
 }
-const single=cardHTML(one,true);assert(single.indexOf('data-save-file="1"')>single.indexOf('vbody vm-body'));
+const single=cardHTML(one,true);assert(single.indexOf('data-save-file="1"')<single.indexOf('vbody vm-body'));
+assert(single.includes('tabindex="0" aria-label="File actions"'));
+window.IS_GROUP_ADMIN=true;const adminSingle=cardHTML(one,true);
+assert(adminSingle.indexOf('data-merge-file="1"')<adminSingle.indexOf('vbody vm-body'));
+window.IS_GROUP_ADMIN=false;assert(!cardHTML(one,true).includes('data-merge-file="1"'));
 for(let url of ['/group','/thumb1','/thumb2']){
  assert(html.includes('data-src="'+url+'"'));assert(!html.includes(' src="'+url+'"'));
 }

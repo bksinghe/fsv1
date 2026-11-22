@@ -61,7 +61,9 @@ class TestFileEditorGroupControl(unittest.TestCase):
         self.assertIn('"group_changed": group_changed', edit)
 
     def test_search_rebuilds_group_cards_after_a_transfer(self):
-        self.assertIn("if(moved && typeof window.load==='function') window.load(true)", ASSETS)
+        self.assertIn("if(moved){", ASSETS)
+        self.assertIn("window.refreshGroupResults==='function'", ASSETS)
+        self.assertIn("window.refreshMediaResults==='function'", ASSETS)
 
     def test_group_cleanup_clears_stale_file_markers_and_master_thumbnail(self):
         pull_files = function_source(GROUP_DB, "pull_files")

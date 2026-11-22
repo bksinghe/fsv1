@@ -454,7 +454,27 @@ GROUP_ADMIN_JS = r"""<script>
         return r.json().then(function(d){if(!r.ok||d.ok===false)
           throw new Error(d.error||('HTTP '+r.status));return d;});});
   }
-  function refresh(){if(window.load)window.load(true);}
+  window.gMergeFile=function(fid,name,card){
+    if(!window.IS_GROUP_ADMIN)return;
+    try{fid=decodeURIComponent(String(fid||''));}catch(e){fid=String(fid||'');}
+    if(!fid)return;
+    var img=card&&card.querySelector?card.querySelector('.vm-img'):null;
+    var chip=card&&card.querySelector?card.querySelector('.vtag.blue'):null;
+    var item={file_id:fid,name:String(name||fid),thumb:img?String(img.getAttribute('data-thumb')||img.getAttribute('data-src')||img.getAttribute('src')||''):'',quality:chip?String(chip.textContent||'').trim():'',ql:chip?String(chip.textContent||'').trim():''};
+    var key='single:'+Date.now()+':'+Math.random().toString(36).slice(2);
+    var fake={group:true,manual:false,gid:'',num:'',kind:'qualities',key:key,name:suggestGroupName([item])||item.name,count:1,variants:[item],chips:[],duration:'',size:''};
+    window.groupHTML(fake,'');window.gEdit(key);
+  };
+  document.addEventListener('click',function(e){
+    var b=e.target&&e.target.closest&&e.target.closest('[data-merge-file]');if(!b)return;
+    e.preventDefault();e.stopImmediatePropagation();
+    var c=b.closest('.vcard'),fid=b.getAttribute('data-merge-file');
+    window.gMergeFile(fid,c&&c.dataset.name||'',c);
+  },true);
+  function refresh(){
+    if(typeof window.refreshGroupResults==='function')return window.refreshGroupResults();
+    if(typeof window.refreshMediaResults==='function')return window.refreshMediaResults();
+  }
   function open(title,body){if(targetPreview)targetPreview.dispose();targetPreview=null;
     q('#gmTitle').textContent=title;q('#gmBody').innerHTML=body;
     q('#gmModal .gmcard').classList.toggle('is-edit',!!q('#gmBody .gmedit'));

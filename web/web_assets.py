@@ -172,6 +172,7 @@ backdrop-filter:blur(8px);transition:background .12s,transform .1s}
 .vadmin .va-edit:hover{background:rgba(80,80,88,.96)}
 .vadmin .va-del{background:rgba(160,8,8,.82);border-color:rgba(229,9,20,.5)}
 .vadmin .va-del:hover{background:rgba(229,9,20,.95)}
+.vadmin .va-merge{background:rgba(124,82,28,.94)}
 .vadmin button:active{transform:scale(.94)}
 /* ✅ Removed the extra space under the name — only the necessary padding remains */
 .vbody{padding:8px 11px 9px}
@@ -219,7 +220,7 @@ VCARD_TEMPLATE = (
     '<div class="vchips vm-details">{CHIPS}</div>{SIZE}'
     '<span class="vplay vm-overlay">▶</span>'
     '<div class="vadmin vm-actions"><button class="va-edit" data-fid="{RAW_FID}">✏️ Edit</button>'
-    '<button class="va-del" data-fid="{RAW_FID}">🗑️ Delete</button>{POSTER_SAVE}</div>'
+    '<button class="va-del" data-fid="{RAW_FID}">🗑️ Delete</button>{POSTER_SAVE}{POSTER_MERGE}</div>'
     '</div><div class="vbody vm-body"><div class="vtitle vm-title">{NAME}</div>{BODY_SAVE}</div></div>'
 )
 
@@ -296,7 +297,9 @@ def render_vcard(**kw) -> str:
         "CARD_CLASS", "EXTRA_ATTRS", "POSTER_ID", "IMG_ATTRS", "IMG_ERROR",
         "CHIPS", "SIZE", "FID", "NAME", "RAW_FID")}
     tokens.update({k: str(v) for k, v in kw.items()})
-    return VCARD_TEMPLATE.format(**tokens, POSTER_SAVE="", BODY_SAVE=VCARD_SAVE.format(**tokens))
+    tokens["POSTER_ID"] += ' tabindex="0" aria-label="File actions"'
+    return VCARD_TEMPLATE.format(**tokens, POSTER_SAVE=VCARD_SAVE.format(**tokens),
+                                 POSTER_MERGE=tokens.get("MERGE_BUTTON", ""), BODY_SAVE="")
 
 
 _VCARD_JS_TPL = r"""/* 🎴 SHARED VIDEO CARD — template + chip spec from web_assets.py (Python → JS) */
@@ -317,8 +320,9 @@ _VCARD_JS_TPL = r"""/* 🎴 SHARED VIDEO CARD — template + chip spec from web_
   }
   function html(t={},groupMember=false){
     const save=__VCARD_SAVE__.replace('{RAW_FID}',()=>t.RAW_FID);
-    t={...t,POSTER_SAVE:groupMember?save:'',BODY_SAVE:groupMember?'':save};
-    if(groupMember)t.POSTER_ID=(t.POSTER_ID||'')+' tabindex="0" aria-label="File actions"';
+    const merge=window.IS_GROUP_ADMIN?'<button type="button" class="va-merge" data-merge-file="'+t.RAW_FID+'">🔀 Merge</button>':'';
+    t={...t,POSTER_SAVE:save,POSTER_MERGE:merge,BODY_SAVE:''};
+    t.POSTER_ID=(t.POSTER_ID||'')+' tabindex="0" aria-label="File actions"';
     return TPL.replace(/\{([A-Z_]+)\}/g,function(m,k){
       return Object.prototype.hasOwnProperty.call(t,k)?String(t[k]):'';
     });
@@ -573,8 +577,11 @@ FILE_EDIT_JS = r"""<script>
       const groupResult=f.group_id?'moved to group #'+(f.group_num||f.group_id):'ungrouped';
       toast(moved?'✨ File updated — '+groupResult:'✨ File updated — no reload');
       close();
-      /* Group cards must be rebuilt after a transfer; keep the current search query/mode. */
-      if(moved && typeof window.load==='function') window.load(true);
+      /* Rebuild grouped and directory result caches after a transfer. */
+      if(moved){
+        if(typeof window.refreshGroupResults==='function')window.refreshGroupResults();
+        else if(typeof window.refreshMediaResults==='function')window.refreshMediaResults();
+      }
     }catch(e){ toast('Network error: '+String(e.message||e),true); }
     finally{ setBusy(false); }
   }
@@ -604,6 +611,8 @@ FILE_EDIT_JS = r"""<script>
       cards(fid).forEach(c=>c.remove());
       toast('🗑️ File moved to the Recycle Bin');
       if(current===fid) close();
+      if(typeof window.refreshGroupResults==='function')window.refreshGroupResults();
+      else if(typeof window.refreshMediaResults==='function')window.refreshMediaResults();
     }catch(e){ toast('Network error: '+String(e.message||e),true); }
     finally{ setBusy(false); }
   }
@@ -631,6 +640,7 @@ FILE_EDIT_JS = r"""<script>
   window.closeFileActions=closeAdmin; window.deleteFileById=deleteById;
   document.addEventListener('click',e=>{
     const t=e.target, near=(sel)=>t&&t.closest?t.closest(sel):null;
+    if(near('.va-merge'))return; /* handled by the group merge dialog */
     const act=near('.vadmin button');
     if(act){                              /* ✏️ Edit / 🗑️ Delete */
       e.preventDefault(); e.stopPropagation();
@@ -1560,12 +1570,12 @@ PLAYER_JS = r"""<script>
     if(b){e.preventDefault();e.stopImmediatePropagation();closeSaveActions();window.closeFileActions?.();window.saveToPlaylist(b.dataset.saveFile);return;}
     // Admins already have the Edit/Delete poster toggle. Members get only Save.
     if(window.openFileEdit)return;
-    const card=e.target.closest('.gvariants .vposter')?.closest('.vcard');
+    const card=e.target.closest('.vcard .vposter')?.closest('.vcard');
     const opening=card&&!card.classList.contains('save-active');closeSaveActions();
     if(card){e.preventDefault();e.stopPropagation();if(opening)card.classList.add('save-active');}
   },true);
   document.addEventListener('keydown',e=>{if(e.key==='Escape')closeSaveActions();});
-  document.addEventListener('keydown',e=>{if(e.target.matches?.('[data-save-file],.gvariants .vposter')&&(e.key==='Enter'||e.key===' ')){e.preventDefault();e.stopPropagation();e.target.click();}},true);
+  document.addEventListener('keydown',e=>{if(e.target.matches?.('[data-save-file],.vcard .vposter')&&(e.key==='Enter'||e.key===' ')){e.preventDefault();e.stopPropagation();e.target.click();}},true);
   window.copyLink = function(){
     if(!currentWatch) return;
     const note=q('#pNote'), clip=navigator.clipboard;
@@ -1769,7 +1779,7 @@ async function load(reset,restorePreview=false){
       }
       if(list.length===SEARCH_PAGE_SIZE||!more)break;
       const r=await fetch(`/api/search?q=${encodeURIComponent(query)}&offset=${cursor}&group=${mode}&limit=${SEARCH_PAGE_SIZE}`,{
-        credentials:'same-origin',signal:controller.signal
+        credentials:'same-origin',cache:'no-store',signal:controller.signal
       });
       if(seq!==searchSeq)return;
       if(r.status===401){clearSearchPreview();$('#grid').innerHTML='';location.href='/login?err='+encodeURIComponent('Session expired. Please sign in again.');return}
@@ -1801,6 +1811,7 @@ async function load(reset,restorePreview=false){
     if(seq===searchSeq){loading=false;$('#srow').classList.remove('loading');updatePages()}
   }
 }
+if(typeof window!=='undefined')window.refreshGroupResults=()=>load(true);
 function playerGroupContext(el){
   const card=el.closest('.gcard'), g=card && window.groupGet && window.groupGet(card.dataset.gkey);
   if(!g || !Array.isArray(g.variants)) return null;

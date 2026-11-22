@@ -67,7 +67,7 @@ import re
 from urllib.parse import quote
 
 from web.web_assets import (app_page, PLAYER_MODAL_HTML, PLAYER_JS,
-                            FILE_EDIT_HTML, FILE_EDIT_JS,
+                            FILE_EDIT_HTML, FILE_EDIT_JS, GROUP_ADMIN_HTML, GROUP_ADMIN_JS,
                             filter_buttons, CATALOG_FILTERS, SEARCH_FILTERS,
                             render_vcard, vcard_chips, vcard_size)
 
@@ -176,7 +176,7 @@ _MEDIA_ID_RE = re.compile(r"^[A-Za-z0-9_\-=]{2,256}$")
 
 
 def video_card_html(fid: str, name: str, poster: str,
-                    chips: str = "", data: dict = None) -> str:
+                    chips: str = "", data: dict = None, admin: bool = False) -> str:
     '''🎴 SHARED VIDEO CARD — the only wrapper around `web.web_assets.VCARD_TEMPLATE`.
 
     `/search`'s `card(f)` JS, the Actor `mediaCard(f)` JS and this Python helper
@@ -192,6 +192,8 @@ def video_card_html(fid: str, name: str, poster: str,
         IMG_ERROR="this.classList.add('hidden');"
                   "this.closest('.vposter').classList.add('no-thumb')",
         CHIPS=chips or vcard_chips(data), SIZE=vcard_size(data),
+        MERGE_BUTTON=(f'<button type="button" class="va-merge" data-merge-file="{e(fid, quote=True)}">🔀 Merge</button>'
+                      if admin else ""),
     )
 
 def clean_media_id(value) -> str:
@@ -1155,7 +1157,7 @@ function mediaCard(f,topLevel,groupMember){
     CARD_CLASS:topLevel?' rv-enter':'', EXTRA_ATTRS:' data-label="1"',
     FID:esc(f.file_id), RAW_FID:esc(f.file_id), NAME:esc(f.name),
     IMG_ATTRS:attrs, IMG_ERROR:err, CHIPS:vcardChips(f), SIZE:vcardSize(f)
-  },groupMember);
+  },true);
 }
 window.cardHTML=mediaCard;
 /* ▶ shared player like the main page — clicking a name/card opens the small modal */
@@ -1224,7 +1226,7 @@ async function loadMedia(offset,advance=false){
       if(list.length===D.limit||!more)break;
       const r=await fetch('/api/catalog/'+D.kind+'/media?id='+encodeURIComponent(D.id)
         +'&q='+encodeURIComponent(q)+'&offset='+cursor+'&limit='+D.limit+'&group='+mode,
-        {credentials:'same-origin',signal:mediaController.signal});
+        {credentials:'same-origin',cache:'no-store',signal:mediaController.signal});
       if(!r.ok)throw new Error('HTTP '+r.status);
       const d=await r.json();if(seq!==mediaSeq)return;
       buffer.push(...(d.results||[]));
@@ -1242,6 +1244,7 @@ async function loadMedia(offset,advance=false){
     if(seq===mediaSeq){mediaBusy=false;updateMediaControls();}
   }
 }
+if(typeof window!=='undefined')window.refreshMediaResults=()=>D.tagMedia?loadMedia(0):Promise.resolve();
 function mediaPage(step){
   if(!D.tagMedia||mediaBusy)return;
   const next=mediaPageIndex+step;
@@ -1492,7 +1495,7 @@ def _detail_body(kind: str, role: str, item: dict) -> str:
                 fid = str(v.get("file_id") or "")
                 poster = "/api/thumb?file_id=" + quote(fid, safe="") + "&v=1"
                 label = str(v.get("label") or f"Video {i+1}")
-                vids_html += video_card_html(fid, label, poster, data=v)
+                vids_html += video_card_html(fid, label, poster, data=v, admin=admin)
         else:
             vids_html = (
                 '<div class="cat-vempty">🎬 No videos attached yet.'
@@ -1641,10 +1644,13 @@ def build_detail_page(kind: str, role: str, tg_id: int, item: dict):
         "limit": 21,
     }
     js = DETAIL_JS.replace("__DETAIL_CFG__", json.dumps(detail_cfg, ensure_ascii=False))
+    body = (f"<style>{CATALOG_CSS}</style>" + CATALOG_IMAGE_JS + _detail_body(kind, role, item)
+            + js + PLAYER_MODAL_HTML + PLAYER_JS
+            + ((FILE_EDIT_HTML + FILE_EDIT_JS) if role == "admin" else ""))
+    if role == "admin":
+        admin_assets = "<script>window.IS_GROUP_ADMIN=true;</script>" + GROUP_ADMIN_HTML + GROUP_ADMIN_JS
+        body = body.replace(CATALOG_IMAGE_JS, CATALOG_IMAGE_JS + admin_assets, 1)
     return app_page(
-        f"{item.get('title') or cfg['singular']} - Fast Finder",
-        (f"<style>{CATALOG_CSS}</style>" + CATALOG_IMAGE_JS + _detail_body(kind, role, item)
-         + js + PLAYER_MODAL_HTML + PLAYER_JS
-         + ((FILE_EDIT_HTML + FILE_EDIT_JS) if role == "admin" else "")),
+        f"{item.get('title') or cfg['singular']} - Fast Finder", body,
         tg_id=tg_id, role=role, active_tab=kind,
     )
