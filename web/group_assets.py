@@ -442,7 +442,8 @@ GROUP_ADMIN_JS = r"""<script>
 /* 🛠️ ADMIN GROUP ACTIONS — permanent groups, merge, scan, master thumbnail */
 (function(){
   var SEL={}, selMode=false, mode='save', current=null, targetGid='',
-      thumbFid='', currentKind='qualities', scanTimer=null, targetPreview=null;
+      thumbFid='', currentKind='qualities', scanTimer=null, targetPreview=null,
+      mergeFile=null, mergeSequence=0;
   function q(s){return document.querySelector(s);}
   var esc=window.escapeHTML;
   var jse=window.gJs||function(s){return String(s==null?'':s).replace(/'/g,"\\'");};
@@ -454,16 +455,66 @@ GROUP_ADMIN_JS = r"""<script>
         return r.json().then(function(d){if(!r.ok||d.ok===false)
           throw new Error(d.error||('HTTP '+r.status));return d;});});
   }
-  window.gMergeFile=function(fid,name,card){
+  function openSingleGroupEditor(item){
+    var key='single:'+Date.now()+':'+Math.random().toString(36).slice(2);
+    var fake={group:true,manual:false,gid:'',num:'',kind:'qualities',key:key,
+      name:suggestGroupName([item])||item.name,count:1,variants:[item],chips:[],duration:'',size:''};
+    window.groupHTML(fake,'');window.gEdit(key);
+  }
+  window.gMergeFile=async function(fid,name,card){
     if(!window.IS_GROUP_ADMIN)return;
     try{fid=decodeURIComponent(String(fid||''));}catch(e){fid=String(fid||'');}
     if(!fid)return;
-    var img=card&&card.querySelector?card.querySelector('.vm-img'):null;
+    var seq=++mergeSequence,img=card&&card.querySelector?card.querySelector('.vm-img'):null;
     var chip=card&&card.querySelector?card.querySelector('.vtag.blue'):null;
-    var item={file_id:fid,name:String(name||fid),thumb:img?String(img.getAttribute('data-thumb')||img.getAttribute('data-src')||img.getAttribute('src')||''):'',quality:chip?String(chip.textContent||'').trim():'',ql:chip?String(chip.textContent||'').trim():''};
-    var key='single:'+Date.now()+':'+Math.random().toString(36).slice(2);
-    var fake={group:true,manual:false,gid:'',num:'',kind:'qualities',key:key,name:suggestGroupName([item])||item.name,count:1,variants:[item],chips:[],duration:'',size:''};
-    window.groupHTML(fake,'');window.gEdit(key);
+    mergeFile={file_id:fid,name:String(name||fid),thumb:img?String(img.getAttribute('data-thumb')||img.getAttribute('data-src')||img.getAttribute('src')||''):'',quality:chip?String(chip.textContent||'').trim():'',ql:chip?String(chip.textContent||'').trim():''};
+    open('🔀 Move file into group', '<div class="gmedit">'+
+      '<section class="gmedit-section"><div class="gmlabel">FILE</div><div class="gmnote" id="gmMergeFileName"></div></section>'+
+      '<section class="gmedit-section"><div class="gmlabel">CURRENT GROUP</div><div class="gmnote" id="gmMergeCurrent">Checking current membership…</div></section>'+
+      '<section class="gmedit-section"><label class="gmlabel" for="gmTarget">DESTINATION GROUP ID</label>'+
+      '<input class="gminput" id="gmTarget" placeholder="Enter group ID, e.g. 12" autocomplete="off" disabled>'+
+      '<div class="gpreview" id="gmMergePreview" hidden aria-live="polite"></div></section>'+
+      '<div class="gmnote" id="gmMergeStatus" role="status">Enter a group ID to preview its poster.</div>'+
+      '<div class="gmedit-actions"><button class="gmbtn" id="gmMergeApply" disabled>🔀 Move to group</button>'+
+      '<button class="gmbtn alt" id="gmCreateGroup">＋ Create a new group instead</button>'+
+      '<button class="gmbtn alt" id="gmMergeCancel">Cancel</button></div></div>');
+    q('#gmMergeFileName').textContent=mergeFile.name;
+    q('#gmMergeCancel').onclick=window.gClose;
+    q('#gmCreateGroup').onclick=function(){var item=mergeFile;if(!item)return;window.gClose();openSingleGroupEditor(item);};
+    var input=q('#gmTarget'),preview=q('#gmMergePreview'),apply=q('#gmMergeApply'),status=q('#gmMergeStatus');
+    var sourceId='';
+    targetPreview=window.GroupPreview(input,preview,function(dest){
+      apply.disabled=!dest||String(dest.id)===String(sourceId);
+      status.textContent=!dest?'Enter a valid group ID.':String(dest.id)===String(sourceId)
+        ?'This file is already in that group.':'Ready to move into group #'+dest.num+'.';
+    });
+    apply.onclick=function(){
+      var dest=targetPreview&&targetPreview.get(),file=mergeFile;
+      if(!dest||!file||String(dest.id)===String(sourceId))return;
+      if(!confirm('Move this file to group #'+dest.num+' — '+dest.name+'?'))return;
+      apply.disabled=true;status.textContent='Moving file…';
+      post('/api/group/save',{group_id:dest.id,items:[{id:file.file_id,name:file.name}]})
+        .then(function(d){toast('✅ Moved to group #'+d.num);window.gClose();refresh();})
+        .catch(function(e){status.textContent=e.message||'Could not move the file.';apply.disabled=false;});
+    };
+    try{
+      var response=await fetch('/api/file/meta?id='+encodeURIComponent(fid),
+        {credentials:'same-origin',cache:'no-store'});
+      var data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'Could not read file details.');
+      if(seq!==mergeSequence)return;
+      var file=data.file||{};sourceId=String(file.group_id||'');
+      q('#gmMergeCurrent').textContent=sourceId
+        ? '#'+(file.group_num||sourceId)+(file.group_name?' · '+file.group_name:'')
+        : 'Not currently in a group.';
+      input.disabled=false;input.value=sourceId;
+      status.textContent=sourceId?'Current group is selected; enter another ID to move it.':'Enter the destination group ID.';
+      if(sourceId)targetPreview.update();
+    }catch(e){
+      if(seq!==mergeSequence)return;
+      input.disabled=false;
+      q('#gmMergeCurrent').textContent='Could not load current group. You can still enter a destination ID.';
+      status.textContent=e.message||'Could not load file details.';
+    }
   };
   document.addEventListener('click',function(e){
     var b=e.target&&e.target.closest&&e.target.closest('[data-merge-file]');if(!b)return;
@@ -479,7 +530,7 @@ GROUP_ADMIN_JS = r"""<script>
     q('#gmTitle').textContent=title;q('#gmBody').innerHTML=body;
     q('#gmModal .gmcard').classList.toggle('is-edit',!!q('#gmBody .gmedit'));
     q('#gmModal').classList.add('open');}
-  window.gClose=function(){if(targetPreview)targetPreview.dispose();targetPreview=null;var m=q('#gmModal');if(m)m.classList.remove('open');
+  window.gClose=function(){if(targetPreview)targetPreview.dispose();targetPreview=null;mergeSequence++;mergeFile=null;var m=q('#gmModal');if(m)m.classList.remove('open');
     current=null;targetGid='';thumbFid='';};
   function itemsFrom(g){
     return (g.variants||[]).map(function(v){return {id:v.file_id,name:v.name};});

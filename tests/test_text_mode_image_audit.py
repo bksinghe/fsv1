@@ -40,7 +40,7 @@ class TextModeImageAudit(unittest.TestCase):
         catalog = constant('catalog.py', 'DETAIL_JS')
         media_card = catalog[catalog.index('function mediaCard('):catalog.index('window.cardHTML=mediaCard')]
         self.assertIn('},true);', media_card)
-        self.assertIn('window.gMergeFile=function(fid,name,card)', Path(ROOT / 'group_assets.py').read_text())
+        self.assertIn('window.gMergeFile=async function(fid,name,card)', Path(ROOT / 'group_assets.py').read_text())
         self.assertIn("if(near('.va-merge'))return", assets)
         self.assertIn('window.refreshGroupResults=()=>load(true)', assets)
         detail = Path(ROOT / 'catalog.py').read_text()

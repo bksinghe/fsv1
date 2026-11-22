@@ -54,6 +54,15 @@ class PreviewEndpointTests(unittest.IsolatedAsyncioTestCase):
 
 
 class PreviewUITests(unittest.TestCase):
+    def test_file_merge_prefills_current_group_and_previews_entered_destination(self):
+        merge = GROUP.split('window.gMergeFile=async function', 1)[1].split('document.addEventListener(\'click\'', 1)[0]
+        for part in ('/api/file/meta?id=', 'file.group_id', 'input.value=sourceId',
+                     'id="gmTarget"', 'GroupPreview(input,preview',
+                     "'/api/group/save'", 'group_id:dest.id',
+                     'id="gmCreateGroup"', 'window.gClose();openSingleGroupEditor(item)'):
+            self.assertIn(part, merge)
+        self.assertIn("'/api/group/preview?id='+encodeURIComponent(id)", GROUP)
+
     def test_all_transfers_use_safe_previews_and_confirmation(self):
         for part in ('window.GroupPreview=function', "if(request!==seq)return", "name.textContent=g.name",
                      "GroupPreview(q('#gmFind'),q('#gmChosen')", "GroupPreview(q('#gmTarget'),q('#gmMergePreview')",
