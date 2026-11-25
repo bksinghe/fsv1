@@ -18,11 +18,16 @@ Contract (semantic, like the `vm-*` classes in `mode_assets.py`):
 REVEAL_CSS = r"""
 /* ✨ Result cards rise, overshoot slightly and settle — one shared spring.
    `.rv-enter` starts hidden; RevealCards adds `in` when a card scrolls into view. */
-@keyframes rvEnter{from{opacity:0}to{opacity:1}}
+@keyframes rvEnter{
+0%{opacity:0;transform:translateY(36px) scale(.93)}
+55%{opacity:1;transform:translateY(-5px) scale(1.015)}
+75%{transform:translateY(2px) scale(.998)}
+100%{opacity:1;transform:translateY(0) scale(1)}
+}
 /* Opacity-only reveal avoids transform contention with card/image effects and lets
    already-loaded posters become visible almost immediately. */
 .rv-enter{opacity:0}
-.rv-enter.in{animation:rvEnter .22s ease-out forwards}
+.rv-enter.in{animation:rvEnter .6s cubic-bezier(.34,1.2,.64,1) forwards}
 /* The reference's hover-lift has a press response too; the lift stays with each
    card's own CSS, this shared line covers every result card on all three pages. */
 .vcard:active,.gcard:active{transform:scale(.97);transition:transform .1s}
@@ -43,7 +48,7 @@ animation:none!important;opacity:1!important;transform:none!important}
 REVEAL_JS = r"""
 /* ✨ window.RevealCards — one engine for every result grid (web/reveal_assets.py). */
 (function(){
-  var DUR=0.22, STEP=0.03, MAX=4;
+  var DUR=0.6, STEP=0.06, MAX=8;
   function reduce(){
     return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   }
@@ -86,7 +91,7 @@ REVEAL_JS = r"""
       function(e){ return e.classList.contains('rv-enter') && !e.classList.contains('in'); });
     var noMotion=reduce();
     els.forEach(function(e,i){
-      var delay=noMotion?0:Math.round(Math.min(i,4)*25)/1000;
+      var delay=noMotion?0:Math.round(Math.min(i,MAX)*STEP*1000)/1000;
       if(!noMotion) e.style.animationDelay=delay+'s';
       e.classList.add('in');
       setTimeout(function(){ show(e); }, (DUR+delay)*1000);
